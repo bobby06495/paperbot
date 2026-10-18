@@ -1,0 +1,33 @@
+# ---- secrets: never commit ------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- account / trading data and runtime output -----------------------------
+*.csv
+data/
+logs/
+dashboard/
+STOP
+*.tmp
+*.corrupt-*
+
+# ---- Python / build ---------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ---- editors / OS -----------------------------------------------------------
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

@@ -1,0 +1,39 @@
+#!/bin/sh
+# paperbot pre-commit guard: refuses commits that would publish secrets or account data.
+# Activated per clone with:  git config core.hooksPath .githooks
+#
+# Blocks:  .env files (except .env.example), any *.csv, data/ logs/ dashboard/ files,
+#          Telegram bot tokens, and IBKR account IDs (DU…/U… numbers; all-zero
+#          placeholders such as DU0000000 are allowed) in the staged changes.
+
+fail=0
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+for f in $staged; do
+  case "$f" in
+    .env.example|*/.env.example) ;;
+    .env|.env.*|*/.env|*/.env.*) echo "pre-commit: BLOCKED $f (secrets file)"; fail=1 ;;
+    *.csv|*.CSV)                 echo "pre-commit: BLOCKED $f (CSV / account data)"; fail=1 ;;
+    data/*|logs/*|dashboard/*)   echo "pre-commit: BLOCKED $f (runtime data)"; fail=1 ;;
+  esac
+done
+
+added=$(git diff --cached -U0 --diff-filter=ACMR | grep -E '^\+' | grep -vE '^\+\+\+ ')
+
+if printf '%s\n' "$added" | grep -Eq '[0-9]{8,10}:[A-Za-z0-9_-]{35}'; then
+  echo "pre-commit: BLOCKED a Telegram bot token in the staged changes"
+  fail=1
+fi
+
+ids=$(printf '%s\n' "$added" | grep -oE '\b(DUR|DU|U)[0-9]{6,8}\b' | grep -vE '^(DUR|DU|U)0+$')
+if [ -n "$ids" ]; then
+  echo "pre-commit: BLOCKED IBKR account id(s) in the staged changes: $(printf '%s ' $ids)"
+  echo "            use a placeholder such as DU0000000 instead"
+  fail=1
+fi
+
+if [ "$fail" -ne 0 ]; then
+  echo "pre-commit: commit refused. Unstage with: git rm --cached <file>   (keeps the file on disk)"
+  exit 1
+fi
+exit 0

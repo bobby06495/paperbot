@@ -1,0 +1,11 @@
+# Exact versions verified with this project (Python 3.11). Install, then add the package:
+#   ..\.venv\Scripts\python.exe -m pip install -r requirements.txt
+#   ..\.venv\Scripts\python.exe -m pip install --no-deps -e .
+ib_async==2.1.0
+tzdata==2025.3
+python-dotenv==1.2.4
+requests==2.34.2
+pandas==3.0.6
+lxml==6.1.3
+numpy==2.4.6
+yfinance==1.7.0

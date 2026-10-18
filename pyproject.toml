@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paperbot"
+version = "1.0.0"
+description = "Interactive Brokers paper-trading bot (Trend Join Long) with broker-held stops"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+dependencies = [
+    "ib_async==2.1.0",
+    "tzdata>=2024.1",        # Eastern Time on Windows
+    "python-dotenv>=1.0",    # .env (Telegram secrets)
+    "requests>=2.31",        # Telegram, Wikipedia
+    "pandas>=2.2",           # prefilter, performance summary
+    "lxml>=5.0",             # pandas.read_html parser
+    "numpy>=1.26",
+    "yfinance>=0.2.40",      # prefilter market caps and daily bars
+]
+
+[project.scripts]
+paperbot-bot = "paperbot.trading.bot:main"
+paperbot-cycle = "paperbot.runtime.cycle:main"
+paperbot-stop = "paperbot.runtime.stopbot:main"
+paperbot-kill = "paperbot.runtime.kill_switch:main"
+paperbot-prefilter = "paperbot.market.morning_prefilter:main"
+paperbot-perf = "paperbot.reporting.compute_perf:main"
+paperbot-rotate = "paperbot.ops.rotate_logs:main"
+paperbot-check = "paperbot.ops.check_setup:main"
+paperbot-schedule = "paperbot.ops.setup_schedule:main"
+paperbot-unschedule = "paperbot.ops.cleanup_schedule:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
