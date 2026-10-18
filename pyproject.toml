@@ -31,6 +31,8 @@ paperbot-rotate = "paperbot.ops.rotate_logs:main"
 paperbot-check = "paperbot.ops.check_setup:main"
 paperbot-schedule = "paperbot.ops.setup_schedule:main"
 paperbot-unschedule = "paperbot.ops.cleanup_schedule:main"
+paperbot-start = "paperbot.ops.launch:start"
+paperbot-shutdown = "paperbot.ops.launch:shutdown"
 
 [tool.setuptools.packages.find]
 where = ["src"]
