@@ -31,7 +31,8 @@ Summary push (notify.py), title "Daily Summary YYYY-MM-DD":
 Dashboard: dashboard/index.html (unless --no-html), a static page that works
 when opened straight from disk: status from logs/heartbeat.json, today's P&L,
 an R-multiple histogram of all trades in the ledger (pure CSS bars), open
-positions with unrealized R, and the last 20 closed trades. Bootstrap 5 CSS
+positions with unrealized R, the last 20 closed trades, and the last
+unit-test run (logs/test_results.json from paperbot-test). Bootstrap 5 CSS
 from a CDN, no JavaScript, reloads itself every 30 s. bot.py and cycle.py
 regenerate it after every pass (refresh_dashboard), so it stays current.
 """
@@ -52,6 +53,7 @@ from paperbot.reporting.notify import notify
 
 TRADES_CSV = paths.TRADES_CSV
 HEARTBEAT = paths.LOGS_DIR / "heartbeat.json"
+TEST_RESULTS = paths.LOGS_DIR / "test_results.json"  # written by paperbot-test (run_tests.py)
 DASHBOARD = paths.DASHBOARD_FILE
 ET = ZoneInfo("America/New_York")
 PROXY_STOP_FRACTION = 0.99  # assumed stop 1 % below entry when none was recorded
@@ -285,8 +287,91 @@ def _r_class(value) -> str:
     return "text-success fw-bold" if value > 0 else "text-danger fw-bold"
 
 
+TEST_STATUS_COLOURS = {"passed": "success", "failed": "danger", "error": "danger",
+                       "unexpected success": "danger", "skipped": "secondary",
+                       "expected failure": "secondary"}
+
+
+def load_test_results(path: Path) -> dict | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) and isinstance(data.get("tests"), list) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _warning_items(items: list[dict]) -> str:
+    return "".join(
+        f'<li><span class="badge text-bg-{"warning" if w.get("kind") == "python" else "light border"}">'
+        f'{_e(w.get("category", ""))}</span> {_e(w.get("message", ""))} '
+        f'<small class="text-muted">({_e(w.get("location", ""))})</small></li>'
+        for w in items)
+
+
+def _test_row(t: dict) -> str:
+    status = t.get("status", "?")
+    what = _e(t.get("description", ""))
+    if t.get("class_doc"):
+        what += f'<br><small class="text-muted">{_e(t["class_doc"])}</small>'
+    if t.get("detail") and status != "passed":
+        what += f'<pre class="small text-danger mb-0 mt-1">{_e(t["detail"])}</pre>'
+    warned = (f'<ul class="small mb-0 ps-3">{_warning_items(t["warnings"])}</ul>'
+              if t.get("warnings") else '<span class="text-muted">none</span>')
+    return (f'<tr><td><code>{_e(t.get("class", ""))}.{_e(t.get("name", ""))}</code></td>'
+            f'<td>{what}</td>'
+            f'<td><span class="badge text-bg-{TEST_STATUS_COLOURS.get(status, "secondary")}">'
+            f'{_e(status)}</span></td>'
+            f'<td>{float(t.get("duration_s") or 0):.3f}s</td><td>{warned}</td></tr>')
+
+
+def render_tests(results: dict | None) -> str:
+    """The unit-test card: last run, one collapsible group per test module."""
+    if not results:
+        return ('<p class="text-muted mb-0">No test results yet. Run <code>paperbot-test</code> '
+                '(paperbot-start runs it too).</p>')
+    s = results.get("summary", {})
+    ok = results.get("status") == "passed"
+    try:
+        when = dt.datetime.fromisoformat(results["time"]).astimezone(ET).strftime("%Y-%m-%d %H:%M ET")
+    except (KeyError, TypeError, ValueError):
+        when = "unknown time"
+
+    modules: dict[str, list[dict]] = {}
+    for t in results["tests"]:
+        modules.setdefault(t.get("module", "?"), []).append(t)
+    groups = []
+    for module, tests in sorted(modules.items()):
+        bad = sum(1 for t in tests if t.get("status") in ("failed", "error", "unexpected success"))
+        warned = sum(1 for t in tests if t.get("warnings"))
+        rows = "".join(_test_row(t) for t in tests)
+        badges = (f'<span class="badge text-bg-{"danger" if bad else "success"} ms-2">'
+                  f'{len(tests) - bad}/{len(tests)} passed</span>'
+                  + (f'<span class="badge text-bg-warning ms-1">{warned} with warnings</span>' if warned else ""))
+        groups.append(
+            f'<details class="mb-2"{" open" if bad else ""}><summary><code>{_e(module)}</code>{badges}'
+            f'<small class="text-muted ms-2">{_e(tests[0].get("module_doc", ""))}</small></summary>'
+            f'<div class="table-responsive"><table class="table table-sm mt-2 mb-0">'
+            f'<thead><tr><th>Test</th><th>What it checks</th><th>Status</th><th>Time</th><th>Warnings</th></tr></thead>'
+            f'<tbody>{rows}</tbody></table></div></details>')
+
+    import_warnings = results.get("import_warnings") or []
+    import_block = (f'<div class="alert alert-warning small py-2">Warnings while importing the test modules:'
+                    f'<ul class="mb-0">{_warning_items(import_warnings)}</ul></div>'
+                    if import_warnings else "")
+    log_note = ('<p class="small text-muted">Log warnings (e.g. ALERT) are often expected: the test '
+                'deliberately drives the code down that path. Python warnings (yellow) usually mean a '
+                'library deprecation worth a look.</p>' if s.get("log_warnings") or s.get("python_warnings") else "")
+    return f"""<div class="alert alert-{"success" if ok else "danger"} py-2 d-flex flex-wrap justify-content-between">
+      <strong>Tests {"PASSED" if ok else "FAILED"}: {int(s.get("passed", 0))} of {int(s.get("total", 0))} passed</strong>
+      <span>{int(s.get("failed", 0))} failed · {int(s.get("error", 0))} errors · {int(s.get("skipped", 0))} skipped ·
+      {int(s.get("python_warnings", 0))} Python warnings · {int(s.get("log_warnings", 0))} log warnings
+      ({int(s.get("tests_with_warnings", 0))} tests) · last run {_e(when)}, {float(results.get("duration_s") or 0):g}s</span>
+    </div>
+    {import_block}{log_note}{"".join(groups)}"""
+
+
 def render_dashboard(today: dict, trips: list[dict], heartbeat: dict | None,
-                     now: dt.datetime) -> str:
+                     now: dt.datetime, tests: dict | None = None) -> str:
     """The whole page as a string. No JavaScript; Bootstrap CSS from a CDN."""
     status, detail, colour = bot_status(heartbeat, now)
     pnl = float(today["gross_pnl_usd"])
@@ -360,6 +445,10 @@ def render_dashboard(today: dict, trips: list[dict], heartbeat: dict | None,
       <thead><tr><th>Closed (ET)</th><th>Symbol</th><th>Qty</th><th>Entry</th><th>Exit</th><th>P&amp;L</th><th>R</th><th>Hold</th></tr></thead>
       <tbody>{trade_rows}</tbody></table></div>
   </div></div></div>
+  <div class="col-12"><div class="card"><div class="card-body">
+    <h5 class="card-title">Unit tests</h5>
+    {render_tests(tests)}
+  </div></div></div>
 </div>
 <p class="text-muted small mt-3">Generated {now:%Y-%m-%d %H:%M:%S} ET by compute_perf.py; reloads every 30 s.</p>
 </div>
@@ -370,15 +459,18 @@ def render_dashboard(today: dict, trips: list[dict], heartbeat: dict | None,
 
 def refresh_dashboard(out: Path | None = None, trades: Path | None = None,
                       heartbeat_path: Path | None = None,
-                      now: dt.datetime | None = None) -> Path:
-    """Rebuild dashboard/index.html from trades.csv and the heartbeat (atomic write)."""
+                      now: dt.datetime | None = None,
+                      test_results_path: Path | None = None) -> Path:
+    """Rebuild dashboard/index.html from trades.csv, the heartbeat and the last
+    paperbot-test results (atomic write)."""
     out, trades = out or DASHBOARD, trades or TRADES_CSV
     now = now or dt.datetime.now(ET)
     rows = load_rows(trades)
     day = now.date().isoformat()
     today = summarize(day, round_trips(rows[rows["timestamp_iso"].str.startswith(day)]))
     page = render_dashboard(today, round_trips(rows)["trips"],
-                            load_heartbeat(heartbeat_path or HEARTBEAT), now)
+                            load_heartbeat(heartbeat_path or HEARTBEAT), now,
+                            load_test_results(test_results_path or TEST_RESULTS))
     os.makedirs(out.parent, exist_ok=True)
     tmp = out.with_name(out.name + ".tmp")
     tmp.write_text(page, encoding="utf-8")

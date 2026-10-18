@@ -86,8 +86,27 @@ copy .env.example .env
 ### Check the setup (offline, never connects)
 ```bash
 paperbot-check
-python -m unittest discover -s tests        # from the paperbot folder
+paperbot-test        # unit tests; results to logs/test_results.json + the dashboard
+python -m unittest discover -s tests        # same tests, console only (from the paperbot folder)
 ```
+`paperbot-test` records every test's status, duration, description (its docstring, else its
+name in words) and the warnings it raised: Python warnings (e.g. library deprecations) and
+WARNING-or-worse log lines such as `ALERT`, many of which are expected because the test
+deliberately drives that path. The dashboard shows them in its *Unit tests* section, one
+collapsible group per test module (groups with failures open). It exits 1 if any test fails.
+
+### One-command start and stop
+```bash
+paperbot-start       # checks, Telegram test, Gateway, deletes STOP, paperbot-check,
+                     # paperbot-test, market-hours prefilter + dry run, then paperbot-schedule
+paperbot-start -SkipTest -Yes      # skip the market-hours test / the YES prompt
+paperbot-shutdown                  # STOP, wait for a running pass, unschedule, restore sleep
+paperbot-shutdown -Pause           # STOP and wait only; tasks stay registered
+paperbot-shutdown -CancelOrders    # also cancel paperbot's entry/exit orders (stops kept)
+```
+They run `scripts/start_paperbot.ps1` and `scripts/stop_paperbot.ps1` (also double-clickable
+as the `.cmd` files next to them). `paperbot-start` stops at the first failing step, failing
+unit tests included, and registers nothing.
 
 ---
 

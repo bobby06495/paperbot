@@ -100,7 +100,8 @@ class RenderTest(unittest.TestCase):
         hb_path = self.dir / "heartbeat.json"
         if heartbeat is not None:
             hb_path.write_text(json.dumps(heartbeat))
-        out = perf.refresh_dashboard(self.dir / "dashboard" / "index.html", trades, hb_path, MON_11)
+        out = perf.refresh_dashboard(self.dir / "dashboard" / "index.html", trades, hb_path, MON_11,
+                                     self.dir / "test_results.json")
         return out.read_text(encoding="utf-8")
 
     def test_static_page_requirements(self):
@@ -132,9 +133,37 @@ class RenderTest(unittest.TestCase):
         self.page(rows)
         before = trades.read_bytes()
         perf.refresh_dashboard(self.dir / "dashboard" / "index.html", trades,
-                               self.dir / "none.json", MON_11)
+                               self.dir / "none.json", MON_11, self.dir / "none.json")
         self.assertEqual(sorted(p.name for p in (self.dir / "dashboard").iterdir()), ["index.html"])
         self.assertEqual(trades.read_bytes(), before)  # the ledger is never written
+
+    def test_no_test_results_yet(self):
+        self.assertIn("No test results yet", self.page())
+
+    def test_test_results_section(self):
+        def case(module, name, status, warnings=(), detail=""):
+            return {"module": module, "module_doc": f"Tests for {module}", "class": "T",
+                    "class_doc": "", "name": name, "description": name.replace("_", " "),
+                    "status": status, "detail": detail, "duration_s": 0.01,
+                    "warnings": list(warnings)}
+        log = {"kind": "log", "category": "WARNING", "message": "ALERT <stop>", "location": "paperbot"}
+        results = {"time": MON_11.isoformat(), "duration_s": 0.5, "status": "failed",
+                   "summary": {"total": 3, "passed": 2, "failed": 1, "error": 0, "skipped": 0,
+                               "python_warnings": 0, "log_warnings": 1, "tests_with_warnings": 1},
+                   "import_warnings": [],
+                   "tests": [case("test_a", "test_ok", "passed", [log]),
+                             case("test_a", "test_also_ok", "passed"),
+                             case("test_b", "test_broken", "failed", detail="AssertionError: 1 != 2")]}
+        (self.dir / "test_results.json").write_text(json.dumps(results))
+        html = self.page()
+        self.assertIn("Tests FAILED: 2 of 3 passed", html)
+        self.assertIn("1 log warnings", html)
+        self.assertIn("ALERT &lt;stop&gt;", html)  # warning text is escaped
+        self.assertIn("AssertionError: 1 != 2", html)
+        self.assertIn('<details class="mb-2" open><summary><code>test_b</code>', html)  # failures open
+        self.assertIn('<details class="mb-2"><summary><code>test_a</code>', html)
+        self.assertIn("2/2 passed", html)
+        self.assertNotIn("<script", html.lower())
 
 
 class HeartbeatTest(unittest.TestCase):

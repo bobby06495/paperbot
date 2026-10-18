@@ -31,7 +31,7 @@ Set-Location $Project
 # 1. venv and editable install
 Step 1 "Python environment"
 if (-not (Test-Path $Python)) { Fail "$Python not found. Create the venv first (README section 1)." }
-foreach ($cmd in "paperbot-check", "paperbot-prefilter", "paperbot-cycle", "paperbot-schedule") {
+foreach ($cmd in "paperbot-check", "paperbot-test", "paperbot-prefilter", "paperbot-cycle", "paperbot-schedule") {
     if (-not (Test-Path (Join-Path $Scripts "$cmd.exe"))) {
         Fail "$cmd not installed. Run: $Python -m pip install --no-deps -e $Project"
     }
@@ -72,6 +72,24 @@ else { Ok "no STOP file" }
 # 5. Offline setup check
 Step 5 "Setup check (paperbot-check)"
 if ((Invoke-Paperbot "paperbot-check") -ne 0) { Fail "paperbot-check found problems (see above)." }
+
+# 5b. Offline unit tests; results go to logs\test_results.json and the dashboard
+Step "5b" "Unit tests (paperbot-test)"
+if ((Invoke-Paperbot "paperbot-test") -ne 0) {
+    Fail "unit tests failed. Details: the Unit tests section of dashboard\index.html."
+}
+$results = Get-Content (Join-Path $Project "logs\test_results.json") -Raw | ConvertFrom-Json
+$warned = @($results.tests | Where-Object { $_.warnings.Count -gt 0 })
+if ($results.summary.python_warnings -gt 0) {
+    Warn "$($results.summary.python_warnings) Python warning(s) during the tests (see the dashboard)."
+}
+if ($warned.Count -gt 0) {
+    Write-Host "  $($warned.Count) test(s) logged warnings, most of them expected (listed on the dashboard):"
+    $warned | Select-Object -First 10 | ForEach-Object {
+        Write-Host "    - $($_.class).$($_.name): $(($_.warnings | Select-Object -First 1).message)"
+    }
+}
+Ok "tests passed; see the Unit tests section of dashboard\index.html"
 
 # 6-7. Prefilter and one dry-run pass, only while the US market is open
 $et = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([DateTime]::UtcNow, "Eastern Standard Time")
