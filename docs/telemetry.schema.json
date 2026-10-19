@@ -27,7 +27,10 @@
       "properties": {
         "id_masked": { "type": "string" },
         "base_currency": { "type": ["string", "null"] },
-        "net_liquidation": { "type": ["number", "null"] },
+        "net_liquidation": { "type": ["number", "null"], "description": "USD value the bot used: IBKR's USD row, or the base-currency value converted (see fx)." },
+        "fx": { "type": ["object", "null"], "description": "Set when the account is not USD-based (trading/account.py).",
+                "properties": { "currency": { "type": "string" }, "rate": { "type": ["number", "null"], "description": "Base units per USD." },
+                                "source": { "type": "string" } } },
         "net_liquidation_base": { "type": ["number", "null"] },
         "buying_power": { "type": ["number", "null"] },
         "buying_power_base": { "type": ["number", "null"] },

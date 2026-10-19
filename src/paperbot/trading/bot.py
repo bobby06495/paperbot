@@ -53,6 +53,7 @@ from paperbot import paths
 from paperbot.reporting.notify import AlertHandler, notify
 from paperbot.runtime import runstate
 from paperbot.trading import strategy
+from paperbot.trading.account import daily_pnl, net_liquidation_usd
 from paperbot.trading.risk import (ET, REF_ENTRY, REF_EXIT, REF_STOP, AccountState,
                                    CancelRequest, OrderIntent, RiskGuard, StopUpdate,
                                    load_limits, verify_paper)
@@ -179,8 +180,7 @@ def main():
                 log.warning("STOP file found, shutting down (protective stops left at IBKR)")
                 break
 
-            daily = pnl.dailyPnL
-            daily = None if daily is None or math.isnan(daily) else daily
+            daily = daily_pnl(ib, account, pnl)  # 0.0 when provably flat today; None blocks entries
             was_halted = guard.halted
             guard.update_daily_pnl(daily)
             if guard.halted and not was_halted:
@@ -412,8 +412,7 @@ def fill_message(fills: list, held: dict[str, float]) -> tuple[str, str]:
 
 
 def account_state(ib: IB, account: str, open_trades: list[Trade]) -> AccountState:
-    net_liq = next((float(v.value) for v in ib.accountValues(account)
-                    if v.tag == "NetLiquidation" and v.currency == "USD"), None)
+    net_liq = net_liquidation_usd(ib, account)  # converted from the base currency if needed
     longs = {p.contract.symbol.upper(): p.position for p in ib.positions(account)
              if p.contract.secType == "STK" and p.position > 0}
     buys = {t.contract.symbol.upper() for t in open_trades if t.order.action == "BUY"}

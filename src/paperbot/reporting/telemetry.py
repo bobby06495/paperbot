@@ -325,6 +325,18 @@ ACCOUNT_TAGS = ("NetLiquidation", "BuyingPower", "AvailableFunds", "ExcessLiquid
                 "GrossPositionValue")
 
 
+def pnl_decision() -> dict | None:
+    """The daily P&L the risk guard used in this process, if any (trading/account.py)."""
+    from paperbot.trading import account as trading_account
+    return trading_account.last_daily_pnl()
+
+
+def fx_conversion() -> dict | None:
+    """The base-currency conversion the bot made in this process, if any."""
+    from paperbot.trading import account as trading_account
+    return trading_account.last_conversion()
+
+
 def account_snapshot(ib, account: str) -> dict:
     """USD values (the currency the bot reads) plus the account's base currency values."""
     values, other, currency = {}, {}, None
@@ -336,18 +348,37 @@ def account_snapshot(ib, account: str) -> dict:
         elif v.currency and v.currency != "BASE":
             other[v.tag], currency = _float(v.value), v.currency
     pnl = next(iter(_safe(lambda: list(ib.pnl(account)), [])), None)
+    nlv, bp, fx = values.get("NetLiquidation"), values.get("BuyingPower"), None
+    if nlv is None and other.get("NetLiquidation") is not None:
+        # the value the bot used this pass (trading/account.py), from memory only
+        conv = _safe(fx_conversion, None)
+        if conv and conv.get("currency") == currency:
+            fx = {"currency": currency, "rate": conv.get("rate"), "source": conv.get("source")}
+            if conv.get("usd") is not None and conv.get("rate"):
+                nlv = conv["usd"]
+                bp = round(other["BuyingPower"] / conv["rate"], 2) if other.get("BuyingPower") else None
     return {"id_masked": mask_account(account),
             "base_currency": "USD" if values else currency,
             "net_liquidation_base": values.get("NetLiquidation", other.get("NetLiquidation")),
             "buying_power_base": values.get("BuyingPower", other.get("BuyingPower")),
-            "net_liquidation": values.get("NetLiquidation"),
-            "buying_power": values.get("BuyingPower"),
+            "net_liquidation": nlv,
+            "buying_power": bp,
+            "fx": fx,
             "available_funds": values.get("AvailableFunds"),
             "excess_liquidity": values.get("ExcessLiquidity"),
             "gross_position_value": values.get("GrossPositionValue"),
-            "daily_pnl": _float(getattr(pnl, "dailyPnL", None)),
+            "daily_pnl": _guard_pnl(_float(getattr(pnl, "dailyPnL", None))),
+            "daily_pnl_source": (_safe(pnl_decision, None) or {}).get("source"),
             "unrealized_pnl": _float(getattr(pnl, "unrealizedPnL", None)),
             "realized_pnl": _float(getattr(pnl, "realizedPnL", None))}
+
+
+def _guard_pnl(ibkr: float | None) -> float | None:
+    """IBKR's figure, else the value the guard used (0.0 when the account is flat)."""
+    if ibkr is not None:
+        return ibkr
+    decision = _safe(pnl_decision, None)
+    return decision.get("value") if decision else None
 
 
 def order_snapshot(trade) -> dict:
@@ -406,9 +437,11 @@ def validations(acct: dict, risk_state: dict, limits: dict, positions: list[dict
     out = []
     daily, nlv = acct.get("daily_pnl"), acct.get("net_liquidation")
     max_loss = abs(float(limits.get("max_daily_loss") or 0))
+    source = acct.get("daily_pnl_source") or ""
     out.append(_check("pnl_available", "Daily P&L available", "pass" if daily is not None else "fail",
-                      daily, None, True, "" if daily is not None else
-                      "IBKR sent no daily P&L (NaN); entries are blocked without it"))
+                      daily, None, True,
+                      (source if source != "IBKR" else "") if daily is not None else
+                      f"{source or 'IBKR sent no daily P&L (NaN)'}; entries are blocked without it"))
     if risk_state.get("halted"):
         out.append(_check("daily_loss", "Daily loss limit", "fail", daily, -max_loss, True,
                           risk_state.get("halt_reason") or "halted"))
@@ -424,9 +457,15 @@ def validations(acct: dict, risk_state: dict, limits: dict, positions: list[dict
         out.append(_check("drawdown", "Intraday drawdown from P&L peak", status, round(drawdown, 2),
                           max_loss, False, (f"{pct:.3f}% of net liquidation; " if pct is not None else "")
                           + "monitor only, the bot enforces the daily loss limit"))
-    base, base_ccy = acct.get("net_liquidation_base"), acct.get("base_currency")
-    if nlv:
+    base, base_ccy, fx = acct.get("net_liquidation_base"), acct.get("base_currency"), acct.get("fx")
+    if nlv and fx:
+        detail = (f"converted from {base_ccy} {base:,.2f} at {fx['rate']:.4f} {base_ccy} per USD "
+                  f"({fx['source']})")
+    elif nlv:
         detail = ""
+    elif base and fx:
+        detail = (f"account reports {base_ccy} {base:,.2f}; conversion to USD failed: {fx['source']}. "
+                  "The entry scan is skipped and entries are blocked")
     elif base:
         detail = (f"account reports {base_ccy} {base:,.2f} but no USD value; the bot reads USD only, "
                   "so the entry scan is skipped and entries are blocked")

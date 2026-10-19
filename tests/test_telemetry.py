@@ -109,7 +109,9 @@ class RecordPassTest(unittest.TestCase):
         self.patchers += [mock.patch.object(tm.paths, "RULES_FILE", root / "rules.json"),
                           mock.patch.object(tm.paths, "CONFIG_FILE", root / "config.json"),
                           mock.patch.object(tm, "_watchlist", return_value=("watchlist", ["AAPL", "MSFT"], True)),
-                          mock.patch.object(tm.runstate, "stop_requested", return_value=False)]
+                          mock.patch.object(tm.runstate, "stop_requested", return_value=False),
+                          mock.patch.object(tm, "fx_conversion", return_value=None),
+                          mock.patch.object(tm, "pnl_decision", return_value=None)]
         for p in self.patchers:
             p.start()
 
@@ -178,6 +180,28 @@ class RecordPassTest(unittest.TestCase):
         self.assertEqual(checks["net_liq"]["status"], "fail")
         self.assertIn("SGD", checks["net_liq"]["detail"])
         self.assertEqual(checks["pnl_available"]["status"], "fail")  # NaN daily P&L
+
+    def test_converted_account_value_is_reported_with_its_source(self):
+        values = [NS(tag="NetLiquidation", currency="SGD", value="1000013.88"),
+                  NS(tag="BuyingPower", currency="SGD", value="6666759.20")]
+        conv = {"usd": 781260.84, "currency": "SGD", "base": 1000013.88, "rate": 1.28, "source": "Yahoo 2026-10-19"}
+        with mock.patch.object(tm, "fx_conversion", return_value=conv):
+            record = tm.record_pass(self.ib(values=values), "DU0000000", "cycle.py", True, now=at(11, 5))
+        acct = record["account"]
+        self.assertEqual((acct["net_liquidation"], acct["buying_power"]), (781260.84, round(6666759.20 / 1.28, 2)))
+        self.assertEqual(acct["fx"], {"currency": "SGD", "rate": 1.28, "source": "Yahoo 2026-10-19"})
+        net_liq = next(v for v in record["validations"] if v["key"] == "net_liq")
+        self.assertEqual(net_liq["status"], "pass")
+        self.assertIn("converted from SGD", net_liq["detail"])
+
+    def test_flat_account_pnl_shows_the_value_the_guard_used(self):
+        decision = {"value": 0.0, "source": "flat today (no position, no execution); IBKR sends none"}
+        with mock.patch.object(tm, "pnl_decision", return_value=decision):
+            record = tm.record_pass(self.ib(pnl=NS(dailyPnL=float("nan"), unrealizedPnL=None, realizedPnL=None)),
+                                    "DU0000000", "cycle.py", True, now=at(11, 5))
+        check = next(v for v in record["validations"] if v["key"] == "pnl_available")
+        self.assertEqual((record["account"]["daily_pnl"], check["status"]), (0.0, "pass"))
+        self.assertIn("flat today", check["detail"])
 
     def test_rotated_file_is_read_from_the_start(self):
         self.append("bot.log", "[2026-10-19 11:00:00 ET] INFO cycle start (run, SUBMIT) on paper account DU1")

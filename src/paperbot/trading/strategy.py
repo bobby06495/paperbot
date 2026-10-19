@@ -56,6 +56,7 @@ from paperbot import paths
 from paperbot.reporting.notify import notify
 from paperbot.runtime import runstate
 from paperbot.runtime.runstate import StateCorrupt, read_json_state, write_json_atomic
+from paperbot.trading.account import net_liquidation_usd
 from paperbot.trading.risk import (REF_ENTRY, REF_EXIT, REF_STOP, CancelRequest, OrderIntent,
                                    StopUpdate)
 
@@ -237,10 +238,8 @@ def _swing_low(bars: list, left: int, right: int) -> float | None:
 
 
 def _net_liquidation(ib: IB, account: str) -> float | None:
-    for v in ib.accountValues(account):
-        if v.tag == "NetLiquidation" and v.currency == "USD":
-            return float(v.value)
-    return None
+    """Net liquidation in USD, converted from the base currency if needed (account.py)."""
+    return net_liquidation_usd(ib, account)
 
 
 def read_symbols(path: Path) -> list[str]:

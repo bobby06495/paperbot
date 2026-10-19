@@ -159,8 +159,8 @@ def one_pass(ib, guard, cfg: dict, account: str, pnl, submit: bool) -> int:
     """The body of bot.py's loop, once. Returns the number of requests handled."""
     from paperbot.trading import bot
     from paperbot.trading import strategy
-    daily = pnl.dailyPnL
-    daily = None if daily is None or math.isnan(daily) else daily
+    from paperbot.trading.account import daily_pnl
+    daily = daily_pnl(ib, account, pnl)  # 0.0 when provably flat today; None blocks entries
     was_halted = guard.halted
     guard.update_daily_pnl(daily)
     if guard.halted and not was_halted:

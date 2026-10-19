@@ -79,7 +79,10 @@
   /** Account value in USD, else in the account's base currency (flagged). */
   PB.acctValue = (a, key) => {
     a = a || {};
-    if (PB.isNum(a[key])) return PB.money(a[key]);
+    if (PB.isNum(a[key])) {
+      const fx = a.fx && PB.isNum(a.fx.rate) ? ` <span class="text-ink-400" title="${PB.esc(a.fx.source)}">(from ${PB.esc(a.base_currency)} @ ${a.fx.rate.toFixed(4)})</span>` : '';
+      return PB.money(a[key]) + fx;
+    }
     const base = a[`${key}_base`];
     return PB.isNum(base) ? `${PB.esc(a.base_currency || '')} ${PB.num(base)} <span class="text-rose-300">(no USD)</span>` : '—';
   };

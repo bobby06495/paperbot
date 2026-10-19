@@ -5,6 +5,7 @@
   "loop_seconds": 30,
   "lookup_timeout_seconds": 20,
   "time_in_force": "DAY",
+  "fx_fallback": "auto",
   "limits": {
     "allowed_symbols": ["*"],
     "max_quantity_per_order": 1,
