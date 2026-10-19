@@ -24,7 +24,7 @@ paperbot/
 │  ├─ trading/            bot (engine, orders) · strategy · risk
 │  ├─ runtime/            runstate (STOP/pid/state files) · cycle · stopbot · kill_switch
 │  ├─ market/             sp500_tickers · morning_prefilter
-│  ├─ reporting/          notify (Telegram/ntfy) · compute_perf (summary + dashboard)
+│  ├─ reporting/          notify (Telegram/ntfy) · compute_perf (summary) · telemetry · dashboard (+ web/ pages)
 │  └─ ops/                setup_schedule · cleanup_schedule · rotate_logs · check_setup
 ├─ scripts/manual/        one-off IBKR scripts (connection check, manual MU buy/close)
 ├─ tests/                 offline unit tests (no Gateway, no network)
@@ -40,7 +40,8 @@ paperbot/
 | `data/trades.csv` | Fill ledger written by the bot |
 | `.env` | Secrets only: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, optional `NOTIFY_URL` |
 | `logs/` | `bot.log`, `orders.jsonl`, `safety_log.jsonl`, state files, `heartbeat.json`, `cycle_errors.log`, `notify_errors.log`, `archive/` |
-| `dashboard/index.html` | Live status page, rebuilt after every bot/cycle pass |
+| `dashboard/` | Monitoring pages (`index.html`, `logs.html`, `strategy.html`, `performance.html`), rebuilt after every bot/cycle pass |
+| `logs/telemetry.jsonl` | One line per bot/cycle pass for the dashboard (contract: `docs/telemetry.schema.json`) |
 
 All settings live in `config/` only, and secrets only in `.env`; nothing is duplicated.
 `src/paperbot/paths.py` is the single place that knows where files are, so every command
@@ -309,9 +310,33 @@ of commissions. Metrics: total_trades, wins, losses, win_rate_pct, gross_pnl_usd
 largest_winner/loser, avg_winner/loser, profit_factor (`inf` with no losers, `n/a` with no
 trades). It also reports sells of earlier-day positions and lots still open, without counting them.
 
-**Dashboard: `dashboard/index.html`.** Open it straight from disk (double-click); no server
-is needed. It reloads itself every 30 s, and the bot and scheduled runs rebuild it after every
-pass, so it stays current. `paperbot-perf` also writes it (`--no-html` skips that).
+**Monitoring dashboard: `dashboard/index.html`.** Open it straight from disk (double-click);
+no server is needed. It is a passive reporting layer: it never sends orders, never talks to
+IBKR and never changes the scheduler.
+
+| Page | Shows |
+|---|---|
+| `index.html` Overview | Runs today, current P&L vs the loss limit, active positions, system health; a **live state monitor** (what Paperbot is doing now, the HT_Cycle task's last result, a countdown to the next run and what it will do, trigger prices for each position); session timeline, order lifecycle, alerts, all `HT_*` tasks |
+| `logs.html` Run log | Every run today (plus skipped runs and failed starts) with four expandable steps: market scan fetch, validations, signal evaluation, order events; the full order lifecycle (placed, modified, partial fills, cancels, liquidations) |
+| `strategy.html` Strategy & scanner | Active parameters, the entry-filter funnel, exit ladder, risk limits, a sizing what-if, and the **market-scanning view**: each watched symbol's last evaluated price, the check that stopped it and how far it is from passing |
+| `performance.html` | Trade performance (below), written by `compute_perf.py` |
+
+How it works:
+- `paperbot.reporting.telemetry` appends one line per pass to `logs/telemetry.jsonl`, from
+  `bot.after_pass()`. It only reads ib_async's cached data and the lines the bot already wrote to
+  `bot.log`, `safety_log.jsonl` and `orders.jsonl`. A telemetry error is logged and trading continues.
+- `paperbot.reporting.dashboard` turns that, plus `bot.log`, `trades.csv`, the state files and
+  `schtasks /Query` for the `HT_*` tasks, into `dashboard/data/telemetry.js`. The pages load it
+  with a script tag, reload it every 15 s, and recompute the phase and countdowns every second.
+- Rebuild at any time (read-only, safe outside market hours):
+  `python -m paperbot.reporting.dashboard`.
+- Tailwind CSS and fonts come from CDNs. Offline, the pages still show all data with basic styling.
+- Prices on the scanner are the last completed 5-minute closes the bot evaluated. Paperbot does not
+  stream quotes. US market holidays are not modelled in the countdowns.
+
+**Performance page: `dashboard/performance.html`.** It reloads itself every 30 s, and the bot and
+scheduled runs rebuild it after every pass. `paperbot-perf` also writes it, together with the
+monitoring pages (`--no-html` skips both).
 - **Status strip** from `logs/heartbeat.json`:
   - **ACTIVE**: a pass within 10 min during 09:30–16:05 ET.
   - **STALE**: no pass for over 10 min during the session.

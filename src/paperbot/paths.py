@@ -31,7 +31,9 @@ WATCHLIST_FILE = DATA_DIR / "watchlist.txt"
 STOP_FILE = PROJECT_ROOT / "STOP"
 LOGS_DIR = PROJECT_ROOT / "logs"
 ARCHIVE_DIR = LOGS_DIR / "archive"
-DASHBOARD_FILE = PROJECT_ROOT / "dashboard" / "index.html"
+DASHBOARD_DIR = PROJECT_ROOT / "dashboard"
+DASHBOARD_FILE = DASHBOARD_DIR / "index.html"  # executive summary (reporting/dashboard.py)
+PERFORMANCE_FILE = DASHBOARD_DIR / "performance.html"  # trade performance (compute_perf.py)
 
 # the virtual environment used by scheduled tasks: project/.venv or its parent's .venv
 _VENV_CANDIDATES = (PROJECT_ROOT / ".venv" / "Scripts" / "python.exe",

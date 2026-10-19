@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "paperbot/telemetry-pass/1",
+  "title": "Paperbot telemetry pass record (v1)",
+  "description": "One line of logs/telemetry.jsonl, appended by paperbot.reporting.telemetry.record_pass() at the end of every bot.py loop and cycle.py pass. Written after the trading work, from cached data only; never written by anything that sends orders. All times are ISO-8601 in US Eastern Time. Readers must ignore unknown fields; a breaking change bumps v.",
+  "type": "object",
+  "required": ["v", "run_id", "pass_in_run", "source", "mode", "ended", "phase", "account", "risk",
+               "positions", "orders", "scan", "evaluations", "signals", "order_events", "requests",
+               "validations", "log"],
+  "properties": {
+    "v": { "const": 1, "description": "Schema version." },
+    "run_id": { "type": "string", "description": "One per process: cycle-<pid>-<HHMMSS> or bot-<pid>-<HHMMSS>. A scheduled run's force-close repeats share it." },
+    "pass_in_run": { "type": "integer", "minimum": 1 },
+    "pass_today": { "type": "integer", "minimum": 1 },
+    "source": { "enum": ["cycle.py", "bot.py"] },
+    "mode": { "enum": ["SUBMIT", "DRY RUN"] },
+    "pid": { "type": "integer" },
+    "window_start": { "type": ["string", "null"], "format": "date-time", "description": "End of the previous recorded pass." },
+    "started": { "type": ["string", "null"], "format": "date-time", "description": "Run start ('cycle start' log line) for pass 1, else the first log line of the pass." },
+    "ended": { "type": "string", "format": "date-time" },
+    "duration_s": { "type": ["number", "null"] },
+    "phase": { "enum": ["closed", "pre_open", "opening", "entry_window", "manage_only", "force_close", "post_close"],
+               "description": "Scheduler phase at the end of the pass, from rules.json time_filter." },
+    "account": {
+      "type": "object",
+      "description": "From ib_async's cached account values and P&L subscription. USD fields are what the bot reads; *_base fall back to the account's base currency.",
+      "properties": {
+        "id_masked": { "type": "string" },
+        "base_currency": { "type": ["string", "null"] },
+        "net_liquidation": { "type": ["number", "null"] },
+        "net_liquidation_base": { "type": ["number", "null"] },
+        "buying_power": { "type": ["number", "null"] },
+        "buying_power_base": { "type": ["number", "null"] },
+        "available_funds": { "type": ["number", "null"] },
+        "excess_liquidity": { "type": ["number", "null"] },
+        "gross_position_value": { "type": ["number", "null"] },
+        "daily_pnl": { "type": ["number", "null"], "description": "null when IBKR reports NaN; the risk guard then blocks entries." },
+        "unrealized_pnl": { "type": ["number", "null"] },
+        "realized_pnl": { "type": ["number", "null"] }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "properties": {
+        "orders_today": { "type": "integer" },
+        "halted": { "type": "boolean" },
+        "halt_reason": { "type": "string" },
+        "peak_pnl": { "type": ["number", "null"], "description": "Highest daily P&L seen today (telemetry only)." },
+        "drawdown_from_peak": { "type": ["number", "null"] }
+      }
+    },
+    "positions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["symbol", "qty", "managed"],
+        "properties": {
+          "symbol": { "type": "string" }, "qty": { "type": "number" },
+          "avg_cost": { "type": ["number", "null"] }, "market_price": { "type": ["number", "null"] },
+          "unrealized_pnl": { "type": ["number", "null"] }, "managed": { "type": "boolean" },
+          "stop": { "type": ["number", "null"] }, "initial_stop": { "type": ["number", "null"] },
+          "breakeven": { "type": "boolean" }, "partial_done": { "type": "boolean" },
+          "force_attempts": { "type": "integer" }, "r_now": { "type": ["number", "null"] },
+          "triggers": { "type": "object", "properties": {
+            "partial": { "type": "number", "description": "Price at which a 5m close triggers the partial profit." },
+            "breakeven": { "type": "number" } } }
+        }
+      }
+    },
+    "orders": {
+      "type": "array", "description": "Paperbot's working orders after the pass (orderRef paperbot:*).",
+      "items": { "type": "object", "properties": {
+        "order_id": { "type": "integer" }, "parent_id": { "type": ["integer", "null"] },
+        "symbol": { "type": "string" }, "role": { "enum": ["entry", "stop", "exit"] },
+        "action": { "type": "string" }, "type": { "type": "string" },
+        "qty": { "type": ["number", "null"] }, "filled": { "type": ["number", "null"] },
+        "remaining": { "type": ["number", "null"] }, "limit": { "type": ["number", "null"] },
+        "aux": { "type": ["number", "null"] }, "tif": { "type": "string" }, "status": { "type": "string" } } }
+    },
+    "scan": {
+      "type": "object",
+      "properties": {
+        "source": { "enum": ["watchlist", "universe", "none"] }, "size": { "type": "integer" },
+        "fresh": { "type": "boolean" }, "in_window": { "type": "boolean" },
+        "evaluated": { "type": "integer" }, "passed": { "type": "integer" },
+        "paused": { "type": ["string", "null"], "description": "'entry scan paused at i/n' when the time budget ran out." }
+      }
+    },
+    "evaluations": {
+      "type": "array", "description": "safety_log.jsonl lines written during the pass, classified.",
+      "items": { "type": "object", "properties": {
+        "symbol": { "type": "string" }, "time": { "type": "string" }, "pass": { "type": "boolean" },
+        "price": { "type": ["number", "null"], "description": "Close of the last completed 5m bar." },
+        "gap": { "type": ["number", "null"] }, "rvol": { "type": ["number", "null"] }, "stop": { "type": ["number", "null"] },
+        "fail": { "type": ["string", "null"] }, "reasons": { "type": "array", "items": { "type": "string" } },
+        "check": { "type": ["string", "null"], "description": "Step that stopped it: contract, daily_history, prior_price, D2, bars, price, D3, D1, I1, I2, I3, precheck." },
+        "check_label": { "type": ["string", "null"] },
+        "static": { "type": "boolean", "description": "True when the failing check cannot change later today." },
+        "current": { "type": ["number", "null"] }, "threshold": { "type": ["number", "null"] },
+        "distance_pct": { "type": ["number", "null"], "description": "How much the value must still rise to pass, in %." },
+        "passed_steps": { "type": "integer" }, "total_steps": { "type": "integer" },
+        "levels": { "type": "object", "description": "prior_close, sma200, prior_high, premarket_high, today_high when revealed." } } }
+    },
+    "signals": { "type": "array", "items": { "type": "string" } },
+    "order_events": {
+      "type": "array", "description": "orders.jsonl lines written during the pass, normalised.",
+      "items": { "type": "object", "required": ["time", "event"], "properties": {
+        "time": { "type": "string" },
+        "event": { "enum": ["sent", "stop", "status", "fill", "cancel", "blocked", "dry_run"] },
+        "order_ids": { "type": "array", "items": { "type": "integer" } },
+        "symbol": { "type": ["string", "null"] }, "role": { "type": "string" }, "detail": { "type": "string" } } }
+    },
+    "requests": { "type": "integer", "description": "Requests that reached the risk guard (sent, stop, cancel, dry_run, blocked)." },
+    "validations": {
+      "type": "array",
+      "items": { "type": "object", "required": ["key", "label", "status", "enforced"], "properties": {
+        "key": { "enum": ["pnl_available", "daily_loss", "drawdown", "net_liq", "buying_power", "entries_today",
+                          "open_orders", "concurrency", "stop_coverage", "data_sanity", "quotes", "watchlist",
+                          "stop_file", "alerts"] },
+        "label": { "type": "string" },
+        "status": { "enum": ["pass", "warn", "fail", "skip", "info"] },
+        "value": {}, "limit": {},
+        "enforced": { "type": "boolean", "description": "true: the bot acts on this check. false: monitor only." },
+        "detail": { "type": "string" } } }
+    },
+    "log": {
+      "type": "array", "description": "bot.log lines of the pass: warnings/errors plus key INFO lines (max 200).",
+      "items": { "type": "object", "properties": {
+        "time": { "type": "string" }, "level": { "type": "string" }, "msg": { "type": "string" } } }
+    }
+  }
+}

@@ -357,7 +357,7 @@ def heartbeat_positions(ib: IB, account: str) -> list[dict]:
 
 
 def after_pass(ib: IB, account: str, source: str, submit: bool):
-    """After every bot loop / cycle pass: heartbeat + live dashboard. Never raises."""
+    """After every bot loop / cycle pass: heartbeat, telemetry, live dashboard. Never raises."""
     try:
         runstate.write_heartbeat({
             "time": dt.datetime.now(ET).isoformat(timespec="seconds"), "source": source,
@@ -365,6 +365,11 @@ def after_pass(ib: IB, account: str, source: str, submit: bool):
             "positions": heartbeat_positions(ib, account)})
     except Exception as e:  # noqa: BLE001
         log.warning("heartbeat skipped: %r", e)
+    try:
+        from paperbot.reporting import telemetry  # read-only: cached ib data + log files
+        telemetry.record_pass(ib, account, source, submit)
+    except Exception as e:  # noqa: BLE001
+        log.warning("telemetry skipped: %r", e)
     try:
         from paperbot.reporting import compute_perf  # pandas: imported only when needed
         compute_perf.refresh_dashboard()

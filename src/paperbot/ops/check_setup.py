@@ -29,6 +29,7 @@ MODULES = (
     "paperbot.trading.bot", "paperbot.runtime.kill_switch", "paperbot.runtime.stopbot",
     "paperbot.market.sp500_tickers", "paperbot.market.morning_prefilter",
     "paperbot.runtime.cycle", "paperbot.reporting.notify", "paperbot.reporting.compute_perf",
+    "paperbot.reporting.telemetry", "paperbot.reporting.dashboard",
     "paperbot.ops.rotate_logs", "paperbot.ops.setup_schedule", "paperbot.ops.cleanup_schedule",
     "paperbot.ops.run_tests", "paperbot.ops.launch",
 )

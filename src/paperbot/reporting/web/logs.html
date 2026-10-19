@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paperbot Run Log</title>
+<meta name="description" content="Every Paperbot run today, step by step, with validations, signal evaluations and order lifecycle.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<script src="assets/tw-config.js"></script>
+<link rel="stylesheet" href="assets/theme.css">
+</head>
+<body class="min-h-screen bg-ink-950 font-sans text-slate-100 antialiased">
+<div id="pb-header"></div>
+
+<main id="pb-main" class="mx-auto max-w-7xl space-y-5 px-4 py-5 sm:px-6">
+  <section id="summary" class="grid grid-cols-2 gap-3 md:grid-cols-6" aria-label="Run totals"></section>
+
+  <section class="rounded-2xl border border-ink-700/80 bg-ink-900/80">
+    <header class="flex flex-wrap items-center gap-3 border-b border-ink-700/70 px-4 py-3 sm:px-5">
+      <h2 class="mr-auto text-[13px] font-semibold uppercase tracking-[.08em] text-ink-300">Execution timeline · today</h2>
+      <div id="filters" class="flex flex-wrap gap-1" role="group" aria-label="Filter runs"></div>
+      <label class="relative">
+        <span class="sr-only">Filter by symbol or text</span>
+        <input id="search" type="search" placeholder="Symbol or text…" autocomplete="off"
+          class="w-44 rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-sm text-white placeholder:text-ink-400 focus:border-sky-400/60 focus:outline-none">
+      </label>
+      <button id="expand" type="button" class="rounded-lg border border-ink-700 px-3 py-1.5 text-xs text-ink-300 hover:bg-ink-800 hover:text-white">Expand all</button>
+      <button id="collapse" type="button" class="rounded-lg border border-ink-700 px-3 py-1.5 text-xs text-ink-300 hover:bg-ink-800 hover:text-white">Collapse all</button>
+    </header>
+    <div id="timeline" class="divide-y divide-ink-700/60"></div>
+  </section>
+
+  <div id="orders"></div>
+  <div id="intents"></div>
+</main>
+
+<footer class="mx-auto max-w-7xl px-4 pb-8 text-xs text-ink-400 sm:px-6" id="footer"></footer>
+
+<script src="assets/core.js"></script>
+<script src="assets/runlog.js"></script>
+</body>
+</html>

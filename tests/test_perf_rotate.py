@@ -98,15 +98,17 @@ class PerfTest(unittest.TestCase):
         write_csv(self.csv, [row("10:10", "AAPL", "BUY", 1, 100.0, 1),
                              row("10:40", "AAPL", "SELL", 1, 110.0, 2)])
         before = self.csv.read_bytes()
-        page = Path(self.tmp.name) / "dashboard" / "index.html"
+        page = Path(self.tmp.name) / "dashboard" / "performance.html"
         with mock.patch.object(perf, "TRADES_CSV", self.csv), \
                 mock.patch.object(perf, "DASHBOARD", page), \
+                mock.patch("paperbot.reporting.dashboard.build") as site, \
                 mock.patch.object(perf, "HEARTBEAT", Path(self.tmp.name) / "none.json"), \
                 mock.patch.object(perf, "notify") as sent, mock.patch("builtins.print"):
             self.assertEqual(perf.main(["--date", DAY]), 0)
         self.assertEqual(self.csv.read_bytes(), before)
         self.assertEqual(sent.call_args.args[0], f"Daily Summary {DAY}")
         self.assertTrue(page.exists())
+        site.assert_called_once_with(page.parent)  # monitoring pages go next to it
 
 
 class RotateTest(unittest.TestCase):

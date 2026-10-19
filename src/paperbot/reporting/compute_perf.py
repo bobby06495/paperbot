@@ -3,7 +3,7 @@
     paperbot-perf                    today (ET), prints JSON and pushes the summary
     paperbot-perf --date 2026-10-19  another day
     paperbot-perf --no-notify        print only
-    paperbot-perf --no-html          skip dashboard/index.html
+    paperbot-perf --no-html          skip the dashboard pages
     (same as python -m paperbot.reporting.compute_perf; reads data/trades.csv)
 
 trades.csv is written by bot.notify_fills (one row per execution of the bot's
@@ -28,13 +28,15 @@ a stop 1 % below the entry is assumed and the R is marked as an estimate.
 Summary push (notify.py), title "Daily Summary YYYY-MM-DD":
   Trades: N (WW / LL, pct%) / P&L / Best / Worst / PF, or "No closed trades today."
 
-Dashboard: dashboard/index.html (unless --no-html), a static page that works
-when opened straight from disk: status from logs/heartbeat.json, today's P&L,
+Dashboard: dashboard/performance.html (unless --no-html), a static page that
+works when opened straight from disk: status from logs/heartbeat.json, today's P&L,
 an R-multiple histogram of all trades in the ledger (pure CSS bars), open
 positions with unrealized R, the last 20 closed trades, and the last
 unit-test run (logs/test_results.json from paperbot-test). Bootstrap 5 CSS
 from a CDN, no JavaScript, reloads itself every 30 s. bot.py and cycle.py
 regenerate it after every pass (refresh_dashboard), so it stays current.
+refresh_dashboard() with no arguments also rebuilds the monitoring pages
+(index/logs/strategy, see dashboard.py) next to it.
 """
 import argparse
 import datetime as dt
@@ -54,7 +56,7 @@ from paperbot.reporting.notify import notify
 TRADES_CSV = paths.TRADES_CSV
 HEARTBEAT = paths.LOGS_DIR / "heartbeat.json"
 TEST_RESULTS = paths.LOGS_DIR / "test_results.json"  # written by paperbot-test (run_tests.py)
-DASHBOARD = paths.DASHBOARD_FILE
+DASHBOARD = paths.PERFORMANCE_FILE
 ET = ZoneInfo("America/New_York")
 PROXY_STOP_FRACTION = 0.99  # assumed stop 1 % below entry when none was recorded
 SESSION = (dt.time(9, 30), dt.time(16, 5))  # when a fresh heartbeat is expected
@@ -416,6 +418,8 @@ def render_dashboard(today: dict, trips: list[dict], heartbeat: dict | None,
 </head>
 <body class="bg-body-tertiary">
 <div class="container py-3">
+<nav class="mb-3 small"><a href="index.html">Overview</a> · <a href="logs.html">Run log</a> ·
+  <a href="strategy.html">Strategy &amp; scanner</a> · <strong>Performance</strong></nav>
 <div class="alert alert-{colour} d-flex flex-wrap justify-content-between align-items-center">
   <strong>Bot Status: {_e(status)}</strong><span>{_e(detail)}</span>
 </div>
@@ -461,8 +465,10 @@ def refresh_dashboard(out: Path | None = None, trades: Path | None = None,
                       heartbeat_path: Path | None = None,
                       now: dt.datetime | None = None,
                       test_results_path: Path | None = None) -> Path:
-    """Rebuild dashboard/index.html from trades.csv, the heartbeat and the last
-    paperbot-test results (atomic write)."""
+    """Rebuild dashboard/performance.html from trades.csv, the heartbeat and the
+    last paperbot-test results (atomic write). Without an explicit `out`, the
+    monitoring pages (dashboard.py) are rebuilt in the same folder too."""
+    site = out is None
     out, trades = out or DASHBOARD, trades or TRADES_CSV
     now = now or dt.datetime.now(ET)
     rows = load_rows(trades)
@@ -475,6 +481,9 @@ def refresh_dashboard(out: Path | None = None, trades: Path | None = None,
     tmp = out.with_name(out.name + ".tmp")
     tmp.write_text(page, encoding="utf-8")
     os.replace(tmp, out)
+    if site:
+        from paperbot.reporting import dashboard
+        dashboard.build(out.parent)
     return out
 
 
@@ -482,7 +491,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Daily performance summary from trades.csv.")
     parser.add_argument("--date", help="ET date YYYY-MM-DD (default: today in ET)")
     parser.add_argument("--no-notify", action="store_true", help="print only, no push")
-    parser.add_argument("--no-html", action="store_true", help="do not write dashboard/index.html")
+    parser.add_argument("--no-html", action="store_true", help="do not write the dashboard pages")
     args = parser.parse_args(argv)
     day = args.date or dt.datetime.now(ET).date().isoformat()
     dt.date.fromisoformat(day)  # validate

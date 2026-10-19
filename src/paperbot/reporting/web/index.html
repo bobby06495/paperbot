@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paperbot Overview</title>
+<meta name="description" content="Paperbot executive summary: runs, P&L, positions, system health and live state.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<script src="assets/tw-config.js"></script>
+<link rel="stylesheet" href="assets/theme.css">
+</head>
+<body class="min-h-screen bg-ink-950 font-sans text-slate-100 antialiased">
+<div id="pb-header"></div>
+
+<main id="pb-main" class="mx-auto max-w-7xl space-y-5 px-4 py-5 sm:px-6">
+  <section id="kpis" class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Key figures"></section>
+  <div id="live"></div>
+  <div class="grid grid-cols-1 gap-5 lg:grid-cols-5">
+    <div id="positions" class="lg:col-span-3"></div>
+    <div id="health" class="lg:col-span-2"></div>
+  </div>
+  <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+    <div id="orders"></div>
+    <div id="alerts"></div>
+  </div>
+  <div id="tasks"></div>
+</main>
+
+<footer class="mx-auto max-w-7xl px-4 pb-8 text-xs text-ink-400 sm:px-6" id="footer"></footer>
+
+<script src="assets/core.js"></script>
+<script src="assets/overview.js"></script>
+</body>
+</html>

@@ -21,6 +21,7 @@ __pycache__/
 build/
 dist/
 .venv/
+old_venv/
 venv/
 .pytest_cache/
 .coverage

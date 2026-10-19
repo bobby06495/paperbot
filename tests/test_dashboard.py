@@ -194,11 +194,22 @@ class HeartbeatTest(unittest.TestCase):
     def test_after_pass_writes_heartbeat_and_never_raises(self):
         ib = mock.Mock(portfolio=lambda account: [])
         with mock.patch("paperbot.reporting.compute_perf.refresh_dashboard", side_effect=OSError("disk full")), \
+                mock.patch("paperbot.reporting.telemetry.record_pass") as recorded, \
                 mock.patch.object(bot.log, "warning") as warned:
             bot.after_pass(ib, "DU1", "cycle.py", True)
         data = json.loads(self.path.read_text())
         self.assertEqual((data["status"], data["mode"], data["source"]), ("ok", "SUBMIT", "cycle.py"))
+        recorded.assert_called_once_with(ib, "DU1", "cycle.py", True)
         warned.assert_called_once()  # the dashboard failure was only logged
+
+    def test_after_pass_survives_a_telemetry_failure(self):
+        ib = mock.Mock(portfolio=lambda account: [])
+        with mock.patch("paperbot.reporting.telemetry.record_pass", side_effect=ValueError("bad line")), \
+                mock.patch("paperbot.reporting.compute_perf.refresh_dashboard") as refreshed, \
+                mock.patch.object(bot.log, "warning") as warned:
+            bot.after_pass(ib, "DU1", "cycle.py", True)
+        self.assertIn("telemetry skipped", warned.call_args.args[0])
+        refreshed.assert_called_once()  # the dashboard is still rebuilt
 
     def test_crash_keeps_last_positions(self):
         runstate.write_heartbeat({"time": "x", "status": "ok", "positions": [{"symbol": "AAPL"}]})

@@ -1,0 +1,42 @@
+/* Paperbot dashboard: base theme. Tailwind (CDN) does the layout; this file keeps the
+   pages readable without it (offline) and holds the few custom effects. */
+:root { color-scheme: dark; }
+html, body { background: #05080d; color: #e6edf5; }
+body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+       -webkit-font-smoothing: antialiased; }
+a { color: #7dd3fc; }
+table { border-collapse: collapse; }
+.num, .tabular { font-variant-numeric: tabular-nums; }
+.mono { font-family: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace; }
+
+/* live dot */
+.pb-dot { position: relative; display: inline-block; width: .55rem; height: .55rem;
+          border-radius: 9999px; background: currentColor; flex: none; }
+.pb-dot.live::after { content: ""; position: absolute; inset: -4px; border-radius: 9999px;
+                      border: 2px solid currentColor; opacity: .6; animation: pb-ping 1.8s ease-out infinite; }
+@keyframes pb-ping { 0% { transform: scale(.5); opacity: .7; } 100% { transform: scale(1.6); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .pb-dot.live::after { animation: none; } }
+
+/* expandable rows */
+details > summary { list-style: none; cursor: pointer; }
+details > summary::-webkit-details-marker { display: none; }
+.pb-chev { transition: transform .15s ease; }
+details[open] > summary .pb-chev, .pb-open .pb-chev { transform: rotate(90deg); }
+
+/* scrollbars */
+* { scrollbar-width: thin; scrollbar-color: #253144 transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #1a2433; border-radius: 8px; border: 2px solid #05080d; }
+
+/* subtle grid backdrop behind the header */
+.pb-backdrop { background:
+  radial-gradient(1200px 400px at 10% -10%, rgba(34,197,94,.07), transparent 60%),
+  radial-gradient(900px 380px at 90% -20%, rgba(56,189,248,.06), transparent 60%); }
+
+/* offline fallback when the Tailwind CDN is unreachable */
+.pb-offline-note { display: none; }
+html.no-tw .pb-offline-note { display: block; padding: .5rem 1rem; background: #3b2f0b; color: #fde68a; }
+
+/* wide tables scroll inside their panel instead of widening the page */
+main, main > *, main .grid > * { min-width: 0; }
+body { overflow-x: hidden; }
