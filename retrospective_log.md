@@ -7,7 +7,7 @@
 
 ## October 20, 2026: Execution, timing and risk hardening
 
-**Scope:** 11 flaws fixed across `strategy.py`, `bot.py`, `risk.py`, `account.py`, `cycle.py`, `config.json` and `rules.json`. The test suite grew from 187 to 256 tests, all passing, with no regressions.
+**Scope:** 12 flaws fixed across `strategy.py`, `bot.py`, `risk.py`, `account.py`, `cycle.py`, `config.json` and `rules.json`. The test suite grew from 187 to 266 tests, all passing, with no regressions.
 
 **Summary for the reader in a hurry.**
 
@@ -24,6 +24,7 @@
 | 9 | Buying power never queried | Margin rejects or over-commitment | Cap and reject on IBKR BuyingPower |
 | 10 | No multi-day loss limit | Unbounded capital bleed across days | Latched drawdown breaker, $3,000 |
 | 11 | Thresholds split over two files, parsed twice, unchecked | Silent overrides, mid-session config failures | One home per key, one typed parser, fail closed |
+| 12 | Risk limits raised with no portfolio-level regression check | Unreviewed drift of what the bot may do | Approved-limits lock plus reference-account scenario tests |
 
 ---
 
@@ -235,8 +236,29 @@ Every configuration value should have exactly one home and one parser, validated
 
 ---
 
+### 12. October 20, 2026: Risk limits raised 12× without a portfolio-level regression check
+
+**Identified Flaw / Risk.**
+The order caps were raised to make high-priced watchlist names tradable: shares per order 1 → 500, order value $2,500 → $30,000, daily loss $1,000 → $2,000, drawdown $3,000 → $6,000. The new values had only been checked in an analysis done in chat. No test tied them to the account, and the live-config test checked only types. A later edit could therefore move the risk limits anywhere, for example a $300,000 order cap, and every test would still pass.
+
+**Changes Implemented.**
+- New `tests/test_risk_policy.py`, which runs against the **live** `config.json` and `rules.json`:
+  - **Approved-limits lock:** `APPROVED_LIMITS` pins every limit exactly, with the approval date and reason. Any change to the config fails the test until the table is updated in the same reviewed change.
+  - **Reference scenario:** a $781,120 reference account (the paper account on 2026-10-19) and the 13 watchlist symbols at their 2026-10-19 opens ($94.53–$1,358.50). Each is tested with a typical 2% stop and the tightest possible stop of about 1.2%, and sized by the bot's real `_size_entry`. Every trade must be tradable, stay within the share, order-value, 10%-size and 1%-risk limits, keep commission ≤ 1% of R, and be approved by the `RiskGuard`.
+  - **Limits checked against the account:** one order ≤ the 10% position cap; all concurrent positions ≤ 25% of the account; daily loss halt ≤ 0.5% of the account and ≥ the worst single stop-out; drawdown breaker ≤ 1% of the account and ≥ the daily loss halt.
+- **Checked by deliberately breaking the config.** A 4× larger order cap, a return to $2,500, and a $10,000 daily loss each fail the lock and the matching limit check. The $2,500 case reports all 26 reference trades as untradable, each by name.
+- The spec (§1.4, §2.4, §3.2, §6) and the README now show the new limits and where they are pinned.
+
+**Engineering Reasoning.**
+Limits are configuration, but they define what the bot is *allowed* to do, so they need the same change control as code. Pinning exact values alone would only record that a number changed. Scenario checks alone would allow drift within their bounds. Together, every change shows up in a reviewed diff and is checked against the portfolio model before it can merge.
+
+**Key Learning.**
+Treat risk limits as policy: pin the approved values, test them against a realistic reference portfolio, and confirm the test fails when the config is deliberately broken. A test that cannot fail is not a safety net.
+
+---
+
 ### Verification and follow-up for October 20, 2026
 
-- **Tests:** 256 pass (187 before). New coverage includes OCA force close, the post-close order confirmation (expiry, forced cancel, unconfirmed cancel, connection drop, dry run), the 15:50 to 15:51 handover, the minute-precision window, GTD and the sweep, the partial-profit retry states, quote validation and release, buying-power capping, commission drag and the drawdown breaker (persistence, latching, reset, corrupt file) and the limits loader (each key from its file, type casting, missing, invalid, unknown and misplaced keys).
+- **Tests:** 266 pass (187 before). New coverage includes OCA force close, the post-close order confirmation (expiry, forced cancel, unconfirmed cancel, connection drop, dry run), the 15:50 to 15:51 handover, the minute-precision window, GTD and the sweep, the partial-profit retry states, quote validation and release, buying-power capping, commission drag and the drawdown breaker (persistence, latching, reset, corrupt file) and the limits loader (each key from its file, type casting, missing, invalid, unknown and misplaced keys).
 - **Error handling:** connection drops and API timeouts in the new paths either fail closed (entries skipped, no stop beside an unconfirmed order) or degrade with an ALERT (force close prices from bars). Exits and protective stops are never blocked by any new risk check.
 - **Open item:** OCA linking, GTD orders and `reqMktData` are verified only against a fake IBKR connection. The first `--submit` paper session needs close watching: confirm that the bracket child keeps its `ocaGroup`, that force-close SELLs join it, and that the paper account receives live quotes.

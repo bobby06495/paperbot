@@ -333,6 +333,19 @@ class SizingTest(StrategyTestBase):
         self.assertIsNone(self.size(caps=one))
         self.assertIsNotNone(self.size(caps=one, rules_extra={"max_commission_pct_of_risk": None}))
 
+    def test_large_share_cap_never_bypasses_other_limits(self):
+        # a generous max_quantity_per_order is only a ceiling: value, risk and size still bind
+        rules = strategy.load_rules()
+        caps = {"max_quantity_per_order": 35, "max_order_value": 2500.0}
+        with mock.patch.object(strategy, "_caps", caps):
+            by_value = strategy._size_entry("AAPL", self.SIGNAL, rules, 1_000_000.0, 1e9, 100.0)
+            by_risk = strategy._size_entry("AAPL", self.SIGNAL, rules, 21_000.0, 1e9, 100.0)
+        self.assertEqual(by_value.quantity, 24)  # floor(2500 / 100.20), not 35
+        self.assertLessEqual(by_value.quantity * by_value.limit_price, 2500.0)
+        self.assertEqual(by_risk.quantity, 20)  # 10% of 21,000 / 100.20 (and 1% risk), not 35
+        self.assertLessEqual(by_risk.quantity * (by_risk.limit_price - 90.0), 21_000.0 * 0.01)
+        self.assertLessEqual(by_risk.quantity * by_risk.limit_price, 21_000.0 * 0.10)
+
     def test_entry_is_gtd_at_cutoff(self):
         cutoff = dt.datetime(2026, 10, 19, 15, 31, tzinfo=ET)
         self.assertEqual(self.size(good_till=cutoff).good_till, cutoff)

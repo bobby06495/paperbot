@@ -451,11 +451,12 @@ and don't use the bot's risk guard.
 - The universe scan uses historical-data requests. The first scan of a day downloads a year
   of daily bars per symbol and can take several minutes for 100+ symbols. A single slow
   symbol can still take up to about 30 s, because the time budget is checked between symbols.
-- The per-order caps in `rules.json → risk` (1 share and $2,500 per order, 5 entries a day) currently dominate
-  the rules.json sizing. `max_quantity_per_order: 1` holds every trade to one share. Raise
-  it deliberately when you want the 1 % / 10 % sizing to apply. **While it is 1, every entry
-  is blocked by the commission-drag rule** (`max_commission_pct_of_risk: 1.0`): a 1-share
-  trade's ≈ $2 round-trip commission is far above 1 % of its R.
+- The per-order value cap (`max_order_value`: $30,000) is the binding size limit for the
+  current watchlist; the 1 % risk and 10 % size limits sit well above it. The approved
+  limits are pinned in `tests/test_risk_policy.py`, which also checks them against a
+  reference account and watchlist: change a limit there in the same reviewed change.
+  Keep orders large enough that the ≈ $2 round-trip commission stays under 1 % of R
+  (`max_commission_pct_of_risk`), or the commission-drag rule blocks the entry.
 - Limit prices need live quotes (`reqMktData`). A paper account without a market-data
   subscription shared from the live account gets none: entries and partial profits are then
   skipped, and force close prices from 5-minute bars (with an ALERT).

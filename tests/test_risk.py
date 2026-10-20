@@ -278,10 +278,12 @@ class LoadLimitsTest(unittest.TestCase):
     def test_live_config_files_load(self):
         from paperbot import paths
         limits = load_limits(json.loads(paths.CONFIG_FILE.read_text()), paths.RULES_FILE)
-        self.assertEqual((limits.max_quantity_per_order, limits.max_order_value,
-                          limits.max_orders_per_day, limits.max_open_orders,
-                          limits.max_daily_loss, limits.allowed_symbols, limits.limit_orders_only),
-                         (1, 2500.0, 5, 2, 1000.0, ["*"], True))
+        # the values are yours to tune; the files must load with the right types
+        for name, kind in (("max_quantity_per_order", int), ("max_order_value", float),
+                           ("max_orders_per_day", int), ("max_open_orders", int),
+                           ("max_daily_loss", float), ("allowed_symbols", list),
+                           ("limit_orders_only", bool)):
+            self.assertIs(type(getattr(limits, name)), kind, name)
 
 
 class CostsTest(unittest.TestCase):
@@ -320,6 +322,21 @@ class CostsTest(unittest.TestCase):
         self.assertTrue(guard.check(buy, 0, 0.0, replace(ACCOUNT, buying_power=9_999.0)))
         self.assertIn("buying power unavailable, cannot check margin",
                       guard.check(buy, 0, 0.0, replace(ACCOUNT, buying_power=None)))
+
+    def test_share_cap_does_not_override_value_risk_or_size_limits(self):
+        guard = self.guard(max_quantity_per_order=35, max_order_value=2500.0)
+        small = AccountState(20_000.0, buying_power=1e9)  # 1% risk = 200, 10% size = 2,000
+        # every order is within the 35-share cap; each breaks exactly one other limit
+        for intent, limit in ((OrderIntent("NVDA", "BUY", 35, 189.58, stop_price=183.55),
+                               "order value"),
+                              (OrderIntent("AAPL", "BUY", 19, 100.0, stop_price=80.0),
+                               "trade risk"),
+                              (OrderIntent("AAPL", "BUY", 21, 100.0, stop_price=99.0),
+                               "position value")):
+            with self.subTest(limit=limit):
+                problems = guard.check(intent, 0, 0.0, small)
+                self.assertTrue(any(p.startswith(limit) for p in problems), problems)
+                self.assertFalse(any("quantity" in p for p in problems))
 
     def test_expired_gtd_entry_blocked(self):
         past = dt.datetime.now(dt.timezone.utc) - dt.timedelta(seconds=1)
