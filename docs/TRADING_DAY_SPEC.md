@@ -66,16 +66,18 @@ Every scheduled run, including the first one of the day, runs these steps in ord
 | `config.json → limits` | `allowed_symbols` | `["*"]` | Any symbol |
 | | `limit_orders_only` | true | Entries and exits must be limit orders. Stops are STP. |
 | `config.json` | `time_in_force` | DAY | Entries and exits. Stops are always GTC. |
-| `rules.json → risk` | `max_quantity_per_order` | **1** | Hard share cap per entry. **This is the binding constraint today.** |
-| | `max_order_value` | $2,500 | Cap on quantity × limit price per entry |
+| `rules.json → risk` | `max_quantity_per_order` | 500 | Hard share cap per entry |
+| | `max_order_value` | **$30,000** | Cap on quantity × limit price per entry. **The binding size limit for the current watchlist.** |
 | | `max_orders_per_day` | 5 | Entries (BUY brackets) sent per ET day |
 | | `max_open_orders` | 2 | Working entry + exit orders. Protective stops are not counted. |
-| | `max_daily_loss` | $1,000 | Halts new entries for the day when IBKR `dailyPnL` ≤ −1,000 |
+| | `max_daily_loss` | $2,000 | Halts new entries for the day when IBKR `dailyPnL` ≤ −2,000 |
 | | `max_risk_per_trade_pct` | 1.0 % | (limit − stop) × qty ≤ 1 % of NetLiquidation |
 | | `max_position_size_pct_of_portfolio` | 10 % | qty × limit ≤ 10 % of NetLiquidation |
 | | `max_concurrent_positions` | 5 | Long positions plus symbols with a working BUY, **manual positions included** |
 | | `max_commission_pct_of_risk` | 1.0 % | Round-trip commission ≤ 1 % of R |
-| | `max_drawdown_usd` | $3,000 | Multi-day drawdown breaker |
+| | `max_drawdown_usd` | $6,000 | Multi-day drawdown breaker |
+
+These values are pinned in `tests/test_risk_policy.py` (`APPROVED_LIMITS`), which also checks them against a reference account ($781,120) and the 2026-10-19 watchlist. Changing a limit means updating that table in the same reviewed change.
 | `rules.json → time_filter` | entry window / force close | 10:05–15:30 / 15:51 | |
 | `rules.json → exit` | stop / partial / breakeven / trail | LOD − 1 % / +0.75R, ⅓ / +1R / 5-min swing low (2, 2) | |
 
@@ -126,7 +128,7 @@ The **entry scan runs in 66** of these runs (10:05 → 15:30; the window is incl
 
 Each pass runs these steps in this exact order (`cycle.one_pass` / the body of `bot.main`'s loop):
 
-1. **Daily-loss check.** Read `dailyPnL` (NaN counts as unavailable). If dailyPnL ≤ −$1,000, the guard sets `halted=true` with a reason. **On the transition to halted**, it cancels every working `paperbot:entry` and `paperbot:exit` order. Stops stay.
+1. **Daily-loss check.** Read `dailyPnL` (NaN counts as unavailable). If dailyPnL ≤ −$2,000, the guard sets `halted=true` with a reason. **On the transition to halted**, it cancels every working `paperbot:entry` and `paperbot:exit` order. Stops stay.
 2. **Fill reconciliation.** `reqExecutions()` returns today's fills. New executions of `paperbot:*` orders (deduplicated by execId through `logs/notify_state.json`) are:
    - appended to `data/trades.csv`, with the initial stop on BUY rows so trades can be measured in R,
    - pushed once per order as `BUY` / `STOP` / `PARTIAL` / `EXIT`.
@@ -179,7 +181,7 @@ Each pass runs these steps in this exact order (`cycle.one_pass` / the body of `
 
 ### 2.4 Worked example: NVDA, one session (live config)
 
-> **Since 2026-10-20 this exact trade is blocked** by the commission-drag rule: 1 share has R = $6.03 and a ≈ $2.00 round-trip commission (33 % of R > 1 %). The walkthrough below still shows the mechanics; it applies as written once `max_quantity_per_order` / `max_order_value` allow positions with R ≥ ≈ $200.
+> **This walkthrough uses the original caps (1 share, $2,500).** Under the 2026-10-20 caps the same signal sizes to **158 shares** (the $30,000 order-value cap binds: 30,000 ÷ 189.58), R = 158 × 6.03 ≈ $953, and the ≈ $2.00 round-trip commission is 0.21 % of R, so the commission-drag rule passes. Under the original 1-share cap the commission rule would block it (33 % of R). The exit mechanics below are unchanged; the partial-profit path follows the *caps lifted* variant at the end of this section.
 
 **Setup.** The paper account's NetLiquidation is $1,000,000. NVDA's prior close is $180.00, prior-day high $182.40, SMA200 $151.20. Pre-market high is $187.10. NVDA opens at $186.30 (gap +3.50 %) and appears in the 09:55 watchlist.
 
@@ -257,14 +259,14 @@ Fill: 1 @ **189.35** at 10:05:04. IBKR activates the child stop.
 
 | Check | Rule | When applied |
 |---|---|---|
-| Daily loss halt | IBKR `dailyPnL` (realized + unrealized) ≤ −$1,000 → `halted=true` until ET midnight. Persisted in `logs/state.json`. | Every pass (step 1) and inside every entry check. On the transition, working entries **and exits** are cancelled. |
+| Daily loss halt | IBKR `dailyPnL` (realized + unrealized) ≤ −$2,000 → `halted=true` until ET midnight. Persisted in `logs/state.json`. | Every pass (step 1) and inside every entry check. On the transition, working entries **and exits** are cancelled. |
 | Risk per trade | qty × (limit − stop) ≤ 1 % NLV | Every BUY |
 | Position size | qty × limit ≤ 10 % NLV | Every BUY |
 | Concurrency | held longs ∪ working-BUY symbols < 5 (includes manual positions) | Scan pre-check and every BUY |
 | Daily entry count | `orders_today` < 5 | Every BUY |
 | Working orders | non-stop open orders < 2 | Every BUY |
 | Paper-only | port ∈ {4002, 7497} and a single `D…` account | Every connect |
-| **Max drawdown (multi-day)** | Each pass stores today's IBKR `dailyPnL` in `logs/drawdown_state.json` (last value per ET day). When the cumulative P&L falls **$3,000** (`max_drawdown_usd`) below its peak the breaker trips: entries blocked and working entries/exits cancelled, **until `paperbot-bot --reset-drawdown`**. Read fail closed. | Every pass and every BUY |
+| **Max drawdown (multi-day)** | Each pass stores today's IBKR `dailyPnL` in `logs/drawdown_state.json` (last value per ET day). When the cumulative P&L falls **$6,000** (`max_drawdown_usd`) below its peak the breaker trips: entries blocked and working entries/exits cancelled, **until `paperbot-bot --reset-drawdown`**. Read fail closed. | Every pass and every BUY |
 | **Buying power** | IBKR `BuyingPower` (account-value stream), converted to USD like NetLiquidation. Sizing caps qty to it; the guard rejects a BUY whose value exceeds it; unknown → entries blocked. | Scan pre-check, sizing and every BUY |
 | **Commission drag** | Estimated round-trip commission ≤ 1 % of R (`max_commission_pct_of_risk`) | Sizing and every BUY |
 
@@ -319,7 +321,7 @@ Every Paperbot order carries an `orderRef`. The bot only ever reads, modifies or
 | Stop partially filled | The remainder keeps working at IBKR. Reconciliation sees qty = held, so nothing changes. |
 | Fills spread across executions | Notifications group executions by orderId (VWAP price, summed shares). The ledger keeps one row per execution. A position closed in pieces counts as **one** round trip in `paperbot-perf`. |
 
-Under the live config (`max_quantity_per_order = 1`), partial fills **cannot occur**.
+With multi-share positions (up to 500 shares / $30,000), partial fills **can occur** and are handled as above.
 
 ### 4.4 Persistence and recovery
 
@@ -398,9 +400,9 @@ These come from the code as it is today. They are listed so nobody reads the con
 
 *Fixed on 2026-10-20 (details in `retrospective_log.md`): force close now starts at 15:51 in scheduled mode · the 15:30 run scans · the post-close race (DAY orders are confirmed dead first; 16:05 is a second protect pass) · the stop stays live during force close (OCA) · unfilled entries expire at 15:31 (GTD + sweep) · partial profit retries · live quotes for limit prices · buying power · commission drag · multi-day drawdown breaker.*
 
-1. **Every trade is blocked by the commission-drag rule under the current caps.** With `max_quantity_per_order = 1`, R ≈ $5–10 and the ≈ $2 round-trip commission is far above 1 % of R. Raise the caps (R must be ≈ $200 or more), or change `max_commission_pct_of_risk`.
+1. **Larger positions since 2026-10-20.** Up to $30,000 per order and 5 concurrent positions = up to $150,000 open (≈ 19 % of the account), with ≈ $550–650 at risk per full stop-out. The 1-share-era assumptions (no partial fills, no partial profit) no longer hold; the first sessions at this size need close watching.
 2. **OCA linking, GTD entries and live quotes are verified only against a fake IBKR connection.** Watch the first paper session: that IBKR keeps the `ocaGroup` on a bracket child, that a force-close SELL joins it, and that `reqMktData` returns quotes (the paper account needs a market-data subscription shared from the live account; without one, entries and partials are skipped and force close prices from bars).
-3. **An OCA group with a partial fill.** A force-close SELL that partly filled and was replaced re-joins the same group. IBKR may reduce or cancel orders in a group that already had a fill. Under the live 1-share cap partial fills cannot occur.
+3. **An OCA group with a partial fill.** A force-close SELL that partly filled and was replaced re-joins the same group. IBKR may reduce or cancel orders in a group that already had a fill. With multi-share positions this can now happen; verify on paper.
 4. **R levels include commission.** `avgCost` folds in the commission, so on tiny sizes (1 share) every trigger moves up by about $1/share.
 5. **No spread check, no wash-sale logic** (§3.1, §3.3).
 6. **Scheduled runs don't cache across processes.** Each 5-minute run re-downloads 1 year of daily bars (and RVOL history for symbols that get that far) for every symbol it evaluates.
