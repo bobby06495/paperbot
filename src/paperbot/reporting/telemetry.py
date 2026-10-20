@@ -46,7 +46,7 @@ ROLES = {REF_ENTRY: "entry", REF_STOP: "stop", REF_EXIT: "exit"}
 # ---------------------------------------------------------------- session model
 
 SESSION_OPEN, SESSION_CLOSE, RUN_UNTIL, ALERT_AT = (dt.time(9, 30), dt.time(16, 0),
-                                                     dt.time(16, 5), dt.time(15, 58))
+                                                     dt.time(16, 10), dt.time(15, 58))
 PHASES = {
     "closed": "Market closed",
     "pre_open": "Pre-open",
@@ -85,7 +85,7 @@ def phase(now: dt.datetime, times: dict[str, dt.time]) -> str:
         return "pre_open"
     if t < times["entry_start"]:
         return "opening"
-    if t <= times["entry_end"]:
+    if t.replace(second=0, microsecond=0) <= times["entry_end"]:  # inclusive to the minute
         return "entry_window"
     if t < times["force_close"]:
         return "manage_only"

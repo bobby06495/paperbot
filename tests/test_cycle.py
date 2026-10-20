@@ -10,6 +10,7 @@ import datetime as dt
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace as NS
 from unittest import mock
 
 from paperbot.runtime import cycle
@@ -33,8 +34,9 @@ class TimeGateTest(unittest.TestCase):
             at(19, 15, 50): "run",
             at(19, 15, 51): "force_close",
             at(19, 15, 59): "force_close",
-            at(19, 16, 2): "run",  # after-close alerts and stop restores
-            at(19, 16, 5): "closed",
+            at(19, 16, 2): "post_close",  # confirm DAY orders dead, then restore stops
+            at(19, 16, 5): "post_close",  # second protect-only pass
+            at(19, 16, 10): "closed",
             at(19, 21, 0): "closed",
         }
         for when, expected in cases.items():
@@ -145,6 +147,90 @@ class RunGuardTest(unittest.TestCase):
                 mock.patch("ib_async.IB") as ib_cls:
             self.assertEqual(cycle.run("run", True), 0)
         ib_cls.assert_not_called()
+
+
+class ForceCloseTimingTest(unittest.TestCase):
+    def test_last_run_before_force_close_waits_for_it(self):
+        self.assertEqual(cycle.seconds_to_force_close(at(19, 15, 50).replace(second=3), FC), 57)
+        self.assertEqual(cycle.seconds_to_force_close(at(19, 15, 47), FC), 240)
+        self.assertEqual(cycle.seconds_to_force_close(at(19, 15, 45), FC), 0)  # 15:50 run follows
+        self.assertEqual(cycle.seconds_to_force_close(at(19, 15, 51), FC), 0)
+        self.assertEqual(cycle.seconds_to_force_close(at(19, 15, 55), FC), 0)
+
+    def test_sleep_until_stops_on_stop_file(self):
+        ib = mock.Mock()
+        with mock.patch("paperbot.runtime.runstate.stop_requested", side_effect=[False, True]):
+            self.assertFalse(cycle.sleep_until(ib, cycle.time.monotonic() + 60))
+        ib.sleep.assert_called_once_with(5.0)
+
+
+class RunFlowTest(unittest.TestCase):
+    """cycle.run() with every IBKR / file dependency mocked: only the control flow is real."""
+
+    def run_at(self, when, holds=True, gate=None):
+        from paperbot.trading import strategy
+        fake_dt = mock.Mock(wraps=dt.datetime)
+        fake_dt.now = lambda tz=None: when
+        ib = mock.MagicMock()
+        ib.reqPnL.return_value = NS(dailyPnL=0.0)
+        patches = [
+            mock.patch.object(cycle.dt, "datetime", fake_dt),
+            mock.patch("paperbot.trading.bot.setup_logging"),
+            mock.patch("paperbot.runtime.runstate.stop_requested", return_value=False),
+            mock.patch("paperbot.runtime.runstate.running_pid", return_value=None),
+            mock.patch("paperbot.runtime.runstate.claim_pid"),
+            mock.patch("paperbot.runtime.runstate.release_pid"),
+            mock.patch("paperbot.trading.risk.RiskGuard"),
+            mock.patch("paperbot.trading.risk.verify_paper", return_value="DU1"),
+            mock.patch("paperbot.trading.strategy.load_state", return_value={"positions": {}}),
+            mock.patch.object(strategy, "SCAN_BUDGET_SECONDS", strategy.SCAN_BUDGET_SECONDS),
+            mock.patch("ib_async.IB", return_value=ib),
+            mock.patch.object(cycle, "connect_with_retry"),
+            mock.patch.object(cycle, "save_orphans"),
+            mock.patch.object(cycle, "load_orphans", return_value={}),
+            mock.patch.object(cycle, "holds_bot_positions", side_effect=[holds, False]),
+        ]
+        self.one_pass = mock.Mock(return_value=1)
+        self.sleep_until = mock.Mock(return_value=True)
+        self.await_done = mock.Mock(return_value=True)
+        patches += [mock.patch.object(cycle, "one_pass", self.one_pass),
+                    mock.patch.object(cycle, "sleep_until", self.sleep_until),
+                    mock.patch("paperbot.trading.bot.await_day_orders_done", self.await_done)]
+        for p in patches:
+            p.start()
+        try:
+            return cycle.run(gate or cycle.time_gate(when, FC), True)
+        finally:
+            for p in reversed(patches):
+                p.stop()
+
+    def test_1550_run_holding_positions_starts_force_close_at_1551(self):
+        self.run_at(at(19, 15, 50).replace(second=4))
+        deadline = self.sleep_until.call_args.args[1] - cycle.time.monotonic()
+        self.assertAlmostEqual(deadline, 56, delta=1)
+        self.assertEqual(self.one_pass.call_count, 2)  # normal pass + first force-close pass
+
+    def test_1550_run_when_flat_does_not_wait(self):
+        self.run_at(at(19, 15, 50).replace(second=4), holds=False)
+        self.sleep_until.assert_not_called()
+        self.assertEqual(self.one_pass.call_count, 1)
+
+    def test_post_close_run_confirms_day_orders_before_the_pass(self):
+        self.run_at(at(19, 16, 0).replace(second=3))
+        self.await_done.assert_called_once()
+        self.assertTrue(self.await_done.call_args.args[1])  # submit
+        self.one_pass.assert_called_once()
+
+    def test_force_close_run_still_holding_at_the_close_protects_itself(self):
+        # this run holds the pid file, so the 16:00 run is skipped
+        self.run_at(at(19, 16, 0).replace(second=5), gate="force_close")
+        self.await_done.assert_called_once()
+        self.assertEqual(self.one_pass.call_count, 2)
+
+    def test_regular_run_skips_post_close_check(self):
+        self.run_at(at(19, 11, 0))
+        self.await_done.assert_not_called()
+        self.sleep_until.assert_not_called()
 
 
 class OrphanStateTest(unittest.TestCase):

@@ -14,13 +14,28 @@ Each loop, in priority order:
      at any hour.
   2. Regular hours, before force_close_et: raise stops (breakeven at +1R,
      then 5m swing-low trail) and take the partial profit at +0.75R (the
-     stop is shrunk first, so stop + exit never exceed the position).
-  3. From force_close_et: cancel stale exits and the stop, then send a fresh
-     marketable limit SELL for the actual remaining shares, re-priced every
-     loop until flat. ALERT if anything is still open at 15:58 or after close.
-  4. Between earliest_entry_et and latest_entry_et: scan the universe for
-     entries, within a time budget per loop (resuming where it stopped) and
-     checking the STOP file between symbols, so exits are never starved.
+     stop is shrunk first, so stop + exit never exceed the position). A
+     partial order that expires unfilled resets, so the target is
+     recalculated and retried (at most PARTIAL_MAX_ATTEMPTS sends).
+  3. From force_close_et: cancel stale exits, then send a fresh marketable
+     limit SELL for the actual remaining shares, re-priced every loop until
+     flat. The SELL joins the protective stop's OCA group, so the stop keeps
+     working until IBKR fills the SELL (no unprotected gap); a stop without
+     an OCA group (placed by an older version) is cancelled first, as before.
+     ALERT if anything is still open at 15:58 or after close.
+  4. Between earliest_entry_et and latest_entry_et (inclusive, to the
+     minute): scan the universe for entries, within a time budget per loop
+     (resuming where it stopped) and checking the STOP file between symbols,
+     so exits are never starved. Entries are GTD and expire at IBKR one
+     minute after latest_entry_et; any entry still working after that is
+     cancelled by the sweep.
+
+Prices: filters and R triggers use completed 5m bars (the strategy's rules);
+limit prices use the live top of book from a streaming reqMktData
+subscription (BUY from the ask, SELL from the bid). No valid quote: an entry
+or partial is skipped, a force close falls back to the last 5m close (ALERT).
+Entries also respect buying power (BuyingPower in USD) and are skipped when
+the estimated round-trip commission exceeds max_commission_pct_of_risk of R.
 
 evaluate() runs the filters for one symbol and returns pass/reasons/price;
 every result is appended to logs/safety_log.jsonl. check_symbol() adds the
@@ -46,7 +61,7 @@ import logging
 import math
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -56,9 +71,9 @@ from paperbot import paths
 from paperbot.reporting.notify import notify
 from paperbot.runtime import runstate
 from paperbot.runtime.runstate import StateCorrupt, read_json_state, write_json_atomic
-from paperbot.trading.account import net_liquidation_usd
+from paperbot.trading.account import buying_power_usd, net_liquidation_usd
 from paperbot.trading.risk import (REF_ENTRY, REF_EXIT, REF_STOP, CancelRequest, OrderIntent,
-                                   StopUpdate)
+                                   StopUpdate, commission_drag, require_limits)
 
 RULES_FILE = paths.RULES_FILE
 CONFIG_FILE = paths.CONFIG_FILE
@@ -71,15 +86,18 @@ ET = ZoneInfo("America/New_York")
 RTH_OPEN, RTH_CLOSE = dt.time(9, 30), dt.time(16, 0)
 ALERT_AT = dt.time(15, 58)  # still holding after this = force close is failing
 BAR = dt.timedelta(minutes=5)
-LIMIT_SLIPPAGE = 0.002  # marketable limits: 0.2% through the last price (x attempt on force close)
+LIMIT_SLIPPAGE = 0.002  # marketable limits: 0.2% through the quote (x attempt on force close)
 HIST_TIMEOUT = 10  # seconds per historical data request
+QUOTE_TIMEOUT = 3.0  # seconds to wait for the first live bid/ask of a new subscription
 SCAN_BUDGET_SECONDS = 10  # max entry-scan time per loop; the scan resumes next loop
 EXIT_STALE_SECONDS = 60  # an exit order still working after this is cancelled/replaced
+PARTIAL_MAX_ATTEMPTS = 3  # partial-profit sends per position before giving up
+ENTRY_GRACE = dt.timedelta(minutes=1)  # entries expire this long after latest_entry_et
 
 log = logging.getLogger("paperbot")
 
 _rules: dict | None = None
-_caps: dict = {}  # per-order caps from config.json, so sizing never exceeds them
+_caps: dict = {}  # the risk guard's Limits (risk.load_limits), so sizing never exceeds them
 _contracts: dict[str, Stock] = {}
 _daily_cache: dict[str, tuple[dt.date, dict | None]] = {}
 _rvol_cache: dict[str, tuple[dt.date, list]] = {}
@@ -88,6 +106,7 @@ _scan_pos = 0
 _scan_list: list[str] = []
 _warned: set[str] = set()  # one-time warnings, keyed by message
 _orphans: dict[str, int] = {}  # SYMBOL -> loops in a row with a stop but no position
+_tickers: dict = {}  # SYMBOL -> streaming ib_async Ticker (reqMktData)
 
 
 @dataclass
@@ -114,7 +133,7 @@ def load_rules() -> dict:
             raise SystemExit(f"unsupported exit rules in {RULES_FILE.name}: {ex}")
         rules["_stop_pct"] = float(stop.group(1))
         rules["_swing"] = (int(trail.group(1)), int(trail.group(2)))
-        _caps = json.loads(CONFIG_FILE.read_text())["limits"]
+        _caps = asdict(require_limits(json.loads(CONFIG_FILE.read_text()), RULES_FILE))
         _rules = rules
         log.info("loaded %s from %s", rules["strategy_name"], RULES_FILE.name)
     return _rules
@@ -123,6 +142,20 @@ def load_rules() -> dict:
 def _hhmm(text: str) -> dt.time:
     hour, minute = map(int, text.split(":"))
     return dt.time(hour, minute)
+
+
+def _in_entry_window(now: dt.datetime, tf: dict) -> bool:
+    """earliest_entry_et <= now <= latest_entry_et, to the minute: a run that starts
+    at 15:30:04 still scans (a process takes seconds to start)."""
+    minute = now.time().replace(second=0, microsecond=0)
+    return _hhmm(tf["earliest_entry_et"]) <= minute <= _hhmm(tf["latest_entry_et"])
+
+
+def _entry_cutoff(now: dt.datetime, tf: dict) -> dt.datetime:
+    """When unfilled entries die: the end of the latest_entry_et minute (15:31:00 ET)."""
+    latest = _hhmm(tf["latest_entry_et"])
+    return now.replace(hour=latest.hour, minute=latest.minute, second=0,
+                       microsecond=0) + ENTRY_GRACE
 
 
 def load_state() -> dict:
@@ -237,6 +270,48 @@ def _swing_low(bars: list, left: int, right: int) -> float | None:
     return None
 
 
+def _finite(value) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _quote(ib: IB, symbol: str) -> tuple[float, float] | None:
+    """Live (bid, ask) from a streaming reqMktData subscription, kept open between
+    loops. None if IBKR sends no valid two-sided quote within QUOTE_TIMEOUT
+    (no market-data permission, halted, crossed or one-sided book)."""
+    contract = _contract(ib, symbol)
+    if contract is None:
+        return None
+    ticker = _tickers.get(symbol)
+    if ticker is None:
+        ticker = _tickers[symbol] = ib.reqMktData(contract, "", False, False)
+    deadline = time.monotonic() + QUOTE_TIMEOUT
+    while True:
+        bid, ask = _finite(ticker.bid), _finite(ticker.ask)
+        halted = _finite(getattr(ticker, "halted", None))  # NaN unknown, 0 trading, >0 halted
+        if bid and ask and 0 < bid <= ask and not halted:
+            return bid, ask
+        if time.monotonic() >= deadline:
+            _warn_once(f"quote:{symbol}:{_now().date()}", logging.WARNING,
+                       "%s: no valid live quote from IBKR (bid %s, ask %s, halted %s)",
+                       symbol, ticker.bid, ticker.ask, halted)
+            return None
+        ib.sleep(0.1)
+
+
+def _release_quotes(ib: IB, keep: set[str]):
+    """Cancel streaming quotes no longer needed (IBKR limits market-data lines)."""
+    for symbol in [s for s in _tickers if s not in keep]:
+        ticker = _tickers.pop(symbol)
+        try:
+            ib.cancelMktData(ticker.contract)
+        except Exception as e:  # noqa: BLE001 - a dropped connection already ended it
+            log.debug("cancelMktData %s: %r", symbol, e)
+
+
 def _net_liquidation(ib: IB, account: str) -> float | None:
     """Net liquidation in USD, converted from the base currency if needed (account.py)."""
     return net_liquidation_usd(ib, account)
@@ -305,9 +380,10 @@ def _age_seconds(trade: Trade) -> float:
 
 
 def _closing_sell(symbol: str, quantity: int, price: float, reason: str,
-                  slippage: float = LIMIT_SLIPPAGE) -> OrderIntent:
+                  slippage: float = LIMIT_SLIPPAGE, oca_group: str | None = None) -> OrderIntent:
     limit = round(price * (1 - slippage), 2)
-    return OrderIntent(symbol, "SELL", quantity, limit, reason=reason, closing=True)
+    return OrderIntent(symbol, "SELL", quantity, limit, reason=reason, closing=True,
+                       oca_group=oca_group)
 
 
 # ---------------------------------------------------------------- decide
@@ -333,6 +409,9 @@ def decide(ib: IB, account: str) -> list:
         _raise_stops(rules, state, held, working, bars)
 
     requests = _cancel_orphan_stops(held, working)
+    tf = rules["time_filter"]
+    if session and now >= _entry_cutoff(now, tf):
+        requests += _sweep_entries(working)
     if force_close:
         closing = _force_close(ib, state, held, working, now)
         # symbols being force-closed get no new stop next to their closing SELL
@@ -343,9 +422,8 @@ def decide(ib: IB, account: str) -> list:
     else:
         requests += _reconcile_stops(state, held, working)
     if session and not force_close:
-        requests += _partial_profits(rules, state, held, working, bars)
-        tf = rules["time_filter"]
-        if _hhmm(tf["earliest_entry_et"]) <= now.time() <= _hhmm(tf["latest_entry_et"]):
+        requests += _partial_profits(ib, rules, state, held, working, bars)
+        if _in_entry_window(now, tf):
             requests += _find_entries(ib, account, rules, state, held, working, now)
     elif not session:
         for symbol in held:
@@ -353,8 +431,32 @@ def decide(ib: IB, account: str) -> list:
                 _warn_once(f"overnight:{symbol}:{now.date()}", logging.ERROR,
                            "ALERT %s still open after the close; protective stop kept at IBKR",
                            symbol)
+                w = working.get(symbol, Working())
+                if w.exits or w.entries:
+                    _warn_once(f"live-after-close:{symbol}:{now.date()}", logging.ERROR,
+                               "ALERT %s: a DAY entry/exit is still live after the close; the "
+                               "stop is restored only once IBKR confirms it dead", symbol)
     _save_state(state)
-    return requests
+    _release_quotes(ib, set(held) | set(working))
+    return _dedupe_cancels(requests)
+
+
+def _sweep_entries(working: dict[str, Working]) -> list:
+    """After the entry window: cancel every unfilled entry (GTD should already have
+    expired it at IBKR; this covers an order IBKR has not expired yet)."""
+    return [CancelRequest(t.order.orderId, symbol, "entry window closed")
+            for symbol, w in working.items() for t in w.entries]
+
+
+def _dedupe_cancels(requests: list) -> list:
+    seen, out = set(), []
+    for r in requests:
+        if isinstance(r, CancelRequest):
+            if r.order_id in seen:
+                continue
+            seen.add(r.order_id)
+        out.append(r)
+    return out
 
 
 def _adopt_and_forget(state: dict, held: dict, working: dict[str, Working]):
@@ -443,10 +545,17 @@ def _raise_stops(rules, state, held, working, bars):
                 _push(f"TRAIL {symbol}", lambda: f"stop ${old:.2f} -> ${swing:.2f}")
 
 
-def _partial_profits(rules, state, held, working, bars) -> list:
-    """Sell a fraction at +xR. The stop is shrunk first so stop + exit = position.
-    A partial order not filled within EXIT_STALE_SECONDS is cancelled; the next
-    loop's reconcile then restores the stop to the full position."""
+def _partial_profits(ib, rules, state, held, working, bars) -> list:
+    """Sell a fraction at +xR, priced from the live bid. The stop is shrunk first
+    so stop + exit = position.
+
+    State machine per position: idle -> pending (order sent; on_sent records the
+    share count it was sent against) -> done or back to idle. A partial order not
+    filled within EXIT_STALE_SECONDS is cancelled (DAY orders also expire). Once
+    no partial order is working: fewer shares than when it was sent = filled,
+    done; the same shares = expired/cancelled unfilled, so the state resets and
+    the target is recalculated and retried on a later pass (the reconcile first
+    restores the stop to the full position), up to PARTIAL_MAX_ATTEMPTS sends."""
     ex, requests = rules["exit"], []
     for symbol, pos in held.items():
         st, rth = state["positions"].get(symbol), bars.get(symbol)
@@ -457,6 +566,9 @@ def _partial_profits(rules, state, held, working, bars) -> list:
         for t in stale:
             requests.append(CancelRequest(t.order.orderId, symbol,
                                           "partial-profit order not filled in time"))
+        if st.get("partial_pending") is not None and not w.exits:
+            _settle_partial(symbol, st, int(pos.position))
+            continue  # a retry waits for the next pass, after the stop is resized
         if st["partial_done"] or w.exits or not rth or w.stop is None:
             continue
         price, qty, entry = rth[-1].close, int(pos.position), pos.avgCost
@@ -468,17 +580,43 @@ def _partial_profits(rules, state, held, working, bars) -> list:
         if part < 1:
             st["partial_done"] = True  # position too small to split
             continue
+        quote = _quote(ib, symbol)
+        if quote is None:
+            log.warning("%s partial profit deferred: no live quote", symbol)
+            continue
+        st["partial_basis"] = qty  # on_sent turns this into partial_pending
         requests.append(StopUpdate(symbol, qty - part, max(st["stop"], w.stop.order.auxPrice),
                                    "shrink stop before partial profit"))
-        requests.append(_closing_sell(symbol, part, price, "partial profit"))
+        requests.append(_closing_sell(symbol, part, quote[0], "partial profit"))
     return requests
 
 
+def _settle_partial(symbol: str, st: dict, shares: int):
+    """The partial order is gone: decide whether it filled, or reset it for a retry."""
+    basis = st.pop("partial_pending")
+    attempts = st.get("partial_attempts", 0)
+    if shares < basis:
+        st["partial_done"] = True
+        log.info("%s partial profit filled (%d -> %d shares)", symbol, basis, shares)
+    elif attempts >= PARTIAL_MAX_ATTEMPTS:
+        st["partial_done"] = True
+        log.warning("%s partial profit not filled after %d attempts; no further partial",
+                    symbol, attempts)
+    else:
+        log.info("%s partial profit order ended unfilled (attempt %d/%d); target will be "
+                 "recalculated and retried", symbol, attempts, PARTIAL_MAX_ATTEMPTS)
+
+
 def _force_close(ib, state, held, working, now) -> list:
-    """Close every position we own: cancel stale exits, entries and the stop,
-    then send a marketable limit SELL for the remaining shares. Re-priced each
-    loop (wider each attempt) until flat. The bot confirms the cancels before
-    sending the SELL, so the stop and the SELL can never both fill."""
+    """Close every position we own: cancel stale exits and entries, then send a
+    marketable limit SELL (from the live bid) for the remaining shares.
+    Re-priced each loop (wider each attempt) until flat.
+
+    The SELL joins the protective stop's OCA group (ocaType 2: reduce with
+    block), so the stop stays live until IBKR fills the SELL and IBKR itself
+    makes sure the stop and the SELL can never both fill. A stop without an OCA
+    group (placed before OCA linking) is cancelled first and the bot confirms
+    the cancel before sending the SELL, as before."""
     requests, first_attempts = [], 0
     for symbol, pos in held.items():
         st = state["positions"].get(symbol)
@@ -490,19 +628,31 @@ def _force_close(ib, state, held, working, now) -> list:
         w = working.get(symbol, Working())
         if any(_age_seconds(t) < EXIT_STALE_SECONDS for t in w.exits):
             continue  # the current close attempt is still fresh
-        rth = _rth_bars(ib, symbol, now)
-        if not rth:
-            log.error("ALERT %s: no price data, cannot force close this loop", symbol)
-            continue
+        quote = _quote(ib, symbol)
+        if quote is not None:
+            price = quote[0]
+        else:
+            rth = _rth_bars(ib, symbol, now)
+            if not rth:
+                log.error("ALERT %s: no live quote and no price data, cannot force close "
+                          "this loop", symbol)
+                continue
+            price = rth[-1].close
+            _warn_once(f"fc-quote:{symbol}:{now.date()}", logging.ERROR,
+                       "ALERT %s: no live quote; force-close limit priced from the last 5m "
+                       "close %.2f", symbol, price)
+        oca = getattr(w.stop.order, "ocaGroup", "") if w.stop is not None else ""
         for t in w.exits + w.entries:
             requests.append(CancelRequest(t.order.orderId, symbol, "force close: replace"))
-        if w.stop is not None:
+        if w.stop is not None and not oca:
             requests.append(CancelRequest(w.stop.order.orderId, symbol,
-                                          "force close: stop replaced by closing order"))
+                                          "force close: stop replaced by closing order "
+                                          "(no OCA group)"))
         st["force_attempts"] = st.get("force_attempts", 0) + 1
         slippage = LIMIT_SLIPPAGE * min(st["force_attempts"], 5)
-        requests.append(_closing_sell(symbol, int(pos.position), rth[-1].close,
-                                      f"force close (attempt {st['force_attempts']})", slippage))
+        requests.append(_closing_sell(symbol, int(pos.position), price,
+                                      f"force close (attempt {st['force_attempts']})", slippage,
+                                      oca_group=oca or None))
         if st["force_attempts"] == 1:
             first_attempts += 1
     if first_attempts:
@@ -526,6 +676,12 @@ def _find_entries(ib, account, rules, state, held, working, now) -> list:
     net_liq = _net_liquidation(ib, account)
     if len(busy) >= max_positions or not net_liq:
         return []
+    buying_power = buying_power_usd(ib, account)
+    if not buying_power or buying_power <= 0:
+        _warn_once(f"buying-power:{now.date()}", logging.WARNING,
+                   "buying power unavailable (or zero); entry scan skipped")
+        return []
+    good_till = _entry_cutoff(now, rules["time_filter"])
 
     intents, deadline = [], time.monotonic() + SCAN_BUDGET_SECONDS
     while _scan_pos < len(universe):
@@ -535,6 +691,9 @@ def _find_entries(ib, account, rules, state, held, working, now) -> list:
             break
         if runstate.stop_requested() or len(busy) + len(intents) >= max_positions:
             break
+        if _now() >= good_till:
+            log.info("entry scan stopped at %d/%d: entry window closed", _scan_pos, len(universe))
+            break
         symbol = universe[_scan_pos]
         _scan_pos += 1
         if symbol in busy or state["entered"].get(symbol) == now.date().isoformat():
@@ -542,10 +701,15 @@ def _find_entries(ib, account, rules, state, held, working, now) -> list:
         signal = evaluate(ib, symbol, rules, now)
         if not signal["pass"]:
             continue
-        intent = _size_entry(symbol, signal, rules, net_liq)
+        quote = _quote(ib, symbol)
+        if quote is None:
+            log.warning("signal %s skipped: no live quote to price the entry", symbol)
+            continue
+        intent = _size_entry(symbol, signal, rules, net_liq, buying_power, quote[1], good_till)
         if intent:
             log.info("signal %s: %s", symbol, intent.reason)
             intents.append(intent)
+            buying_power -= intent.quantity * intent.limit_price  # for the next signal
     return intents
 
 
@@ -657,24 +821,28 @@ def check_symbol(ib: IB, account: str, symbol: str) -> dict:
         return early("entry order already working")
     if load_state()["entered"].get(symbol) == now.date().isoformat():
         return early("already entered today")
-    in_window = (now.weekday() < 5
-                 and _hhmm(tf["earliest_entry_et"]) <= now.time() <= _hhmm(tf["latest_entry_et"]))
-    if not in_window:
+    if not (now.weekday() < 5 and _in_entry_window(now, tf)):
         return early(f"outside entry window {window} (now {now:%a %H:%M} ET)")
 
     result = evaluate(ib, symbol, rules, now)
     result["reasons"][:0] = ["no existing position", f"time gate ok ({window})"]
     net_liq = _net_liquidation(ib, account)
-    if result["pass"] and net_liq:
-        intent = _size_entry(symbol, result, rules, net_liq)
+    buying_power = buying_power_usd(ib, account)
+    if result["pass"] and net_liq and buying_power:
+        quote = _quote(ib, symbol)
+        intent = (_size_entry(symbol, result, rules, net_liq, buying_power, quote[1])
+                  if quote else None)
         result["quantity"] = intent.quantity if intent else 0
     return result
 
 
-def _size_entry(symbol: str, signal: dict, rules: dict, net_liq: float) -> OrderIntent | None:
-    """Shares = the smallest of the rules.json risk/size limits and the config.json caps."""
+def _size_entry(symbol: str, signal: dict, rules: dict, net_liq: float, buying_power: float,
+                ask: float, good_till: dt.datetime | None = None) -> OrderIntent | None:
+    """Shares = the smallest of the rules.json risk/size limits, the per-order caps
+    (rules.json risk, via risk.load_limits) and the buying power. The limit is a marketable 0.2% through the live ask.
+    Skipped when the estimated commission is too large a share of the trade's R."""
     risk = rules["risk"]
-    limit = round(signal["price"] * (1 + LIMIT_SLIPPAGE), 2)
+    limit = round(ask * (1 + LIMIT_SLIPPAGE), 2)
     per_share_risk = limit - signal["stop"]
     if per_share_risk <= 0:
         return None
@@ -683,13 +851,20 @@ def _size_entry(symbol: str, signal: dict, rules: dict, net_liq: float) -> Order
         net_liq * risk["max_position_size_pct_of_portfolio"] / 100 / limit,
         _caps["max_quantity_per_order"],
         _caps["max_order_value"] / limit,
+        buying_power / limit,
     ))
     if qty < 1:
-        log.info("signal %s skipped: 1 share at %.2f exceeds the order caps", symbol, limit)
+        log.info("signal %s skipped: 1 share at %.2f exceeds the order caps or buying power "
+                 "%.2f", symbol, limit, buying_power)
+        return None
+    drag = commission_drag(qty, limit, signal["stop"], risk.get("max_commission_pct_of_risk"))
+    if drag:
+        log.info("signal %s skipped: %s", symbol, drag)
         return None
     reason = (f"trend join: gap {signal['gap']:.1f}%, rvol {signal['rvol']:.1f}, "
               f"stop {signal['stop']:.2f}")
-    return OrderIntent(symbol, "BUY", qty, limit, reason=reason, stop_price=signal["stop"])
+    return OrderIntent(symbol, "BUY", qty, limit, reason=reason, stop_price=signal["stop"],
+                       good_till=good_till)
 
 
 def on_sent(intent: OrderIntent):
@@ -702,5 +877,11 @@ def on_sent(intent: OrderIntent):
                                       "breakeven": False, "partial_done": False}
         state["entered"][symbol] = dt.datetime.now(ET).date().isoformat()
     elif intent.reason == "partial profit" and symbol in state["positions"]:
-        state["positions"][symbol]["partial_done"] = True
+        st = state["positions"][symbol]
+        basis = st.pop("partial_basis", None)
+        if basis is None:
+            st["partial_done"] = True  # no share count to settle against: one-shot, as before
+        else:
+            st["partial_pending"] = basis
+            st["partial_attempts"] = st.get("partial_attempts", 0) + 1
     _save_state(state)

@@ -1,7 +1,7 @@
 """Account value in USD, whatever the account's base currency.
 
 The bot sizes positions and checks risk in USD (rules.json percentages of net
-liquidation, config.json dollar caps). IBKR reports account values in the
+liquidation, rules.json dollar caps). IBKR reports account values in the
 account's BASE currency, so an account based in e.g. SGD has no USD
 NetLiquidation row. net_liquidation_usd() returns, in order:
 
@@ -19,6 +19,11 @@ NetLiquidation row. net_liquidation_usd() returns, in order:
 
 "fx_fallback": "off" restores the original USD-only behaviour.
 last_conversion() describes the latest result for telemetry/the dashboard.
+
+buying_power_usd() reads IBKR's BuyingPower row (from the account-value
+stream, updateAccountValue) the same way, using the same exchange rate, so
+the strategy and the risk guard can cap or reject an entry the margin cannot
+carry. None (not reported or not convertible) blocks entries.
 """
 import datetime as dt
 import json
@@ -163,6 +168,23 @@ def net_liquidation_usd(ib, account: str, fetch: bool = True) -> float | None:
                  currency, usd, currency, amount, rate, currency, source)
     _last = {"usd": usd, "currency": currency, "base": amount, "rate": rate, "source": source}
     return usd
+
+
+def buying_power_usd(ib, account: str) -> float | None:
+    """BuyingPower in USD, converted from the base currency like net_liquidation_usd().
+    Never alerts on its own: a missing rate is already reported for NetLiquidation."""
+    values = list(ib.accountValues(account))
+    usd = next((_float(v.value) for v in values
+                if v.tag == "BuyingPower" and v.currency == "USD"), None)
+    if usd is not None:
+        return usd
+    base = next(((v.currency, _float(v.value)) for v in values
+                 if v.tag == "BuyingPower" and v.currency not in ("USD", "BASE", "")
+                 and _float(v.value) is not None), None)
+    if base is None or fallback_mode() == "off":
+        return None
+    rate, _ = _rate(base[0], values, dt.datetime.now(ET).date())
+    return round(base[1] / rate, 2) if rate else None
 
 
 def daily_pnl(ib, account: str, pnl) -> float | None:

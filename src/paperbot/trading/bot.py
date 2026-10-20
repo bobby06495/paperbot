@@ -4,6 +4,8 @@ Usage (project venv, after `pip install -e .`; `paperbot-bot` is the same comman
     python -m paperbot.trading.bot                 dry run (default): logs what it would do
     python -m paperbot.trading.bot --submit        sends orders to the IB Gateway PAPER account
     python -m paperbot.trading.bot --reset-state   moves corrupt state files aside
+    python -m paperbot.trading.bot --reset-drawdown
+                                  re-arms a tripped multi-day drawdown breaker
     python -m paperbot.trading.bot --symbol NVDA --check-only
                                   evaluates one symbol (position, entry window, every
                                   filter) and prints why it passes or fails; read-only
@@ -22,12 +24,18 @@ How it works:
     (logs/bot.pid), a state file is corrupt, or the account is not paper.
   * Every loop_seconds it asks strategy.decide() for requests (entries,
     exits, stop updates, cancels) and runs each through risk.py.
-  * Each entry is sent as a bracket: a BUY limit order plus a child SELL STP
-    (GTC) held at IBKR, so the position stays protected if this process,
-    the connection or the computer fails. The strategy only moves that stop
-    up (breakeven, trail) and re-creates it if it is ever missing.
+  * Each entry is sent as a bracket: a BUY limit order (GTD: IBKR expires it
+    at the end of the entry window) plus a child SELL STP (GTC) held at
+    IBKR, so the position stays protected if this process, the connection or
+    the computer fails. The strategy only moves that stop up (breakeven,
+    trail) and re-creates it if it is ever missing.
+  * Every protective stop carries its own OCA group (ocaType 2, reduce with
+    block). Force-close SELLs join it, so IBKR guarantees the stop and the
+    SELL never both fill while the stop stays live until the SELL fills.
   * Cancels are confirmed before any follow-up order for the same symbol is
     sent, so a replaced order can never double-sell.
+  * After the close, await_day_orders_done() waits until IBKR confirms every
+    DAY entry/exit dead before the stop reconcile sizes the overnight stop.
 
 Stopping:
   * paperbot-stop (or create a file named STOP in the project root): on its
@@ -44,6 +52,8 @@ import json
 import logging
 import math
 import sys
+import time
+import uuid
 from pathlib import Path
 
 from ib_async import (IB, LimitOrder, MarketOrder, Stock, StartupFetch, StartupFetchALL,
@@ -53,21 +63,25 @@ from paperbot import paths
 from paperbot.reporting.notify import AlertHandler, notify
 from paperbot.runtime import runstate
 from paperbot.trading import strategy
-from paperbot.trading.account import daily_pnl, net_liquidation_usd
+from paperbot.trading.account import buying_power_usd, daily_pnl, net_liquidation_usd
 from paperbot.trading.risk import (ET, REF_ENTRY, REF_EXIT, REF_STOP, AccountState,
-                                   CancelRequest, OrderIntent, RiskGuard, StopUpdate,
-                                   load_limits, verify_paper)
+                                   CancelRequest, DrawdownBreaker, OrderIntent, RiskGuard,
+                                   StopUpdate, load_limits, require_limits, verify_paper)
 
 RULES = paths.RULES_FILE
 CONFIG = paths.CONFIG_FILE
 LOGS = paths.LOGS_DIR
 RISK_STATE = LOGS / "state.json"
+DRAWDOWN_STATE = LOGS / "drawdown_state.json"  # multi-day drawdown breaker (risk.py)
 NOTIFY_STATE = LOGS / "notify_state.json"  # executions already pushed today
 TRADES_CSV = paths.TRADES_CSV  # fill ledger: one row per execution of our own orders
 LEDGER_FIELDS = ["timestamp_iso", "symbol", "side", "size", "fill_price", "order_id",
                  "status", "order_ref", "exec_id", "commission", "stop_price"]
 UNSET_PNL = 1e100  # IBKR reports "no realized P&L" (opening fills) as ~1.8e308
 CANCEL_WAIT_SECONDS = 5  # how long to wait for IBKR to confirm a cancel
+DAY_ORDER_WAIT_SECONDS = 90  # after the close: how long IBKR gets to expire DAY orders
+POST_CLOSE_UNTIL = dt.time(16, 10)  # end of the post-close protect window (ET)
+OCA_REDUCE_WITH_BLOCK = 2  # IBKR ocaType: fills shrink the other orders, overfill blocked
 
 log = logging.getLogger("paperbot")
 
@@ -116,12 +130,84 @@ def cancel_working(ib: IB, why: str):
             journal("cancel", orderId=trade.order.orderId, why=why)
 
 
+def post_close(now: dt.datetime) -> bool:
+    """Weekday, from the 16:00 ET close until POST_CLOSE_UNTIL."""
+    now = now.astimezone(ET)
+    return now.weekday() < 5 and dt.time(16, 0) <= now.time() < POST_CLOSE_UNTIL
+
+
+def await_day_orders_done(ib: IB, submit: bool, timeout: float = DAY_ORDER_WAIT_SECONDS) -> bool:
+    """After the close: wait until IBKR confirms every paperbot entry/exit dead
+    (Cancelled, Filled or Inactive) before the stop reconcile computes the
+    unprotected shares. A DAY exit IBKR has not expired yet would otherwise make
+    the stop target 0 and leave the position without a stop overnight.
+
+    Polls the broker's order stream; at the timeout it cancels whatever is
+    left (submit only) and waits CANCEL_WAIT_SECONDS more. Returns False with an
+    ALERT if an order is still unconfirmed or the connection fails; the
+    reconcile then still counts that order and places no stop next to it,
+    because a stop beside a live exit could double-sell.
+    """
+    def live() -> list[Trade]:
+        return [t for t in ib.openTrades()
+                if t.order.orderRef in (REF_ENTRY, REF_EXIT) and not t.isDone()]
+
+    try:
+        ib.reqAllOpenOrders()
+        deadline = time.monotonic() + timeout
+        while live() and time.monotonic() < deadline:
+            ib.sleep(1)
+        pending = live()
+        if pending and submit:
+            for t in pending:
+                log.warning("order %s still live %ss after the close; cancelling it",
+                            t.order.orderId, timeout)
+                ib.cancelOrder(t.order)
+                journal("cancel", orderId=t.order.orderId, symbol=t.contract.symbol,
+                        why="post-close: DAY order not expired")
+            deadline = time.monotonic() + CANCEL_WAIT_SECONDS
+            while live() and time.monotonic() < deadline:
+                ib.sleep(0.25)
+            pending = live()
+    except (ConnectionError, OSError, asyncio.TimeoutError) as e:
+        log.error("ALERT post-close order check failed (%r); a position with a live closing "
+                  "order gets no restored stop until a later pass confirms it dead", e)
+        return False
+    if pending:
+        log.error("ALERT post-close: IBKR has not confirmed order(s) %s dead; their positions "
+                  "get no restored stop until it does", [t.order.orderId for t in pending])
+        return False
+    log.info("post-close: every paperbot entry/exit confirmed done; reconciling stops")
+    return True
+
+
+def reset_drawdown() -> int:
+    """paperbot-bot --reset-drawdown: re-arm a tripped breaker (the current
+    cumulative P&L becomes the new peak)."""
+    limits = require_limits(json.loads(CONFIG.read_text()), RULES)
+    if not limits.max_drawdown_usd:
+        print("max_drawdown_usd is not set in rules.json; no breaker to reset.")
+        return 0
+    pid = runstate.running_pid()
+    if pid is not None:  # its in-memory breaker would write the trip straight back
+        print(f"paperbot is running (pid {pid}); stop it before resetting the breaker.")
+        return 1
+    breaker = DrawdownBreaker(DRAWDOWN_STATE, limits.max_drawdown_usd)
+    was = breaker.reason if breaker.tripped else ""
+    breaker.reset()
+    log.warning("drawdown breaker reset by hand%s; new peak %.2f",
+                f" (was: {was})" if was else " (it was not tripped)", breaker.cumulative())
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--submit", action="store_true",
                         help="send orders to the paper account (default: dry run)")
     parser.add_argument("--reset-state", action="store_true",
                         help="move corrupt state files aside and exit")
+    parser.add_argument("--reset-drawdown", action="store_true",
+                        help="re-arm a tripped multi-day drawdown breaker and exit")
     parser.add_argument("--symbol", help="symbol to evaluate (requires --check-only)")
     parser.add_argument("--check-only", action="store_true",
                         help="evaluate --symbol once and exit; never sends orders")
@@ -137,8 +223,11 @@ def main():
     if args.check_only:
         sys.exit(check_only(args.symbol))
 
+    if args.reset_drawdown:
+        sys.exit(reset_drawdown())
+
     if args.reset_state:
-        backups = runstate.reset_corrupt([RISK_STATE, strategy.STATE])
+        backups = runstate.reset_corrupt([RISK_STATE, strategy.STATE, DRAWDOWN_STATE])
         for b in backups:
             log.warning("moved corrupt state file to %s", b.name)
         if not backups:
@@ -149,8 +238,8 @@ def main():
         return
 
     cfg = json.loads(CONFIG.read_text())
-    limits = load_limits(cfg, RULES)
-    guard = RiskGuard(limits, RISK_STATE)  # fails closed on a corrupt file
+    limits = require_limits(cfg, RULES)
+    guard = RiskGuard(limits, RISK_STATE, drawdown_path=DRAWDOWN_STATE)  # fails closed
     strategy.load_state()  # same check for the strategy state, before connecting
     if runstate.stop_requested():
         raise SystemExit(f"{runstate.STOP_FILE.name} file present; delete it to start the bot")
@@ -174,6 +263,7 @@ def main():
             side=fill.execution.side, shares=fill.execution.shares,
             price=fill.execution.price)
 
+        day_orders_confirmed: dt.date | None = None  # post-close check done for this date
         while True:
             if runstate.stop_requested():
                 cancel_working(ib, "STOP file")
@@ -184,8 +274,12 @@ def main():
             was_halted = guard.halted
             guard.update_daily_pnl(daily)
             if guard.halted and not was_halted:
-                cancel_working(ib, guard.state["halt_reason"])
+                cancel_working(ib, guard.halt_reason)
             notify_fills_safely(ib, account)
+            now = dt.datetime.now(ET)
+            if post_close(now) and day_orders_confirmed != now.date():
+                if await_day_orders_done(ib, args.submit):
+                    day_orders_confirmed = now.date()
 
             held_back: set[str] = set()  # symbols whose cancel was not confirmed
             for request in strategy.decide(ib, account):
@@ -416,7 +510,7 @@ def account_state(ib: IB, account: str, open_trades: list[Trade]) -> AccountStat
     longs = {p.contract.symbol.upper(): p.position for p in ib.positions(account)
              if p.contract.secType == "STK" and p.position > 0}
     buys = {t.contract.symbol.upper() for t in open_trades if t.order.action == "BUY"}
-    return AccountState(net_liq, longs, buys)
+    return AccountState(net_liq, longs, buys, buying_power_usd(ib, account))
 
 
 def handle_request(ib: IB, guard: RiskGuard, cfg: dict, account: str, request,
@@ -487,7 +581,8 @@ def handle_stop(ib: IB, guard: RiskGuard, cfg: dict, account: str,
             journal("blocked", stop=req.__dict__, problems=["contract lookup failed"])
             return
         order = StopOrder("SELL", req.quantity, req.stop_price, account=account,
-                          tif="GTC", orderRef=REF_STOP)
+                          tif="GTC", orderRef=REF_STOP, ocaGroup=oca_group(req.symbol),
+                          ocaType=OCA_REDUCE_WITH_BLOCK)
         ib.placeOrder(contract, order)
         log.info("PLACED stop %s: %s %s @ %.2f (%s)", order.orderId, req.symbol,
                  req.quantity, req.stop_price, req.reason)
@@ -533,22 +628,36 @@ def handle_intent(ib: IB, guard: RiskGuard, cfg: dict, account: str,
         strategy.on_sent(intent)
 
 
+def oca_group(symbol: str) -> str:
+    """A new, unique OCA group name for one protective stop. Never reused: IBKR
+    cancels new orders sent into a group in which an order has already filled."""
+    return f"paperbot:{symbol.upper()}:{dt.datetime.now(ET):%Y%m%d}:{uuid.uuid4().hex[:12]}"
+
+
 def _order(intent: OrderIntent, account: str, tif: str, ref: str):
+    extra = {}
+    if intent.good_till is not None:
+        tif = "GTD"  # IBKR expires it at good_till even if this bot is down
+        extra["goodTillDate"] = intent.good_till.astimezone(ET).strftime("%Y%m%d %H:%M:%S US/Eastern")
+    if intent.oca_group:
+        extra.update(ocaGroup=intent.oca_group, ocaType=OCA_REDUCE_WITH_BLOCK)
     if intent.limit_price is None:
         return MarketOrder(intent.action, intent.quantity, account=account, tif=tif,
-                           orderRef=ref)
+                           orderRef=ref, **extra)
     return LimitOrder(intent.action, intent.quantity, intent.limit_price,
-                      account=account, tif=tif, orderRef=ref)
+                      account=account, tif=tif, orderRef=ref, **extra)
 
 
 def entry_bracket(ib: IB, intent: OrderIntent, account: str, tif: str) -> list:
-    """Parent BUY plus a child SELL STP (GTC). IBKR activates the stop when the
-    parent fills, and cancels it if the parent is cancelled unfilled."""
+    """Parent BUY plus a child SELL STP (GTC) in its own OCA group. IBKR activates
+    the stop when the parent fills, and cancels it if the parent is cancelled or
+    expires (GTD) unfilled."""
     parent = _order(intent, account, tif, REF_ENTRY)
     parent.orderId = ib.client.getReqId()
     parent.transmit = False  # sent together with the child below
     stop = StopOrder("SELL", intent.quantity, intent.stop_price, account=account,
-                     tif="GTC", orderRef=REF_STOP, parentId=parent.orderId, transmit=True)
+                     tif="GTC", orderRef=REF_STOP, parentId=parent.orderId, transmit=True,
+                     ocaGroup=oca_group(intent.symbol), ocaType=OCA_REDUCE_WITH_BLOCK)
     return [parent, stop]
 
 

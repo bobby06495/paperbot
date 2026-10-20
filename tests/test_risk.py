@@ -13,8 +13,9 @@ import unittest
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from paperbot.trading.risk import (AccountState, Limits, OrderIntent, RiskGuard, StopUpdate, load_limits,
-                  today_et, verify_paper)
+from paperbot.trading.risk import (AccountState, ConfigError, DrawdownBreaker, Limits, OrderIntent,
+                                   RiskGuard, StopUpdate, commission_drag, load_limits,
+                                   require_limits, round_trip_commission, today_et, verify_paper)
 from paperbot.runtime.runstate import StateCorrupt
 
 LIMITS = Limits(allowed_symbols=["NVDA"], max_quantity_per_order=1,
@@ -152,7 +153,7 @@ RULES_LIMITS = replace(LIMITS, allowed_symbols=["*"], max_quantity_per_order=100
                        max_order_value=1e9, max_risk_per_trade_pct=1.0,
                        max_position_size_pct_of_portfolio=10,
                        max_concurrent_positions=5)
-ACCOUNT = AccountState(100_000.0)  # 1% risk = 1,000; 10% size = 10,000
+ACCOUNT = AccountState(100_000.0, buying_power=400_000.0)  # 1% risk = 1,000; 10% size = 10,000
 
 
 class RulesRiskTest(unittest.TestCase):
@@ -181,7 +182,7 @@ class RulesRiskTest(unittest.TestCase):
         self.assertTrue(self.check(OrderIntent("AAPL", "BUY", 1, 100.0, stop_price=100.0)))
 
     def test_concurrent_positions_limit(self):
-        full = AccountState(100_000.0, {s: 1.0 for s in "ABCD"}, {"E"})
+        full = AccountState(100_000.0, {s: 1.0 for s in "ABCD"}, {"E"}, 400_000.0)
         buy = OrderIntent("F", "BUY", 1, 100.0, stop_price=99.0)
         self.assertTrue(self.check(buy, full))
         # adding to a symbol already held does not open a new position
@@ -192,16 +193,216 @@ class RulesRiskTest(unittest.TestCase):
         self.assertTrue(self.check(intent, None))
         self.assertTrue(self.check(intent, AccountState(None)))
 
-    def test_load_limits_merges_rules_json(self):
-        rules = Path(self.tmp.name) / "rules.json"
-        rules.write_text(json.dumps({"risk": {"max_risk_per_trade_pct": 1.0,
-                                              "max_position_size_pct_of_portfolio": 10,
-                                              "max_concurrent_positions": 5}}))
-        limits = load_limits({"limits": asdict(LIMITS)}, rules)
-        self.assertEqual(limits.max_concurrent_positions, 5)
-        self.assertEqual(limits.allowed_symbols, ["NVDA"])
-        self.assertIsNone(load_limits({"limits": asdict(LIMITS)},
-                                      rules.with_name("none.json")).max_risk_per_trade_pct)
+
+
+CONFIG_RAILS = {"limits": {"allowed_symbols": ["NVDA"], "limit_orders_only": True}}
+RULES_RISK = {"max_quantity_per_order": 1, "max_order_value": 500.0, "max_orders_per_day": 3,
+              "max_open_orders": 2, "max_daily_loss": 1000.0, "max_risk_per_trade_pct": 1.0,
+              "max_position_size_pct_of_portfolio": 10, "max_concurrent_positions": 5,
+              "max_commission_pct_of_risk": None}
+
+
+class LoadLimitsTest(unittest.TestCase):
+    """Safety rails from config.json, every threshold from rules.json risk; fail closed."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.rules = Path(self.tmp.name) / "rules.json"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def load(self, risk=None, config=None):
+        self.rules.write_text(json.dumps({"risk": RULES_RISK if risk is None else risk}))
+        return load_limits(CONFIG_RAILS if config is None else config, self.rules)
+
+    def fails(self, text, **kwargs):
+        with self.assertRaises(ConfigError) as caught:
+            self.load(**kwargs)
+        self.assertIn(text, str(caught.exception))
+
+    def test_reads_each_key_from_its_file(self):
+        limits = self.load()
+        self.assertEqual(limits, replace(LIMITS, max_risk_per_trade_pct=1.0,
+                                         max_position_size_pct_of_portfolio=10.0,
+                                         max_concurrent_positions=5))
+        self.assertIsNone(limits.max_commission_pct_of_risk)  # null = not enforced
+
+    def test_types_are_cast(self):
+        limits = self.load(risk={**RULES_RISK, "max_quantity_per_order": 2.0,
+                                 "max_daily_loss": 1000})
+        self.assertIs(type(limits.max_quantity_per_order), int)
+        self.assertIs(type(limits.max_daily_loss), float)
+        self.assertIs(type(limits.max_position_size_pct_of_portfolio), float)
+
+    def test_limit_orders_only_defaults_to_true(self):
+        self.assertTrue(self.load(config={"limits": {"allowed_symbols": ["*"]}}).limit_orders_only)
+
+    def test_threshold_left_in_config_json_refuses(self):
+        stale = {"limits": {**CONFIG_RAILS["limits"], "max_quantity_per_order": 1}}
+        self.fails("still contains ['max_quantity_per_order']", config=stale)
+
+    def test_missing_threshold_refuses(self):
+        risk = {k: v for k, v in RULES_RISK.items() if k != "max_daily_loss"}
+        self.fails("missing ['max_daily_loss']", risk=risk)
+
+    def test_missing_rules_file_or_section_refuses(self):
+        with self.assertRaises(ConfigError):
+            load_limits(CONFIG_RAILS, self.rules.with_name("none.json"))
+        self.rules.write_text(json.dumps({"exit": {}}))
+        with self.assertRaises(ConfigError):
+            load_limits(CONFIG_RAILS, self.rules)
+
+    def test_bad_values_refuse(self):
+        for key, bad in (("max_quantity_per_order", "1"), ("max_quantity_per_order", 1.5),
+                         ("max_quantity_per_order", True), ("max_order_value", 0),
+                         ("max_daily_loss", -1000.0), ("max_drawdown_usd", "3000")):
+            with self.subTest(key=key, value=bad), self.assertRaises(ConfigError):
+                self.load(risk={**RULES_RISK, key: bad})
+        for rails in ({"allowed_symbols": []}, {"allowed_symbols": "NVDA"},
+                      {"allowed_symbols": ["*"], "limit_orders_only": "yes"}):
+            with self.subTest(rails=rails), self.assertRaises(ConfigError):
+                self.load(config={"limits": rails})
+
+    def test_unknown_keys_refuse(self):
+        self.fails("unknown keys ['max_shares']", risk={**RULES_RISK, "max_shares": 1})
+        self.fails("unknown keys ['typo']", config={"limits": {"allowed_symbols": ["*"], "typo": 1}})
+
+    def test_require_limits_alerts_and_exits(self):
+        self.rules.write_text(json.dumps({"risk": {}}))
+        with self.assertLogs("paperbot", "ERROR") as logs, self.assertRaises(SystemExit) as caught:
+            require_limits(CONFIG_RAILS, self.rules)
+        self.assertIn("Refusing to start", str(caught.exception))
+        self.assertIn("ALERT refusing to start", logs.output[0])
+
+    def test_live_config_files_load(self):
+        from paperbot import paths
+        limits = load_limits(json.loads(paths.CONFIG_FILE.read_text()), paths.RULES_FILE)
+        self.assertEqual((limits.max_quantity_per_order, limits.max_order_value,
+                          limits.max_orders_per_day, limits.max_open_orders,
+                          limits.max_daily_loss, limits.allowed_symbols, limits.limit_orders_only),
+                         (1, 2500.0, 5, 2, 1000.0, ["*"], True))
+
+
+class CostsTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def guard(self, **limits):
+        return RiskGuard(replace(RULES_LIMITS, **limits), Path(self.tmp.name) / "state.json")
+
+    def test_round_trip_commission_fixed_pricing(self):
+        self.assertEqual(round_trip_commission(1, 189.58), 2.00)  # $1 minimum per side
+        self.assertEqual(round_trip_commission(1000, 50.0), 10.00)  # $0.005/share
+        self.assertAlmostEqual(round_trip_commission(1, 20.0), 0.40)  # capped at 1% of value
+
+    def test_commission_drag_threshold(self):
+        # 1 share, R = 6.03: $2 commission is 33% of R
+        self.assertIn("commission", commission_drag(1, 189.58, 183.55, 1.0))
+        self.assertIsNone(commission_drag(1, 189.58, 183.55, None))
+        # 500 shares, R = 3,015: $5 commission is 0.17% of R
+        self.assertIsNone(commission_drag(500, 189.58, 183.55, 1.0))
+
+    def test_guard_blocks_commission_drag(self):
+        guard = self.guard(max_commission_pct_of_risk=1.0)
+        one = OrderIntent("AAPL", "BUY", 1, 100.0, stop_price=94.0)
+        self.assertTrue(any("commission" in p for p in guard.check(one, 0, 0.0, ACCOUNT)))
+        big = OrderIntent("AAPL", "BUY", 100, 100.0, stop_price=90.0)
+        self.assertEqual(guard.check(big, 0, 0.0, ACCOUNT), [])
+
+    def test_buying_power_rejects_and_unknown_blocks(self):
+        guard = self.guard()
+        buy = OrderIntent("AAPL", "BUY", 100, 100.0, stop_price=90.0)  # value 10,000
+        self.assertEqual(guard.check(buy, 0, 0.0, replace(ACCOUNT, buying_power=10_000.0)), [])
+        self.assertTrue(guard.check(buy, 0, 0.0, replace(ACCOUNT, buying_power=9_999.0)))
+        self.assertIn("buying power unavailable, cannot check margin",
+                      guard.check(buy, 0, 0.0, replace(ACCOUNT, buying_power=None)))
+
+    def test_expired_gtd_entry_blocked(self):
+        past = dt.datetime.now(dt.timezone.utc) - dt.timedelta(seconds=1)
+        buy = OrderIntent("AAPL", "BUY", 100, 100.0, stop_price=90.0, good_till=past)
+        self.assertTrue(any("entry window closed" in p for p in self.guard().check(buy, 0, 0.0, ACCOUNT)))
+        future = replace(buy, good_till=past + dt.timedelta(hours=1))
+        self.assertEqual(self.guard().check(future, 0, 0.0, ACCOUNT), [])
+
+    def test_exits_ignore_buying_power(self):
+        exit_ = OrderIntent("AAPL", "SELL", 3, 100.0, closing=True)
+        self.assertEqual(self.guard().check(exit_, 0, 0.0, AccountState(None, {"AAPL": 3.0})), [])
+
+
+class DrawdownTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self.tmp.name) / "drawdown_state.json"
+        self.day = dt.date(2026, 10, 19)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def breaker(self, limit=3000.0):
+        return DrawdownBreaker(self.path, limit, today=lambda: self.day)
+
+    def guard(self):
+        limits = replace(LIMITS, max_drawdown_usd=3000.0, max_daily_loss=1e9)
+        return RiskGuard(limits, Path(self.tmp.name) / "state.json", today=lambda: self.day,
+                         drawdown_path=self.path)
+
+    def test_cumulative_drawdown_over_days_trips_and_persists(self):
+        guard = self.guard()
+        for day, pnl in ((19, 1000.0), (20, -1500.0), (21, -1400.0)):  # cum 1000, -500, -1900
+            self.day = dt.date(2026, 10, day)
+            guard.update_daily_pnl(pnl)
+        self.assertFalse(guard.halted)  # peak 1000, drawdown 2900 < 3000
+        self.day = dt.date(2026, 10, 22)
+        guard.update_daily_pnl(-200.0)  # cum -2100: drawdown 3100
+        self.assertTrue(guard.halted)
+        self.assertIn("drawdown", guard.halt_reason)
+        self.assertTrue(any("drawdown breaker" in p for p in guard.check(OK, 0, 0.0)))
+        self.day = dt.date(2026, 10, 23)  # survives restart and a new day
+        guard = self.guard()
+        guard.update_daily_pnl(500.0)
+        self.assertTrue(guard.halted)
+
+    def test_intraday_updates_keep_last_value_of_day(self):
+        breaker = self.breaker()
+        breaker.update(-100.0)
+        breaker.update(-2500.0)
+        breaker.update(-200.0)
+        self.assertEqual(breaker.cumulative(), -200.0)
+        self.assertFalse(breaker.tripped)
+
+    def test_reset_rearms_from_current_level(self):
+        breaker = self.breaker()
+        breaker.update(-3000.0)
+        self.assertTrue(breaker.tripped)
+        breaker.reset()
+        reloaded = self.breaker()
+        self.assertFalse(reloaded.tripped)
+        self.assertEqual(reloaded.state["peak"], -3000.0)
+        self.day = dt.date(2026, 10, 20)
+        self.assertFalse(reloaded.update(-100.0))
+
+    def test_unknown_pnl_is_ignored(self):
+        breaker = self.breaker()
+        self.assertFalse(breaker.update(None))
+        self.assertFalse(self.path.exists())
+
+    def test_corrupt_file_fails_closed(self):
+        self.path.write_text('{"days": {"2026-10-19": -5')
+        with self.assertRaises(StateCorrupt):
+            self.breaker()
+        self.path.write_text('{"days": [], "peak": 0, "tripped": false}')
+        with self.assertRaises(StateCorrupt):
+            self.breaker()
+
+    def test_exits_allowed_while_tripped(self):
+        guard = self.guard()
+        guard.update_daily_pnl(-3000.0)
+        exit_ = OrderIntent("NVDA", "SELL", 1, 100.0, closing=True)
+        self.assertEqual(guard.check(exit_, 0, None, AccountState(None, {"NVDA": 1.0})), [])
 
 
 class TradingDateTest(unittest.TestCase):

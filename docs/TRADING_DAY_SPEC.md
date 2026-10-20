@@ -1,6 +1,6 @@
 # Paperbot — Trading-Day Technical Specification
 
-**Strategy:** Trend Join Long (long only, 5-minute bars) · **Broker:** Interactive Brokers, paper account only (port 4002) · **Code basis:** `main` @ `addfa52`
+**Strategy:** Trend Join Long (long only, 5-minute bars) · **Broker:** Interactive Brokers, paper account only (port 4002) · **Code basis:** `main` @ `addfa52`, plus the 2026-10-20 hardening (see `retrospective_log.md`)
 
 This document traces what Paperbot does on one US trading day, from the 09:30 ET open to the 16:00 ET close. Every rule, threshold and timing below comes from the code (`src/paperbot/**`) and the live config (`config/config.json`, `config/rules.json`). Where the code behaves differently from what the config suggests, the difference is stated in the section where it applies and listed again in §6.
 
@@ -16,9 +16,9 @@ Paperbot has two ways to run. Both use the same decision code: `strategy.decide(
 |---|---|---|
 | Entry point | `paperbot.runtime.cycle --submit`, started by Windows Task Scheduler task `HT_Cycle` | `paperbot-bot --submit`, one long-running process |
 | Loop trigger | `schtasks /SC MINUTE /MO 5`: a **new process every 5 minutes** on the :00/:05/:10… grid, around the clock | `ib.sleep(loop_seconds)`: **30 s after the previous pass finishes** |
-| Activity gate | Exits in < 1 s on weekends and outside 09:30–16:05 ET | Loops at any hour. Outside the session it only protects positions |
+| Activity gate | Exits in < 1 s on weekends and outside 09:30–16:10 ET | Loops at any hour. Outside the session it only protects positions |
 | Entry-scan budget | 150 s per run (one run usually scans the whole list) | 10 s per loop, then resumes where it stopped on the next loop |
-| Force close | From the first run at or after 15:51, it stays connected and **repeats the pass every 30 s** until flat or 16:00 | Every 30-s loop from 15:51 |
+| Force close | The 15:50 run stays connected, starts at **15:51:00** and **repeats the pass every 30 s** until flat or 16:00 | Every 30-s loop from 15:51 |
 
 `scripts/start_paperbot.ps1` registers **scheduled mode**, so this document follows scheduled mode and notes where continuous mode differs.
 
@@ -41,10 +41,10 @@ Paperbot has two ways to run. Both use the same decision code: `strategy.decide(
 
 Every scheduled run, including the first one of the day, runs these steps in order. A failure at any step ends the run, and **no order is sent**.
 
-1. **Time gate (stdlib only, < 1 s).** It reads the ET clock. On a weekend, before 09:30 or at/after 16:05 it exits with code 0. It reads `force_close_et` (15:51) from `rules.json` and labels the run `run` (09:30 ≤ t < 15:51, or 16:00 ≤ t < 16:05) or `force_close` (15:51 ≤ t < 16:00).
+1. **Time gate (stdlib only, < 1 s).** It reads the ET clock. On a weekend, before 09:30 or at/after 16:10 it exits with code 0. It reads `force_close_et` (15:51) from `rules.json` and labels the run `run` (09:30 ≤ t < 15:51), `force_close` (15:51 ≤ t < 16:00) or `post_close` (16:00 ≤ t < 16:10).
 2. **STOP file check.** If `STOP` exists in the project root, the run logs "cycle skipped" and exits.
 3. **Single-instance check.** If `logs/bot.pid` points to a live process (continuous bot or an earlier cycle), the run skips.
-4. **Load config.** It reads `config/config.json` (connection and hard caps) and merges in the `risk` section of `rules.json`. Where both files set the same key, `rules.json` wins.
+4. **Load config.** It reads `config/config.json` (connection, plus the safety rails `allowed_symbols` and `limit_orders_only`) and every quantitative threshold from the `risk` section of `rules.json`. Each key has exactly one home; every value is type-checked. A missing, invalid or misplaced key (for example a cap still in `config.json`) **stops the run** with an ALERT.
 5. **Load the risk-guard state, failing closed.** It reads `logs/state.json` (`date`, `orders_today`, `halted`, `halt_reason`). A corrupt file **stops the run** (`StateCorrupt`) rather than silently resetting today's counters. If the stored date is not today (ET), the state resets to `orders_today=0, halted=false`.
 6. **Load the strategy state, failing closed.** It reads `logs/strategy_state.json`: per-position `initial_stop`, `stop`, `breakeven`, `partial_done`, `force_attempts`, plus `entered` (symbol → date of its last entry).
 7. **Claim `logs/bot.pid`.**
@@ -64,16 +64,18 @@ Every scheduled run, including the first one of the day, runs these steps in ord
 | Source | Parameter | Value | Effect |
 |---|---|---|---|
 | `config.json → limits` | `allowed_symbols` | `["*"]` | Any symbol |
-| | `max_quantity_per_order` | **1** | Hard share cap per entry. **This is the binding constraint today.** |
+| | `limit_orders_only` | true | Entries and exits must be limit orders. Stops are STP. |
+| `config.json` | `time_in_force` | DAY | Entries and exits. Stops are always GTC. |
+| `rules.json → risk` | `max_quantity_per_order` | **1** | Hard share cap per entry. **This is the binding constraint today.** |
 | | `max_order_value` | $2,500 | Cap on quantity × limit price per entry |
 | | `max_orders_per_day` | 5 | Entries (BUY brackets) sent per ET day |
 | | `max_open_orders` | 2 | Working entry + exit orders. Protective stops are not counted. |
 | | `max_daily_loss` | $1,000 | Halts new entries for the day when IBKR `dailyPnL` ≤ −1,000 |
-| | `limit_orders_only` | true | Entries and exits must be limit orders. Stops are STP. |
-| | `time_in_force` | DAY | Entries and exits. Stops are always GTC. |
-| `rules.json → risk` | `max_risk_per_trade_pct` | 1.0 % | (limit − stop) × qty ≤ 1 % of NetLiquidation |
+| | `max_risk_per_trade_pct` | 1.0 % | (limit − stop) × qty ≤ 1 % of NetLiquidation |
 | | `max_position_size_pct_of_portfolio` | 10 % | qty × limit ≤ 10 % of NetLiquidation |
 | | `max_concurrent_positions` | 5 | Long positions plus symbols with a working BUY, **manual positions included** |
+| | `max_commission_pct_of_risk` | 1.0 % | Round-trip commission ≤ 1 % of R |
+| | `max_drawdown_usd` | $3,000 | Multi-day drawdown breaker |
 | `rules.json → time_filter` | entry window / force close | 10:05–15:30 / 15:51 | |
 | `rules.json → exit` | stop / partial / breakeven / trail | LOD − 1 % / +0.75R, ⅓ / +1R / 5-min swing low (2, 2) | |
 
@@ -109,12 +111,12 @@ The strategy scans `watchlist.txt` only if its header date is today (ET). Otherw
 
 | Window | Runs | Passes | Notes |
 |---|---|---|---|
-| 09:30 → 15:50 | 77 runs (09:30, 09:35 … 15:50) | 77 | One pass each |
-| 15:55 (force close) | 1 run | **up to 10** | Repeats every 30 s until flat or 16:00 (15:55:0x, 15:55:3x … 15:59:3x). Ends early once flat. |
-| 16:00 (post-close) | 1 run | 1 | Restores stops, raises the overnight ALERT |
-| **Total** | **79 runs** | **≈ 79–88 passes** | Off-hours runs (all other :x0/:x5 slots) exit in < 1 s and do nothing |
+| 09:30 → 15:45 | 76 runs (09:30, 09:35 … 15:45) | 76 | One pass each |
+| 15:50 (→ force close) | 1 run | **1 + up to 18** | One normal pass. If it holds bot positions it stays connected, starts the force close at **15:51:00** and repeats every 30 s until flat or 16:00. The 15:55 run is skipped (pid lock). If still holding at 16:00 it runs the post-close check itself. |
+| 16:00, 16:05 (post-close) | 2 runs | 1 each | Wait until IBKR confirms every DAY entry/exit dead, then restore stops and raise the overnight ALERT |
+| **Total** | **80 runs** | **≈ 80–97 passes** | Off-hours runs (all other :x0/:x5 slots) exit in < 1 s and do nothing |
 
-Of those 79 runs, the **entry scan runs in 65** (10:05 → 15:25). Exit management for held positions runs in 76 (09:35 → 15:50).
+The **entry scan runs in 66** of these runs (10:05 → 15:30; the window is inclusive to the minute). Exit management for held positions runs in 76 (09:35 → 15:50).
 
 **Continuous mode.** Loop time = pass duration + 30 s sleep. Upper bound for 6.5 h: 23,400 s ÷ 30 s = **780 loops**. A typical pass takes 1–12 s (longer when the entry scan uses its 10 s budget), so expect **about 600–750 loops** per session. The universe is still scanned **once per 5-minute bar** (65 bar-scans per day), spread over as many loops as the 10-s budget needs.
 
@@ -137,7 +139,7 @@ Each pass runs these steps in this exact order (`cycle.one_pass` / the body of `
    6. **Reconcile stops.** For each owned position without a working entry: target qty = shares held − shares still on working exits. If no stop exists → ALERT and **re-create** it at `state.stop`. If the stop's qty ≠ target, or its price < `state.stop` → **modify** it to `max(state.stop, current stop price)`. Stops only move up. During force close, symbols being closed this pass are skipped.
    7. **Force close** (t ≥ 15:51): see §5.2.
    8. **Partial profit** (session, before force close): see §5.1.
-   9. **Entry scan** (10:05:00 ≤ t ≤ 15:30:00): see §2.3.
+   9. **Entry sweep** (from 15:31:00): cancel every still-working entry. **Entry scan** (10:05 ≤ t ≤ 15:30, compared to the minute, so 15:30:59 still scans): see §2.3.
    10. Save the strategy state atomically.
 4. **Run each request through the risk guard, then IBKR, in list order.**
    - `CancelRequest`: cancel, then poll every 0.25 s for up to **5 s** for IBKR to confirm. If the cancel is **not confirmed, every later request for that symbol is skipped this pass**. A replacement SELL can therefore never sit next to a live stop and double-sell.
@@ -167,12 +169,17 @@ Each pass runs these steps in this exact order (`cycle.one_pass` / the body of `
 | 11 | **I3** RVOL | today's cumulative RTH volume through the last bar ÷ the 14-day average cumulative volume up to the same time of day | ≥ 2.0. Fewer than 14 history days → fail |
 | 12 | Stop | LOD of today's RTH bars | `stop = round(LOD × 0.99, 2)` |
 
-5. **Sizing** (`_size_entry`):
-   - `limit = round(price × 1.002, 2)`: a marketable limit 0.2 % through the last close.
+5. **Live quote.** A streaming `reqMktData` subscription supplies bid/ask (first tick awaited up to 3 s). No valid two-sided quote (no data permission, halted, crossed) → the signal is skipped.
+6. **Sizing** (`_size_entry`):
+   - `limit = round(ask × 1.002, 2)`: a marketable limit 0.2 % through the live ask.
    - `per_share_risk = limit − stop`. If ≤ 0, no trade.
-   - `qty = floor(min( NLV×1% ÷ per_share_risk , NLV×10% ÷ limit , max_quantity_per_order , max_order_value ÷ limit ))`. If < 1, the signal is skipped.
+   - `qty = floor(min( NLV×1% ÷ per_share_risk , NLV×10% ÷ limit , max_quantity_per_order , max_order_value ÷ limit , BuyingPower ÷ limit ))`. If < 1, the signal is skipped. Buying power used by earlier signals in the same scan is subtracted.
+   - **Commission drag:** estimated round-trip commission (IBKR Fixed: max($1, $0.005/share) per side, capped at 1 % of value) must not exceed `max_commission_pct_of_risk` (1 %) of R = qty × (limit − stop). Otherwise the signal is skipped.
+   - The BUY is sent **GTD 15:31:00 ET**, so IBKR expires it at the end of the entry window.
 
 ### 2.4 Worked example: NVDA, one session (live config)
+
+> **Since 2026-10-20 this exact trade is blocked** by the commission-drag rule: 1 share has R = $6.03 and a ≈ $2.00 round-trip commission (33 % of R > 1 %). The walkthrough below still shows the mechanics; it applies as written once `max_quantity_per_order` / `max_order_value` allow positions with R ≥ ≈ $200.
 
 **Setup.** The paper account's NetLiquidation is $1,000,000. NVDA's prior close is $180.00, prior-day high $182.40, SMA200 $151.20. Pre-market high is $187.10. NVDA opens at $186.30 (gap +3.50 %) and appears in the 09:55 watchlist.
 
@@ -243,8 +250,8 @@ Fill: 1 @ **189.35** at 10:05:04. IBKR activates the child stop.
 | Invalid account P&L | `dailyPnL` None or NaN | **All new entries blocked** ("daily P&L unavailable") |
 | Missing account value | NetLiquidation unavailable | Entry scan skipped. The guard also blocks the BUY |
 | Prefilter data quality | ≥ 30 % of symbols failed → ALERT, ≥ 95 % → connection ALERT. No bar for today → exit 1 | Bot falls back to `universe.txt` if no watchlist is dated today |
-| **Stale-quote detection** | **Not implemented.** There is no check that the last bar is recent (e.g. a halted stock). | — |
-| **Bid/ask spread check** | **Not implemented.** Paperbot never requests quotes (`reqMktData`). All prices are 5-minute bar closes. A wide spread just leaves the 0.2 % marketable limit unfilled. | — |
+| **Live quotes** | Limit prices come from a streaming `reqMktData` top of book (BUY from the ask, SELL from the bid). A quote is valid only if bid > 0, ask > 0, bid ≤ ask and the halted flag is not set. Subscriptions no longer needed are cancelled each pass. | Entry / partial skipped. Force close falls back to the last 5-min close with an **ALERT** |
+| **Bid/ask spread check** | **Not implemented.** A wide spread is priced through as is. | — |
 
 ### 3.2 Account risk
 
@@ -257,8 +264,9 @@ Fill: 1 @ **189.35** at 10:05:04. IBKR activates the child stop.
 | Daily entry count | `orders_today` < 5 | Every BUY |
 | Working orders | non-stop open orders < 2 | Every BUY |
 | Paper-only | port ∈ {4002, 7497} and a single `D…` account | Every connect |
-| **Max drawdown (multi-day)** | **Not implemented.** Only the per-day loss halt exists. | — |
-| **Buying power** | **Not checked directly.** Sizing uses NetLiquidation, and the 10 % / $2,500 caps keep orders far inside paper buying power. | — |
+| **Max drawdown (multi-day)** | Each pass stores today's IBKR `dailyPnL` in `logs/drawdown_state.json` (last value per ET day). When the cumulative P&L falls **$3,000** (`max_drawdown_usd`) below its peak the breaker trips: entries blocked and working entries/exits cancelled, **until `paperbot-bot --reset-drawdown`**. Read fail closed. | Every pass and every BUY |
+| **Buying power** | IBKR `BuyingPower` (account-value stream), converted to USD like NetLiquidation. Sizing caps qty to it; the guard rejects a BUY whose value exceeds it; unknown → entries blocked. | Scan pre-check, sizing and every BUY |
+| **Commission drag** | Estimated round-trip commission ≤ 1 % of R (`max_commission_pct_of_risk`) | Sizing and every BUY |
 
 **Exits and stops are never blocked by any of these.** A closing SELL or a stop is checked only for valid action, qty, price and **qty ≤ shares held**. So the bot can always get out, even while halted, and can never turn a long into a short.
 
@@ -292,10 +300,10 @@ Every Paperbot order carries an `orderRef`. The bot only ever reads, modifies or
 
 | Order already working | New pass behaviour |
 |---|---|
-| **Entry (unfilled)** | **Left alone. Never re-priced.** While it works, stop reconciliation, stop raising and partial profit are all skipped for that symbol, and IBKR manages the bracket child. It counts toward `max_open_orders` (2) and concurrency (5). It goes away only through: a fill · the daily-loss halt · a STOP/kill · force close (**only if that symbol is already held**) · IBKR's DAY expiry at 16:00, which cancels the child stop with it. |
+| **Entry (unfilled)** | **Left alone. Never re-priced.** While it works, stop reconciliation, stop raising and partial profit are all skipped for that symbol, and IBKR manages the bracket child. It counts toward `max_open_orders` (2) and concurrency (5). It goes away through: a fill · **IBKR's GTD expiry at 15:31:00** (cancels the child stop with it) · the **entry sweep** of every pass from 15:31 · the daily-loss halt or drawdown breaker · a STOP/kill. |
 | **Protective stop** | **Modified in place** (same orderId) when the size or the strategy's stop changes. The price only ever goes **up**. It is never cancelled except: orphaned for 2 passes · replaced at force close · `paperbot-kill --all`. Survives bot exit, Ctrl+C, crashes and Gateway restarts. |
-| **Partial-profit exit** | Left alone while younger than **60 s**. At ≥ 60 s it is **cancelled**. The next pass's reconciliation resizes the stop back to the full remaining position. **No retry**, because `partial_done` was already set when the order was sent. |
-| **Force-close exit** | Left alone while younger than 60 s. At ≥ 60 s it is cancelled and **replaced** at a wider limit (§5.2). |
+| **Partial-profit exit** | Left alone while younger than **60 s**. At ≥ 60 s it is **cancelled**. Once no partial order is working: fewer shares than when it was sent → `partial_done`; the same shares → the state resets, the reconcile resizes the stop to the full position, and the next pass **recalculates and retries** (at most 3 sends per position). |
+| **Force-close exit** | Left alone while younger than 60 s. At ≥ 60 s it is cancelled and **replaced** at a wider limit (§5.2). The protective stop stays working the whole time (OCA). |
 | **Halt / STOP transition** | `cancel_working` cancels every working entry and exit. Stops stay. |
 
 **Cancel/replace safety:** every cancel waits up to 5 s for IBKR's confirmation. An unconfirmed cancel holds back all further requests for that symbol until the next pass.
@@ -341,21 +349,23 @@ There is **no profit target** that closes the whole position. Winners stay open 
 | ET | Scheduled mode (deployed) | Continuous mode |
 |---|---|---|
 | **15:25** | **Last effective entry scan** | Scanning continues |
-| **15:30:00** | `latest_entry_et` boundary (inclusive to the second). The 15:30 run starts a few seconds after 15:30:00, so it **does not scan**. | Last scan possible at exactly 15:30:00 |
+| **15:30** | `latest_entry_et`, inclusive to the minute: the 15:30 run **scans** | Scans until 15:30:59 |
+| **15:31:00** | Unfilled entries expire at IBKR (GTD). Every later pass sweeps any entry still working. | Same |
 | 15:30–15:51 | Exit management only. Entries placed earlier that are still working **can still fill**. | Same |
-| **15:50** | Last normal run (15:50 < 15:51) | — |
-| **15:51** | *(no run)* | **Force close starts** |
-| **15:55** | **Force close starts.** The run stays connected and repeats every 30 s. | Continues |
+| **15:50** | Last normal run. If it holds bot positions it stays connected. | — |
+| **15:51:00** | **Force close starts** in the 15:50 run, repeated every 30 s | **Force close starts** |
+| 15:55 | Skipped (the 15:50 run still holds the pid file) | Continues |
 | **15:58** | Every pass: **ALERT** for each owned position still open | Same |
-| **16:00** | DAY entry/exit orders expire. Post-close run: restore stops and send the overnight ALERT. | Same, and the loop keeps running |
-| 16:05 | `HT_Dashboard` → `paperbot-perf` daily summary push. Cycle gate closes. | — |
+| **16:00** | DAY exit orders expire. Post-close run **waits (up to 90 s, then cancels, then 5 s) until IBKR confirms every paperbot entry/exit dead**, then restores stops and sends the overnight ALERT. Unconfirmed → ALERT, no stop beside the live order. | Same check once per day, then the loop keeps running |
+| 16:05 | Second protect-only post-close run. `HT_Dashboard` → `paperbot-perf` daily summary push. | — |
+| 16:10 | Cycle gate closes. | — |
 
 **What one force-close pass does, per owned position:**
 1. From 15:58 on: ALERT "still open".
 2. If an exit order is younger than 60 s → leave it working and move on.
-3. Fetch today's bars. If there are none → ALERT and retry next pass.
-4. Cancel every working exit and entry, then **cancel the protective stop**. Each cancel is confirmed, and if any is unconfirmed, step 5 is skipped for that symbol.
-5. `force_attempts += 1`. Send `SELL <all shares held> LMT round(close × (1 − 0.002 × min(attempts, 5)), 2) DAY`.
+3. Read the live bid. No valid quote → fall back to the last 5-min close (ALERT); no bars either → ALERT and retry next pass.
+4. Cancel every working exit and entry. **The protective stop is kept**: it carries its own OCA group. Only a stop placed before 2026-10-20 (no OCA group) is cancelled here. Each cancel is confirmed, and if any is unconfirmed, step 5 is skipped for that symbol.
+5. `force_attempts += 1`. Send `SELL <all shares held> LMT round(bid × (1 − 0.002 × min(attempts, 5)), 2) DAY` **in the stop's OCA group** (ocaType 2, reduce with block): if the SELL fills, IBKR cancels or shrinks the stop; if the stop fills first, IBKR shrinks the SELL.
 6. On the first attempt of the day, push **"EOD Force Close — flattening N positions"** (high priority).
 7. Scheduled mode only: after each pass, if no owned position remains, the run disconnects.
 
@@ -363,19 +373,19 @@ There is **no profit target** that closes the whole position. Winners stay open 
 
 | Attempt | Scheduled (≈ET) | Continuous (≈ET) | Limit discount |
 |---|---|---|---|
-| 1 | 15:55 | 15:51 | 0.2 % |
-| 2 | 15:56 | 15:52 | 0.4 % |
-| 3 | 15:57 | 15:53 | 0.6 % |
-| 4 | 15:58 | 15:54 | 0.8 % |
-| 5+ | 15:59 | 15:55 → 15:59 | 1.0 % (cap) |
+| 1 | 15:51 | 15:51 | 0.2 % |
+| 2 | 15:52 | 15:52 | 0.4 % |
+| 3 | 15:53 | 15:53 | 0.6 % |
+| 4 | 15:54 | 15:54 | 0.8 % |
+| 5+ | 15:55 → 15:59 | 15:55 → 15:59 | 1.0 % (cap) |
 
-**Outcome B for the §2.4 NVDA position:** at 15:55:03, the last completed bar (15:50) closed at 199.80. The bot cancels the 196.40 stop (confirmed), then sends `SELL 1 NVDA LMT round(199.80 × 0.998, 2) = 199.40 DAY`. It fills at 199.78. The 15:55:33 pass finds no owned positions and the run ends. The 16:00 run pushes `EXIT NVDA @ $199.78, P&L +$8.43` (≈ +$10.43 gross − ≈ $2.00 commission). R = (199.78 − 189.35) ÷ 5.80 = **+1.80R**.
+**Outcome B for the §2.4 NVDA position:** at 15:51:00 the live bid is 199.80. The 196.40 stop stays working; the bot sends `SELL 1 NVDA LMT round(199.80 × 0.998, 2) = 199.40 DAY` in the stop's OCA group. It fills at 199.78 and IBKR cancels the stop. The 15:51:30 pass finds no owned positions and the run ends. The 16:00 run pushes `EXIT NVDA @ $199.78, P&L +$8.43` (≈ +$10.43 gross − ≈ $2.00 commission). R = (199.78 − 189.35) ÷ 5.80 = **+1.80R**.
 
 ### 5.3 Overnight policy
 
 Paperbot is **flat-by-design**. It never intends to hold overnight and never opens a position after 15:30. If the force close does not fill by 16:00:
 - every pass at or after 15:58 sends an ALERT, and after the close the bot sends `ALERT <SYM> still open after the close; protective stop kept at IBKR`,
-- the post-close pass's stop reconciliation sees the stop was cancelled during force close, logs an ALERT and **re-places a GTC stop** at the strategy's last stop price,
+- the post-close pass first waits until IBKR confirms the DAY force-close SELL dead. The OCA-linked stop was never cancelled, so the reconcile only resizes it to the shares still held. A pre-OCA stop that force close cancelled is **re-placed as a GTC stop** (with an ALERT) at the strategy's last stop price,
 - next morning the position is protected by that GTC stop, managed from 09:35 (breakeven/trail), and force-closed again from 15:51.
 
 Stops are held on IBKR's servers, so a position stays protected even if the PC, Gateway or bot is down.
@@ -386,17 +396,15 @@ Stops are held on IBKR's servers, so a position stays protected even if the PC, 
 
 These come from the code as it is today. They are listed so nobody reads the config values above as guarantees.
 
-1. **Force close starts at 15:55 in scheduled mode, not 15:51.** The 15:50 run ends before 15:51 and the next run starts at 15:55. That leaves about 5 re-pricing attempts instead of about 9. Fix: add a 15:51 task, or let the 15:50 run wait for 15:51.
-2. **The 15:30 run never scans.** The window ends at exactly 15:30:00 and the run starts a few seconds later, so the effective last scan is 15:25.
-3. **Possible post-close race.** If IBKR has not yet expired the DAY force-close SELL when the 16:00 run reconciles, the stop target becomes 0 and **no stop is restored**. The 16:05 slot is gated closed, so the position could stay unprotected until 09:30 the next day. Fix: let 16:05 run a protect-only pass, or ignore exits whose TIF is DAY after 16:00.
-4. **No protection while a force-close attempt is working.** Between the stop cancel and the SELL fill (up to about 60 s per attempt), the position has no stop.
-5. **Unfilled entries linger until 16:00.** A BUY limit that never fills is not cancelled when the window closes (force close only cancels entries for symbols already held). It occupies one of the 2 `max_open_orders` slots and one concurrency slot all day, and can fill late, for example at 15:45.
-6. **Partial profit is one-shot.** If the 60-s partial order does not fill, the partial is forfeited for that position.
-7. **R levels include commission.** `avgCost` folds in the commission, so on tiny sizes (1 share) every trigger moves up by about $1/share.
-8. **Prices are bar closes, not quotes.** No spread or staleness checks. The force-close limit can be up to about 5 minutes old, which the widening discount only partly compensates for.
-9. **No multi-day drawdown limit, no buying-power query, no wash-sale logic** (§3.2, §3.3).
-10. **Scheduled runs don't cache across processes.** Each 5-minute run re-downloads 1 year of daily bars (and RVOL history for symbols that get that far) for every symbol it evaluates.
-11. **Brackets and the cancel/replace flow have only been tested against a fake IBKR connection** (README "Known limitations"). The first `--submit` sessions need close watching.
+*Fixed on 2026-10-20 (details in `retrospective_log.md`): force close now starts at 15:51 in scheduled mode · the 15:30 run scans · the post-close race (DAY orders are confirmed dead first; 16:05 is a second protect pass) · the stop stays live during force close (OCA) · unfilled entries expire at 15:31 (GTD + sweep) · partial profit retries · live quotes for limit prices · buying power · commission drag · multi-day drawdown breaker.*
+
+1. **Every trade is blocked by the commission-drag rule under the current caps.** With `max_quantity_per_order = 1`, R ≈ $5–10 and the ≈ $2 round-trip commission is far above 1 % of R. Raise the caps (R must be ≈ $200 or more), or change `max_commission_pct_of_risk`.
+2. **OCA linking, GTD entries and live quotes are verified only against a fake IBKR connection.** Watch the first paper session: that IBKR keeps the `ocaGroup` on a bracket child, that a force-close SELL joins it, and that `reqMktData` returns quotes (the paper account needs a market-data subscription shared from the live account; without one, entries and partials are skipped and force close prices from bars).
+3. **An OCA group with a partial fill.** A force-close SELL that partly filled and was replaced re-joins the same group. IBKR may reduce or cancel orders in a group that already had a fill. Under the live 1-share cap partial fills cannot occur.
+4. **R levels include commission.** `avgCost` folds in the commission, so on tiny sizes (1 share) every trigger moves up by about $1/share.
+5. **No spread check, no wash-sale logic** (§3.1, §3.3).
+6. **Scheduled runs don't cache across processes.** Each 5-minute run re-downloads 1 year of daily bars (and RVOL history for symbols that get that far) for every symbol it evaluates.
+7. **Brackets and the cancel/replace flow have only been tested against a fake IBKR connection** (README "Known limitations"). The first `--submit` sessions need close watching.
 
 ---
 
@@ -406,7 +414,8 @@ These come from the code as it is today. They are listed so nobody reads the con
 |---|---|---|
 | `data/watchlist.txt` | prefilter | Today's top-20 gappers |
 | `logs/state.json` | risk guard | `orders_today`, `halted` (fail-closed) |
-| `logs/strategy_state.json` | strategy | Per-position stops/flags, `entered` (fail-closed) |
+| `logs/strategy_state.json` | strategy | Per-position stops/flags (incl. `partial_pending` / `partial_attempts`), `entered` (fail-closed) |
+| `logs/drawdown_state.json` | risk guard | Daily P&L per ET day, peak, breaker `tripped` (fail-closed) |
 | `logs/cycle_state.json` | cycle | Orphan-stop counters between runs |
 | `logs/notify_state.json` | bot | execIds already pushed today |
 | `logs/orders.jsonl` | bot | Every sent, blocked, cancelled, status and fill event |

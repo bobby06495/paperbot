@@ -256,11 +256,11 @@
       ['Risk per trade', `${risk.max_risk_per_trade_pct}% of net liquidation${pctOf(risk.max_risk_per_trade_pct)}`, 'rules.json', 'Entry sizing + guard'],
       ['Position size', `${risk.max_position_size_pct_of_portfolio}% of net liquidation${pctOf(risk.max_position_size_pct_of_portfolio)}`, 'rules.json', 'Entry sizing + guard'],
       ['Concurrent positions', risk.max_concurrent_positions, 'rules.json', 'Scan + guard (manual positions count)'],
-      ['Shares per order', lim.max_quantity_per_order, 'config.json', 'Entry sizing + guard'],
-      ['Order value', PB.money(lim.max_order_value, false, 0), 'config.json', 'Entry sizing + guard'],
-      ['Entries per day', lim.max_orders_per_day, 'config.json', 'Guard'],
-      ['Working entry/exit orders', lim.max_open_orders, 'config.json', 'Guard (stops not counted)'],
-      ['Daily loss halt', PB.money(-Math.abs(lim.max_daily_loss || 0), false, 0), 'config.json', 'Halts entries; cancels working entries/exits'],
+      ['Shares per order', lim.max_quantity_per_order, 'rules.json', 'Entry sizing + guard'],
+      ['Order value', PB.money(lim.max_order_value, false, 0), 'rules.json', 'Entry sizing + guard'],
+      ['Entries per day', lim.max_orders_per_day, 'rules.json', 'Guard'],
+      ['Working entry/exit orders', lim.max_open_orders, 'rules.json', 'Guard (stops not counted)'],
+      ['Daily loss halt', PB.money(-Math.abs(lim.max_daily_loss || 0), false, 0), 'rules.json', 'Halts entries; cancels working entries/exits'],
       ['Order types', lim.limit_orders_only ? 'limit orders only (stops are STP)' : 'market allowed', 'config.json', 'Guard'],
       ['Time in force', `${d.strategy.time_in_force} entries/exits · GTC stops`, 'config.json', 'Orders'],
       ['Allowed symbols', (lim.allowed_symbols || []).join(', ') === '*' ? 'any' : (lim.allowed_symbols || []).join(', '), 'config.json', 'Guard'],
@@ -274,7 +274,7 @@
     ? `<p class="mt-3 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-200 ring-1 ring-inset ring-rose-400/30">The account reports net liquidation in ${esc(d.account.base_currency)} only.
         The bot reads the USD value, so the percentage limits have nothing to work from: it skips the entry scan and the guard blocks entries.</p>` : ''}
       <p class="mt-3 text-xs text-ink-400">Entry limits never block exits or stops: those only have to be valid and no larger than the shares held, so the bot can always get out and never goes short.
-      Not enforced by the strategy: multi-day drawdown, buying power, wash-sale rules, bid/ask spread.</p>`);
+      Not enforced by the strategy: wash-sale rules, bid/ask spread.</p>`);
   }
 
   function sizing(d, inp) {

@@ -104,7 +104,8 @@ def run_checks() -> tuple[list[str], list[str]]:
         warnings.append(f"watchlist.txt {'from ' + str(generated) if generated else 'missing'}: "
                         f"the bot will scan {fallback} until morning_prefilter.py runs today")
 
-    for path in (paths.LOGS_DIR / "state.json", strategy.STATE):
+    for path in (paths.LOGS_DIR / "state.json", strategy.STATE,
+                 paths.LOGS_DIR / "drawdown_state.json"):
         try:
             runstate.read_json_state(path)
         except runstate.StateCorrupt as e:

@@ -59,7 +59,7 @@ TEST_RESULTS = paths.LOGS_DIR / "test_results.json"  # written by paperbot-test 
 DASHBOARD = paths.PERFORMANCE_FILE
 ET = ZoneInfo("America/New_York")
 PROXY_STOP_FRACTION = 0.99  # assumed stop 1 % below entry when none was recorded
-SESSION = (dt.time(9, 30), dt.time(16, 5))  # when a fresh heartbeat is expected
+SESSION = (dt.time(9, 30), dt.time(16, 10))  # when a fresh heartbeat is expected
 STALE_MINUTES = 10
 R_BUCKETS = [  # (label, upper bound inclusive); the last bucket is open-ended
     ("≤ −2R", -2.0), ("−2R … −1R", -1.0), ("−1R … 0R", 0.0), ("0R … +1R", 1.0),

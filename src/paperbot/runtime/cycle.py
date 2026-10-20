@@ -7,7 +7,7 @@
 
 Schedule it every 5 minutes, around the clock. Each run:
   1. Time gate on the ET clock, before any heavy import, so off-hours runs exit
-     in well under a second: weekend or outside 09:30-16:05 ET -> exit 0.
+     in well under a second: weekend or outside 09:30-16:10 ET -> exit 0.
   2. Skips quietly if a STOP file exists or bot.py / another cycle is running
      (logs/bot.pid), then claims the pid file for the duration of the run.
   3. Connects with the bot's clientId (so it can manage the bot's own stops);
@@ -17,8 +17,15 @@ Schedule it every 5 minutes, around the clock. Each run:
      updates, confirmed cancels). No trading logic lives in this file.
   5. Force-close window (rules.json force_close_et until 16:00 ET): stays
      connected and repeats the pass every 30 s until flat or 16:00, because
-     5-minute runs would allow only two close attempts.
-  6. Disconnects and releases the pid file, always.
+     5-minute runs would allow only two close attempts. The last run before
+     force_close_et (15:50) does not hand over to the 15:55 run: if it holds
+     bot positions it stays connected and starts the force close at exactly
+     15:51:00.
+  6. Post-close window (16:00-16:10 ET, runs at 16:00 and 16:05): before the
+     pass, waits until IBKR confirms every DAY entry/exit dead
+     (bot.await_day_orders_done), so the overnight stop is sized from the
+     real exposure. The 16:05 run is a second protect-only pass.
+  7. Disconnects and releases the pid file, always.
 
 Uncaught errors are written to logs/cycle_errors.log, pushed as "Cycle
 CRASHED" (notify.py), marked in logs/heartbeat.json, and exit with code 1.
@@ -53,9 +60,10 @@ ET = ZoneInfo("America/New_York")
 
 SESSION_START = dt.time(9, 30)
 SESSION_END = dt.time(16, 0)
-RUN_UNTIL = dt.time(16, 5)  # a few minutes after the close for alerts / stop restores
+RUN_UNTIL = dt.time(16, 10)  # 16:00 and 16:05 runs: post-close alerts / stop restores
 RETRY_DELAY_SECONDS = 5
 FORCE_LOOP_SECONDS = 30
+SCHEDULE_SECONDS = 5 * 60  # Task Scheduler interval of HT_Cycle
 SCAN_BUDGET_SECONDS = 150  # fits inside a 5-minute schedule; exits run first anyway
 ORPHAN_STATE_MAX_AGE = dt.timedelta(minutes=15)  # older counts are from another day/session
 TASK_NAME = "paperbot cycle"
@@ -73,7 +81,7 @@ def force_close_at() -> dt.time:
 
 
 def time_gate(now: dt.datetime, force_close: dt.time) -> str:
-    """'weekend', 'closed', 'force_close' or 'run' for an ET datetime."""
+    """'weekend', 'closed', 'force_close', 'post_close' or 'run' for an ET datetime."""
     if now.weekday() >= 5:
         return "weekend"
     t = now.time()
@@ -81,7 +89,18 @@ def time_gate(now: dt.datetime, force_close: dt.time) -> str:
         return "closed"
     if force_close <= t < SESSION_END:
         return "force_close"
+    if t >= SESSION_END:
+        return "post_close"
     return "run"
+
+
+def seconds_to_force_close(now: dt.datetime, force_close: dt.time) -> float:
+    """Seconds until force_close_et if the next scheduled run would start after it
+    (so this run must start the force close itself), else 0."""
+    target = now.replace(hour=force_close.hour, minute=force_close.minute, second=0,
+                         microsecond=0)
+    seconds = (target - now).total_seconds()
+    return seconds if 0 < seconds < SCHEDULE_SECONDS else 0.0
 
 
 def _ps(text) -> str:
@@ -164,7 +183,7 @@ def one_pass(ib, guard, cfg: dict, account: str, pnl, submit: bool) -> int:
     was_halted = guard.halted
     guard.update_daily_pnl(daily)
     if guard.halted and not was_halted:
-        bot.cancel_working(ib, guard.state["halt_reason"])
+        bot.cancel_working(ib, guard.halt_reason)
 
     bot.notify_fills_safely(ib, account)  # BUY/STOP/PARTIAL/EXIT since the last run
 
@@ -181,6 +200,17 @@ def one_pass(ib, guard, cfg: dict, account: str, pnl, submit: bool) -> int:
     return len(requests)
 
 
+def sleep_until(ib, deadline: float) -> bool:
+    """ib.sleep (keeps the connection's events flowing) until the monotonic deadline;
+    False if a STOP file appears first."""
+    from paperbot.runtime import runstate
+    while (remaining := deadline - time.monotonic()) > 0:
+        if runstate.stop_requested():
+            return False
+        ib.sleep(min(5.0, remaining))
+    return True
+
+
 def holds_bot_positions(ib, account: str) -> bool:
     from paperbot.trading import strategy
     owned = set(strategy.load_state()["positions"])
@@ -194,7 +224,7 @@ def run(gate: str, submit: bool) -> int:
     from paperbot.runtime import runstate
     from paperbot.trading import strategy
     from ib_async import IB
-    from paperbot.trading.risk import RiskGuard, load_limits, verify_paper
+    from paperbot.trading.risk import RiskGuard, require_limits, verify_paper
 
     if not bot.log.handlers:
         bot.setup_logging()
@@ -208,7 +238,8 @@ def run(gate: str, submit: bool) -> int:
         return 0
 
     cfg = json.loads(paths.CONFIG_FILE.read_text())
-    guard = RiskGuard(load_limits(cfg, bot.RULES), bot.RISK_STATE)  # fails closed
+    guard = RiskGuard(require_limits(cfg, bot.RULES), bot.RISK_STATE,
+                      drawdown_path=bot.DRAWDOWN_STATE)  # fails closed
     strategy.load_state()  # fails closed before connecting
     runstate.claim_pid()
     ib = IB()
@@ -235,12 +266,28 @@ def run(gate: str, submit: bool) -> int:
         strategy._orphans.clear()
         strategy._orphans.update(load_orphans(dt.datetime.now(ET)))
 
+        if gate == "post_close":
+            bot.await_day_orders_done(ib, submit)  # ALERTs itself if not confirmed
         handled = one_pass(ib, guard, cfg, account, pnl, submit)
+        if gate == "run" and submit:
+            wait = seconds_to_force_close(dt.datetime.now(ET), force_close_at())
+            if wait and holds_bot_positions(ib, account):
+                log.info("staying connected %.0f s to start the force close at %s ET",
+                         wait, force_close_at().strftime("%H:%M"))
+                if sleep_until(ib, time.monotonic() + wait):
+                    gate = "force_close"
+                    handled += one_pass(ib, guard, cfg, account, pnl, submit)
         # Force close: keep re-pricing every 30 s until flat or the close.
         while (gate == "force_close" and submit and not runstate.stop_requested()
                and dt.datetime.now(ET).time() < SESSION_END
                and holds_bot_positions(ib, account)):
             ib.sleep(FORCE_LOOP_SECONDS)
+            handled += one_pass(ib, guard, cfg, account, pnl, submit)
+        # Still holding at the close: this run blocks the 16:00 run (pid file), so it does
+        # the post-close protect pass itself instead of leaving it to the 16:05 run.
+        if (gate == "force_close" and submit and not runstate.stop_requested()
+                and bot.post_close(dt.datetime.now(ET)) and holds_bot_positions(ib, account)):
+            bot.await_day_orders_done(ib, submit)
             handled += one_pass(ib, guard, cfg, account, pnl, submit)
 
         save_orphans(dict(strategy._orphans), dt.datetime.now(ET))

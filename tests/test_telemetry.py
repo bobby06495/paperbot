@@ -21,9 +21,9 @@ ET = tm.ET
 RULES = {"time_filter": {"earliest_entry_et": "10:05", "latest_entry_et": "15:30",
                          "force_close_et": "15:51"},
          "exit": {"partial_profit_trigger_R": 0.75, "breakeven_trigger_R": 1.0},
-         "risk": {"max_concurrent_positions": 5}}
-CONFIG = {"limits": {"max_order_value": 2500.0, "max_orders_per_day": 5, "max_open_orders": 2,
-                     "max_daily_loss": 1000.0}}
+         "risk": {"max_concurrent_positions": 5, "max_order_value": 2500.0,
+                  "max_orders_per_day": 5, "max_open_orders": 2, "max_daily_loss": 1000.0}}
+CONFIG = {"limits": {"allowed_symbols": ["*"], "limit_orders_only": True}}
 
 
 def at(hour, minute, second=0, day=19):
@@ -35,8 +35,9 @@ class PhaseTest(unittest.TestCase):
         times = tm.session_times(RULES)
         cases = {at(9, 0): "pre_open", at(9, 30): "opening", at(10, 4, 59): "opening",
                  at(10, 5): "entry_window", at(15, 30): "entry_window",
-                 at(15, 30, 1): "manage_only", at(15, 51): "force_close",
-                 at(16, 0): "post_close", at(16, 5): "closed", at(11, 0, day=18): "closed"}
+                 at(15, 30, 59): "entry_window", at(15, 31): "manage_only",
+                 at(15, 51): "force_close", at(16, 0): "post_close", at(16, 5): "post_close",
+                 at(16, 10): "closed", at(11, 0, day=18): "closed"}
         for when, expected in cases.items():
             self.assertEqual(tm.phase(when, times), expected, when)
 

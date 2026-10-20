@@ -111,6 +111,20 @@ class NetLiquidationTest(unittest.TestCase):
         self.fetch.assert_not_called()
 
 
+class BuyingPowerTest(NetLiquidationTest):
+    def test_usd_buying_power_used_as_is(self):
+        ib = ib_with([NS(tag="BuyingPower", currency="USD", value="400000"), *SGD])
+        self.assertEqual(account.buying_power_usd(ib, "DU0000000"), 400000.0)
+        self.fetch.assert_not_called()
+
+    def test_sgd_buying_power_converted(self):
+        self.assertEqual(account.buying_power_usd(ib_with(SGD), "DU0000000"),
+                         round(6666759.20 / 1.28, 2))
+
+    def test_missing_buying_power_is_none(self):
+        self.assertIsNone(account.buying_power_usd(ib_with([]), "DU0000000"))
+
+
 class DailyPnlTest(unittest.TestCase):
     """account.daily_pnl(): 0.0 only when the account is provably flat today."""
     NOW = dt.datetime(2026, 10, 19, 10, 5, tzinfo=account.ET)
@@ -180,7 +194,7 @@ class DailyPnlTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             guard = RiskGuard(limits, Path(tmp) / "state.json")
             buy = OrderIntent("NVDA", "BUY", 1, 189.58, reason="trend join", stop_price=183.55)
-            state = AccountState(781120.46, {}, set())
+            state = AccountState(781120.46, {}, set(), buying_power=3_124_481.84)
             flat = account.daily_pnl(self.ib(), "DU0000000", self.NAN)
             self.assertEqual(guard.check(buy, 0, flat, state), [])
             held = account.daily_pnl(self.ib(positions=[NS(position=1.0)]), "DU0000000", self.NAN)
