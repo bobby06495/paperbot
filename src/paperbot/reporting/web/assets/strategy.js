@@ -153,7 +153,9 @@
     const summary = Object.keys(STATUS).filter((k) => counts[k]).map((k) => `<span class="inline-flex items-center gap-1.5">${PB.pill(k, STATUS[k].tone)}<span class="tabular text-ink-300">${counts[k]}</span></span>`).join('');
     const source = sc.source === 'watchlist'
       ? `today’s watchlist · generated ${esc(sc.generated || '?')} ET`
-      : '<span class="text-amber-300">universe.txt fallback (no watchlist generated today)</span>';
+      : sc.source === 'pending'
+        ? 'today’s watchlist (the prefilter builds it at 09:55 ET)'
+        : '<span class="text-amber-300">universe.txt fallback (no watchlist generated today)</span>';
     $('scanner').innerHTML = PB.panel('Market scanning · live view', `
       <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div class="flex flex-wrap gap-1" role="group" aria-label="Filter symbols">${filters}</div>

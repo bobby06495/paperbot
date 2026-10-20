@@ -106,6 +106,7 @@
     if (it.type === 'skipped') return PB.pill('Skipped', 'amber');
     if (it.type === 'failed') return PB.pill('Failed start', 'red');
     if (it.type === 'error') return PB.pill('Error', 'red');
+    if (it.type === 'missed') return PB.pill('Missed', 'red');
     if (it.passes.length > 1) return PB.pill(`Run · ${it.passes.length} passes`, 'violet');
     return PB.pill(it.source === 'bot.py' ? 'Loop' : 'Run', 'green');
   }

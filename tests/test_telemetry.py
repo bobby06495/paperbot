@@ -111,7 +111,8 @@ class RecordPassTest(unittest.TestCase):
                           mock.patch.object(tm, "_watchlist", return_value=("watchlist", ["AAPL", "MSFT"], True)),
                           mock.patch.object(tm.runstate, "stop_requested", return_value=False),
                           mock.patch.object(tm, "fx_conversion", return_value=None),
-                          mock.patch.object(tm, "pnl_decision", return_value=None)]
+                          mock.patch.object(tm, "pnl_decision", return_value=None),
+                          mock.patch.object(tm, "saved_conversion", return_value=None)]
         for p in self.patchers:
             p.start()
 
@@ -252,6 +253,50 @@ class TaskInfoTest(unittest.TestCase):
         self.assertEqual(dash.scheduler_status(at(20, 0), ok, hb, "closed", False, None)[0], "IDLE")
 
 
+class MissedRunsTest(unittest.TestCase):
+    TIMES = tm.session_times(RULES)
+
+    @staticmethod
+    def log(*times, msg="cycle start (run, SUBMIT) on paper account DU0000000"):
+        return [{"time": f"2026-10-19T{t}:02-04:00", "level": "INFO", "msg": msg} for t in times]
+
+    def test_gap_after_the_pc_slept(self):
+        slots = [f"15:{m:02d}" for m in range(0, 40, 5)]  # 15:00 ... 15:35, then nothing
+        missed = dash.missed_runs(at(19, 14), self.log(*slots), self.TIMES)
+        self.assertEqual(missed, ["15:40", "15:45", "15:50", "15:55", "16:00"])
+        self.assertEqual(dash._ranges(missed), "15:40-16:00 (5 runs)")
+
+    def test_skips_and_failed_connects_count_as_a_run(self):
+        log = (self.log("11:00") + self.log("11:05", msg="cycle skipped: STOP file present")
+               + self.log("11:10", msg="cannot connect to IB Gateway at 127.0.0.1:4002") + self.log("11:20"))
+        self.assertEqual(dash.missed_runs(at(11, 23), log, self.TIMES), ["11:15"])
+
+    def test_current_slot_and_quiet_days_not_flagged(self):
+        self.assertEqual(dash.missed_runs(at(11, 6), self.log("11:00"), self.TIMES), [])  # 11:05 may still start
+        self.assertEqual(dash.missed_runs(at(11, 0), [], self.TIMES), [])
+        self.assertEqual(dash.missed_runs(at(11, 0, day=18), self.log("11:00"), self.TIMES), [])  # Sunday
+
+    def test_ranges(self):
+        self.assertEqual(dash._ranges(["10:50", "11:15", "11:20"]), "10:50, 11:15-11:20 (2 runs)")
+
+
+class SavedConversionTest(unittest.TestCase):
+    def test_saved_rate_used_without_network(self):
+        from paperbot.trading import account
+        with tempfile.TemporaryDirectory() as tmp:
+            rate_file = Path(tmp) / "fx_rate.json"
+            today = dt.datetime.now(ET).date().isoformat()
+            rate_file.write_text(json.dumps({"currency": "SGD", "rate": 1.28, "date": today}))
+            with mock.patch.object(account, "RATE_FILE", rate_file),                     mock.patch.object(account, "fallback_mode", return_value="auto"),                     mock.patch.object(account, "fetch_yahoo_rate") as fetch:
+                conv = tm.saved_conversion("SGD", 1280.0)
+                self.assertEqual((conv["usd"], conv["rate"]), (1000.0, 1.28))
+                self.assertIn("not needed by the bot", conv["source"])
+                self.assertIsNone(tm.saved_conversion("EUR", 1280.0))  # no rate for that currency
+                fetch.assert_not_called()
+            with mock.patch.object(account, "RATE_FILE", rate_file),                     mock.patch.object(account, "fallback_mode", return_value="off"):
+                self.assertIsNone(tm.saved_conversion("SGD", 1280.0))
+
+
 class LifecycleTest(unittest.TestCase):
     def test_bracket_partial_fill_and_stop_modification(self):
         events = [
@@ -338,7 +383,9 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(data["scheduler"]["status"], "NOT SCHEDULED")
         self.assertEqual(data["timeline_extras"][0]["kind"], "skipped")
         self.assertEqual(data["scanner"]["source"], "universe")  # no watchlist today
-        self.assertEqual([s["date"] for s in data["model"]["sessions"]], ["2026-10-19", "2026-10-20"])
+        days = [s["date"] for s in data["model"]["sessions"]]
+        self.assertEqual(days, ["2026-10-19", "2026-10-20", "2026-10-21", "2026-10-22", "2026-10-23",
+                                "2026-10-26", "2026-10-27"])  # weekdays only, a week ahead
 
     def test_sync_site_rewrites_only_changed_files(self):
         with tempfile.TemporaryDirectory() as tmp:

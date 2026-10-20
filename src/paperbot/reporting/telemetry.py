@@ -337,6 +337,24 @@ def fx_conversion() -> dict | None:
     return trading_account.last_conversion()
 
 
+def saved_conversion(currency: str, base_value: float) -> dict | None:
+    """The bot's saved rate (logs/fx_rate.json), for passes in which it did not need the
+    account value (e.g. after the entry window). Reads the file only; never the network."""
+    from paperbot.trading import account as trading_account
+    if trading_account.fallback_mode() == "off":
+        return None
+    saved = trading_account._saved_rate(currency)
+    rate = _float(saved.get("rate"))
+    try:
+        age = (dt.datetime.now(ET).date() - dt.date.fromisoformat(saved.get("date", ""))).days
+    except ValueError:
+        return None
+    if not rate or age > trading_account.MAX_RATE_AGE_DAYS:
+        return None
+    return {"usd": round(base_value / rate, 2), "currency": currency, "rate": rate,
+            "source": f"saved rate {saved['date']}; not needed by the bot this pass"}
+
+
 def account_snapshot(ib, account: str) -> dict:
     """USD values (the currency the bot reads) plus the account's base currency values."""
     values, other, currency = {}, {}, None
@@ -351,7 +369,7 @@ def account_snapshot(ib, account: str) -> dict:
     nlv, bp, fx = values.get("NetLiquidation"), values.get("BuyingPower"), None
     if nlv is None and other.get("NetLiquidation") is not None:
         # the value the bot used this pass (trading/account.py), from memory only
-        conv = _safe(fx_conversion, None)
+        conv = _safe(fx_conversion, None) or _safe(lambda: saved_conversion(currency, other["NetLiquidation"]), None)
         if conv and conv.get("currency") == currency:
             fx = {"currency": currency, "rate": conv.get("rate"), "source": conv.get("source")}
             if conv.get("usd") is not None and conv.get("rate"):

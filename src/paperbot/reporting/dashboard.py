@@ -149,14 +149,20 @@ def _next_weekday(day: dt.date) -> dt.date:
     return day
 
 
+SESSION_DAYS = 7  # weekdays carried in the data, so a page left open for days keeps working
+
+
 def session_windows(now: dt.datetime, times: dict) -> list[dict]:
-    """The current (or next) weekday session and the one after, as epoch ms.
+    """The current (or next) weekday session and the following ones, as epoch ms.
     US market holidays are not modelled."""
     day = now.date()
     if day.weekday() >= 5 or now.time() >= times["run_until"]:
         day = _next_weekday(day)
+    days = [day]
+    while len(days) < SESSION_DAYS:
+        days.append(_next_weekday(days[-1]))
     out = []
-    for d in (day, _next_weekday(day)):
+    for d in days:
         at = lambda t: _ms(dt.datetime.combine(d, t, ET))  # noqa: E731
         out.append({"date": d.isoformat(), "weekday": d.strftime("%a"),
                     "logrotate": at(dt.time(9, 25)), "open": at(times["open"]),
@@ -261,6 +267,46 @@ def run_counts(log: list[dict], runs: list[dict], errors: list[str]) -> dict:
     return {"executed": len(starts) + len(bot_passes), "scheduled_runs": len(starts),
             "bot_loops": len(bot_passes), "passes": len(runs), "skipped": len(skipped),
             "failed": len(errors), "by_hour": by_hour}
+
+
+def missed_runs(now: dt.datetime, log: list[dict], times: dict, interval_min: int = 5) -> list[str]:
+    """Scheduled 5-minute slots today with no trace in bot.log (no start, skip or failed
+    connect), from the first run of the day until the last slot that should have run.
+    A gap usually means the PC slept or the task did not fire."""
+    if now.weekday() >= 5:
+        return []
+    starts = sorted(dt.datetime.fromisoformat(l["time"]) for l in log if l["msg"].startswith(
+        ("cycle start", "cycle skipped", "cannot connect to IB Gateway")))
+    if not starts:
+        return []
+    step = dt.timedelta(minutes=interval_min)
+    first = starts[0].replace(second=0, microsecond=0)
+    first -= dt.timedelta(minutes=first.minute % interval_min)
+    close = dt.datetime.combine(now.date(), times["close"], ET)
+    last = min(now - dt.timedelta(minutes=2), close)  # leave the current slot time to start
+    seen = {(t.replace(second=0, microsecond=0) - dt.timedelta(minutes=t.minute % interval_min))
+            for t in starts}
+    missing, slot = [], first
+    while slot <= last:
+        if slot not in seen:
+            missing.append(slot.strftime("%H:%M"))
+        slot += step
+    return missing
+
+
+def _ranges(slots: list[str], interval_min: int = 5) -> str:
+    """'15:40-16:00 (5 runs), 12:10' from consecutive HH:MM slots."""
+    out, start, prev = [], None, None
+    for s in slots + [None]:
+        t = dt.datetime.strptime(s, "%H:%M") if s else None
+        if prev and t and (t - prev).total_seconds() == interval_min * 60:
+            prev = t
+            continue
+        if start:
+            n = int((prev - start).total_seconds() // (interval_min * 60)) + 1
+            out.append(f"{start:%H:%M}" + (f"-{prev:%H:%M} ({n} runs)" if n > 1 else ""))
+        start = prev = t
+    return ", ".join(out)
 
 
 def timeline_extras(log: list[dict], errors: list[str]) -> list[dict]:
@@ -453,7 +499,8 @@ def funnel(scanner: list[dict]) -> list[dict]:
 
 def health_checks(now: dt.datetime, sched: dict, heartbeat: dict, log: list[dict],
                   errors: list[str], risk_state: dict, tests: dict, watch_fresh: bool,
-                  last_run: dict | None, current_phase: str, stop_file: bool) -> list[dict]:
+                  last_run: dict | None, current_phase: str, stop_file: bool,
+                  missed: list[str] | None = None) -> list[dict]:
     def check(key, label, status, detail):
         return {"key": key, "label": label, "status": status, "detail": detail}
 
@@ -500,6 +547,10 @@ def health_checks(now: dt.datetime, sched: dict, heartbeat: dict, log: list[dict
         else:
             out.append(check("heartbeat", "Bot heartbeat", "pass" if last else "skip",
                              f"last pass {last:%H:%M:%S} ET" if last else "no heartbeat yet"))
+    if missed is not None:
+        out.append(check("missed_runs", "Missed scheduled runs", "fail" if missed else "pass",
+                         f"no run at {_ranges(missed)} ET; was the PC asleep or Gateway down?"
+                         if missed else "every 5-minute slot ran"))
     out.append(check("run_errors", "Run errors today", "warn" if errors else "pass",
                      f"{len(errors)} in cycle_errors.log" if errors else "none"))
     if risk_state.get("halted") and str(risk_state.get("date")) == now.date().isoformat():
@@ -611,8 +662,10 @@ def snapshot(now: dt.datetime | None = None, runner=subprocess.run) -> dict:
         compute_perf.load_day(paths.TRADES_CSV, day)))
     acct = (last_run or {}).get("account") or {}
     scanner = scanner_view(watch, runs, universe_source, universe, strategy_state, held, day)
+    scheduled = heartbeat.get("source") != "bot.py"
+    missed = missed_runs(now, log, times) if scheduled else None
     checks = health_checks(now, sched, heartbeat, log, errors, risk_state, tests,
-                           watch_day == day, last_run, current_phase, stop_file)
+                           watch_day == day, last_run, current_phase, stop_file, missed)
     scored = [c for c in checks if c["status"] != "skip"]
     worst = ("fail" if any(c["status"] == "fail" for c in scored) else
              "warn" if any(c["status"] == "warn" for c in scored) else "pass")
@@ -658,7 +711,10 @@ def snapshot(now: dt.datetime | None = None, runner=subprocess.run) -> dict:
         "positions": positions,
         "last_run": last_run,
         "runs": runs[-MAX_RUNS:], "runs_truncated": truncated,
-        "timeline_extras": timeline_extras(log, errors),
+        "timeline_extras": timeline_extras(log, errors) + [
+            {"time": dt.datetime.combine(now.date(), dt.datetime.strptime(m, "%H:%M").time(), ET).isoformat(),
+             "kind": "missed", "text": "No run in this 5-minute slot (PC asleep, task not fired, or Gateway down)"}
+            for m in (missed or [])],
         "orders": lifecycle["orders"], "intents": lifecycle["intents"][:200],
         "alerts": [l for l in log if l["level"] in ("WARNING", "ERROR", "CRITICAL")
                    or "ALERT" in l["msg"]][-100:],

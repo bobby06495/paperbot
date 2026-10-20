@@ -16,7 +16,9 @@
   const ET = 'America/New_York';
   const dataListeners = [];
   const tickListeners = [];
-  PB.data = null;
+  PB.data = null; // what the pages render: PB.raw as seen on the current ET day
+  PB.raw = null; // data/telemetry.js exactly as built
+  PB.viewDay = null; // ET date PB.data was prepared for
   PB.loadError = null;
 
   /* ------------------------------------------------------------ formatting */
@@ -190,7 +192,9 @@
         : risk.halted ? 'entries halted (daily loss limit)'
         : risk.orders_today >= (lim.max_orders_per_day || Infinity) ? 'entry cap reached for today'
           : npos >= (rk.max_concurrent_positions || Infinity) ? 'max concurrent positions reached' : null;
-      const scan = `scan ${d.scanner.size} ${d.scanner.source === 'watchlist' ? 'watchlist' : 'universe.txt'} symbols for entries`;
+      const scan = d.scanner.source === 'pending'
+        ? 'scan today’s watchlist for entries'
+        : `scan ${d.scanner.size} ${d.scanner.source === 'watchlist' ? 'watchlist' : 'universe.txt'} symbols for entries`;
       return `Fetch fills, ${manage}, then ${blocked ? `skip the scan: ${blocked}` : scan}.`;
     }
     if (phase === 'manage_only') return `Fetch fills, ${manage}. Entry window is closed.`;
@@ -217,6 +221,54 @@
     }
     return { status: s.status === 'IDLE' ? 'ACTIVE' : s.status, detail: s.detail };
   };
+
+  /* ------------------------------------------------------------ daily reset */
+
+  /** Health checks that describe the system rather than the day; kept on a new day. */
+  const LASTING_CHECKS = ['scheduler', 'interpreter', 'tests', 'stop_file'];
+
+  /**
+   * The data as it applies on ET day `iso`. Built on an earlier day (e.g. the page is
+   * open past midnight, or it is before the 09:30 run rebuilds it), every day-scoped
+   * figure starts empty; positions, scheduler and test results carry over.
+   */
+  PB.dayView = (raw, iso) => {
+    if (!raw || raw.day === iso) return raw;
+    const health = (raw.health || []).filter((c) => LASTING_CHECKS.includes(c.key));
+    health.push({ key: 'new_day', label: 'New trading day', status: 'info',
+      detail: `Today's checks run with the first pass at ${raw.model.times.open} ET` });
+    const scored = health.filter((c) => c.status !== 'skip' && c.status !== 'info');
+    const worst = scored.some((c) => c.status === 'fail') ? 'fail' : scored.some((c) => c.status === 'warn') ? 'warn' : 'pass';
+    const positions = raw.positions || [];
+    return {
+      ...raw,
+      day: iso,
+      fresh_day: { from: raw.day },
+      kpis: {
+        runs: { executed: 0, scheduled_runs: 0, bot_loops: 0, passes: 0, skipped: 0, failed: 0, by_hour: {} },
+        pnl: { daily: null, unrealized: null, realized: null, ledger_closed: 0, closed_trades: 0, win_rate: 0,
+          loss_limit: raw.kpis.pnl.loss_limit, as_of: null },
+        positions: { ...raw.kpis.positions, count: positions.length },
+        health: { status: worst, score: scored.length ? Math.round(100 * scored.filter((c) => c.status === 'pass').length / scored.length) : null },
+      },
+      health,
+      risk: { orders_today: 0, halted: false, halt_reason: '' },
+      last_run: null, runs: [], runs_truncated: 0, timeline_extras: [],
+      orders: [], intents: [], alerts: [],
+      scanner: { source: 'pending', generated: null, size: 0, rows: [] },
+      strategy: { ...raw.strategy, funnel: (raw.strategy.funnel || []).map((f) => ({ ...f, stopped: 0 })) },
+      performance: { total_trades: 0, wins: 0, losses: 0, win_rate_pct: 0, gross_pnl_usd: 0, profit_factor: 'n/a' },
+    };
+  };
+
+  /** Re-derive PB.data for the current ET day; returns true when it changed. */
+  function refreshView(force) {
+    const iso = PB.etDay(Date.now()).iso;
+    if (!PB.raw || (!force && iso === PB.viewDay)) return false;
+    PB.viewDay = iso;
+    PB.data = PB.dayView(PB.raw, iso);
+    return true;
+  }
 
   /* ------------------------------------------------------------ chrome */
 
@@ -275,11 +327,16 @@
     set('pb-age', `<span class="${stale ? 'text-amber-300' : ''}">data ${PB.dur(age)} old</span>`);
     const mode = d.heartbeat && d.heartbeat.mode;
     set('pb-sub', `Monitoring · IBKR paper${mode ? ` · ${PB.esc(mode)}` : ''}`);
-    set('pb-banner', stale
+    const fresh = d.fresh_day && !stale
+      ? `<div class="border-b border-sky-400/20 bg-sky-400/10"><div class="mx-auto max-w-7xl px-4 py-2 text-sm text-sky-200 sm:px-6">
+          New trading day (${PB.esc(d.day)}): today's figures start empty and fill in from the first run at ${PB.esc(d.model.times.open)} ET.
+          Open positions and scheduler status carry over; ${PB.esc(d.fresh_day.from)} stays in the Run log archive (logs/archive).</div></div>`
+      : '';
+    set('pb-banner', fresh || (stale
       ? `<div class="border-b border-amber-400/20 bg-amber-400/10"><div class="mx-auto max-w-7xl px-4 py-2 text-sm text-amber-200 sm:px-6">
           Dashboard data is ${PB.dur(age)} old during market hours: no pass has completed since ${PB.et(d.generated_at_ms)} ET.
           Check IB Gateway and the HT_Cycle task (System health below).</div></div>`
-      : '');
+      : ''));
   }
 
   /* ------------------------------------------------------------ shared widgets */
@@ -338,8 +395,9 @@
     script.src = `${DATA_URL}?t=${Date.now()}`;
     script.onload = () => {
       script.remove();
-      if (window.PAPERBOT && (!PB.data || window.PAPERBOT.generated_at_ms !== PB.data.generated_at_ms)) {
-        PB.data = window.PAPERBOT;
+      if (window.PAPERBOT && (!PB.raw || window.PAPERBOT.generated_at_ms !== PB.raw.generated_at_ms)) {
+        PB.raw = window.PAPERBOT;
+        refreshView(true);
         PB.loadError = null;
         dataListeners.forEach((fn) => safe(fn, PB.data));
         updateChrome();
@@ -352,7 +410,7 @@
       if (host && !PB.data) host.innerHTML = PB.panel('No data yet', PB.empty(PB.loadError));
       updateChrome();
     };
-    window.PAPERBOT = PB.data; // so a failed reload does not wipe the current data
+    window.PAPERBOT = PB.raw; // so a failed reload does not wipe the current data
     document.head.appendChild(script);
   }
 
@@ -366,6 +424,7 @@
     load();
     setInterval(load, POLL_MS);
     setInterval(() => {
+      if (refreshView(false)) dataListeners.forEach((fn) => safe(fn, PB.data)); // ET midnight
       updateChrome();
       if (PB.data) tickListeners.forEach((fn) => safe(fn, PB.data));
     }, 1000);
