@@ -29,20 +29,38 @@ def bar(start: dt.datetime, close: float, low: float | None = None):
               close=close, volume=1000)
 
 
-def trade(ref: str, order_id: int, qty: int, aux: float = 0.0, age_s: float = 0.0):
+def trade(ref: str, order_id: int, qty: int, aux: float = 0.0, age_s: float = 0.0,
+          oca: str = ""):
     sent = dt.datetime.now(UTC) - dt.timedelta(seconds=age_s)
-    return NS(order=NS(orderRef=ref, orderId=order_id, totalQuantity=qty, auxPrice=aux),
+    return NS(order=NS(orderRef=ref, orderId=order_id, totalQuantity=qty, auxPrice=aux,
+                       ocaGroup=oca),
               contract=NS(symbol="AAPL"), orderStatus=NS(filled=0),
               log=[NS(time=sent)], isDone=lambda: False)
 
 
 class FakeIB:
-    def __init__(self, shares: int, trades: list, close: float, now: dt.datetime):
+    def __init__(self, shares: int, trades: list, close: float, now: dt.datetime,
+                 quote: tuple | None = None, buying_power: float = 4_000_000.0):
         self._positions = ([NS(contract=NS(symbol="AAPL", secType="STK"), position=float(shares),
                                avgCost=100.0)] if shares else [])
         self._trades = trades
         start = now.replace(hour=9, minute=30, second=0, microsecond=0)
         self._bars = [bar(start + i * strategy.BAR, close) for i in range(6)]
+        # live top of book: (bid, ask), default one cent either side of the bar close
+        self.quote = quote if quote is not None else (close - 0.01, close + 0.01)
+        self.buying_power = buying_power
+        self.subscribed, self.cancelled = [], []
+
+    def reqMktData(self, contract, *args, **kwargs):
+        self.subscribed.append(contract.symbol)
+        bid, ask = self.quote
+        return NS(contract=contract, bid=bid, ask=ask, halted=0.0)
+
+    def cancelMktData(self, contract):
+        self.cancelled.append(contract.symbol)
+
+    def sleep(self, seconds):
+        pass
 
     def positions(self, account=None):
         return self._positions
@@ -57,7 +75,8 @@ class FakeIB:
         return self._bars
 
     def accountValues(self, account=None):
-        return []
+        return [NS(tag="NetLiquidation", currency="USD", value="1000000"),
+                NS(tag="BuyingPower", currency="USD", value=str(self.buying_power))]
 
 
 class StrategyTestBase(unittest.TestCase):
@@ -75,6 +94,8 @@ class StrategyTestBase(unittest.TestCase):
         strategy._orphans.clear()
         strategy._daily_cache.clear()
         strategy._rvol_cache.clear()
+        strategy._tickers.clear()
+        strategy._contracts.clear()
 
     def tearDown(self):
         for p in self.patches:
@@ -149,6 +170,173 @@ class DecideTest(StrategyTestBase):
         reqs = self.decide(FakeIB(9, [], 101.0, now), now)
         self.assertEqual(reqs, [StopUpdate("AAPL", 9, 95.0, "restore protective stop")])
 
+    def test_after_close_live_day_exit_gets_no_stop_next_to_it(self):
+        # the 16:00 race: a DAY exit not yet expired by IBKR covers the shares, so no stop
+        # is placed beside it (it could double-sell); bot.await_day_orders_done runs first
+        now = dt.datetime(2026, 10, 19, 16, 0, 5, tzinfo=ET)
+        self.own()
+        reqs = self.decide(FakeIB(9, [trade(REF_EXIT, 7, 9, age_s=300)], 101.0, now), now)
+        self.assertFalse(any(isinstance(r, StopUpdate) for r in reqs))
+
+
+class ForceCloseOcaTest(StrategyTestBase):
+    NOW = dt.datetime(2026, 10, 19, 15, 51, 2, tzinfo=ET)
+
+    def test_linked_stop_stays_and_sell_joins_its_oca_group(self):
+        self.own()
+        ib = FakeIB(9, [trade(REF_STOP, 5, 9, 95.0, oca="paperbot:AAPL:1")], 101.0, self.NOW,
+                    quote=(100.50, 100.60))
+        reqs = self.decide(ib, self.NOW)
+        self.assertFalse(any(isinstance(r, CancelRequest) for r in reqs))  # stop never cancelled
+        sell = reqs[-1]
+        self.assertEqual((sell.action, sell.quantity, sell.oca_group), ("SELL", 9, "paperbot:AAPL:1"))
+        self.assertEqual(sell.limit_price, round(100.50 * (1 - strategy.LIMIT_SLIPPAGE), 2))  # bid
+
+    def test_stale_exit_replaced_while_linked_stop_stays(self):
+        self.own()
+        trades = [trade(REF_STOP, 5, 9, 95.0, oca="g1"), trade(REF_EXIT, 7, 9, age_s=90)]
+        reqs = self.decide(FakeIB(9, trades, 101.0, self.NOW), self.NOW)
+        self.assertEqual([r.order_id for r in reqs if isinstance(r, CancelRequest)], [7])
+        self.assertEqual(reqs[-1].oca_group, "g1")
+
+    def test_no_quote_falls_back_to_bar_close_with_alert(self):
+        self.own()
+        ib = FakeIB(9, [trade(REF_STOP, 5, 9, 95.0, oca="g1")], 101.0, self.NOW, quote=(0.0, 0.0))
+        with mock.patch.object(strategy, "QUOTE_TIMEOUT", 0), \
+                self.assertLogs("paperbot", "ERROR") as logs:
+            reqs = self.decide(ib, self.NOW)
+        self.assertEqual(reqs[-1].limit_price, round(101.0 * (1 - strategy.LIMIT_SLIPPAGE), 2))
+        self.assertTrue(any("no live quote" in line for line in logs.output))
+
+
+class EntryWindowTest(StrategyTestBase):
+    TF = {"earliest_entry_et": "10:05", "latest_entry_et": "15:30"}
+
+    def test_window_is_inclusive_to_the_minute(self):
+        day = dt.datetime(2026, 10, 19, tzinfo=ET)
+        self.assertTrue(strategy._in_entry_window(day.replace(hour=15, minute=30, second=4), self.TF))
+        self.assertTrue(strategy._in_entry_window(day.replace(hour=15, minute=30, second=59), self.TF))
+        self.assertFalse(strategy._in_entry_window(day.replace(hour=15, minute=31), self.TF))
+        self.assertFalse(strategy._in_entry_window(day.replace(hour=10, minute=4, second=59), self.TF))
+
+    def test_entry_cutoff_is_end_of_last_minute(self):
+        now = dt.datetime(2026, 10, 19, 11, 0, tzinfo=ET)
+        self.assertEqual(strategy._entry_cutoff(now, self.TF), now.replace(hour=15, minute=31))
+
+    def test_sweep_cancels_unfilled_entries_after_cutoff(self):
+        entry = trade(strategy.REF_ENTRY, 3, 1)
+        at_cutoff = dt.datetime(2026, 10, 19, 15, 31, 0, tzinfo=ET)
+        reqs = self.decide(FakeIB(0, [entry], 101.0, at_cutoff), at_cutoff)
+        self.assertEqual(reqs, [CancelRequest(3, "AAPL", "entry window closed")])
+        before = at_cutoff.replace(minute=30, second=30)
+        self.assertEqual(self.decide(FakeIB(0, [entry], 101.0, before), before), [])
+
+
+class PartialRetryTest(StrategyTestBase):
+    NOW = dt.datetime(2026, 10, 19, 11, 0, tzinfo=ET)
+
+    def send_partial(self, ib):
+        reqs = self.decide(ib, self.NOW)
+        sell = reqs[-1]
+        self.assertEqual(sell.reason, "partial profit")
+        strategy.on_sent(sell)
+        return sell
+
+    def test_unfilled_partial_resets_and_retries(self):
+        self.own()
+        sell = self.send_partial(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, self.NOW))
+        self.assertEqual(sell.limit_price, round(103.99 * (1 - strategy.LIMIT_SLIPPAGE), 2))
+        st = strategy.load_state()["positions"]["AAPL"]
+        self.assertEqual((st["partial_pending"], st["partial_attempts"], st["partial_done"]),
+                         (9, 1, False))
+        # the order expired unfilled: still 9 shares, no exit working -> reset, no order this pass
+        reqs = self.decide(FakeIB(9, [trade(REF_STOP, 5, 6, 95.0)], 104.0, self.NOW), self.NOW)
+        self.assertFalse(any(isinstance(r, OrderIntent) for r in reqs))
+        self.assertIn(StopUpdate("AAPL", 9, 95.0, "sync protective stop"), reqs)
+        st = strategy.load_state()["positions"]["AAPL"]
+        self.assertNotIn("partial_pending", st)
+        self.assertFalse(st["partial_done"])
+        # next pass: target recalculated and the partial retried
+        self.send_partial(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, self.NOW))
+        self.assertEqual(strategy.load_state()["positions"]["AAPL"]["partial_attempts"], 2)
+
+    def test_working_partial_is_left_alone(self):
+        self.own()
+        self.send_partial(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, self.NOW))
+        working = [trade(REF_STOP, 5, 6, 95.0), trade(REF_EXIT, 7, 3, age_s=10)]
+        self.assertEqual(self.decide(FakeIB(9, working, 104.0, self.NOW), self.NOW), [])
+        self.assertEqual(strategy.load_state()["positions"]["AAPL"]["partial_pending"], 9)
+
+    def test_filled_partial_is_done(self):
+        self.own()
+        self.send_partial(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, self.NOW))
+        self.decide(FakeIB(6, [trade(REF_STOP, 5, 6, 95.0)], 104.0, self.NOW), self.NOW)
+        self.assertTrue(strategy.load_state()["positions"]["AAPL"]["partial_done"])
+
+    def test_gives_up_after_max_attempts(self):
+        self.own(partial_pending=9, partial_attempts=strategy.PARTIAL_MAX_ATTEMPTS)
+        self.decide(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, self.NOW), self.NOW)
+        self.assertTrue(strategy.load_state()["positions"]["AAPL"]["partial_done"])
+
+    def test_no_quote_defers_partial(self):
+        self.own()
+        ib = FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, self.NOW, quote=(0.0, 0.0))
+        with mock.patch.object(strategy, "QUOTE_TIMEOUT", 0):
+            reqs = self.decide(ib, self.NOW)
+        self.assertFalse(any(isinstance(r, OrderIntent) for r in reqs))
+
+
+class QuoteTest(StrategyTestBase):
+    def test_quotes_released_when_no_longer_needed(self):
+        now = dt.datetime(2026, 10, 19, 11, 0, tzinfo=ET)
+        ib = FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, now)
+        self.own()
+        self.decide(ib, now)  # partial profit quotes AAPL
+        self.assertEqual(ib.subscribed, ["AAPL"])
+        flat = FakeIB(0, [], 104.0, now)
+        self.decide(flat, now)
+        self.assertEqual(flat.cancelled, ["AAPL"])
+
+    def test_halted_or_crossed_quote_is_rejected(self):
+        now = dt.datetime(2026, 10, 19, 11, 0, tzinfo=ET)
+        with mock.patch.object(strategy, "QUOTE_TIMEOUT", 0):
+            for quote in ((101.0, 100.0), (float("nan"), 100.0)):
+                strategy._tickers.clear()
+                self.assertIsNone(strategy._quote(FakeIB(0, [], 1.0, now, quote=quote), "AAPL"))
+            ib = FakeIB(0, [], 1.0, now)
+            ib.reqMktData = lambda c, *a, **k: NS(contract=c, bid=100.0, ask=100.1, halted=1.0)
+            strategy._tickers.clear()
+            self.assertIsNone(strategy._quote(ib, "AAPL"))
+
+
+class SizingTest(StrategyTestBase):
+    SIGNAL = {"price": 100.0, "stop": 90.0, "gap": 4.0, "rvol": 3.0}
+    BIG = {"max_quantity_per_order": 10_000, "max_order_value": 1e9}
+
+    def size(self, buying_power=1e9, rules_extra=None, caps=None, good_till=None):
+        rules = json.loads(json.dumps(strategy.load_rules()))
+        rules["risk"].update(rules_extra or {})
+        with mock.patch.object(strategy, "_caps", caps or self.BIG):
+            return strategy._size_entry("AAPL", self.SIGNAL, rules, 1_000_000.0, buying_power,
+                                        100.0, good_till)
+
+    def test_priced_from_ask(self):
+        self.assertEqual(self.size().limit_price, round(100.0 * (1 + strategy.LIMIT_SLIPPAGE), 2))
+
+    def test_buying_power_caps_quantity(self):
+        self.assertEqual(self.size(buying_power=5_010.0).quantity, 50)
+        self.assertIsNone(self.size(buying_power=50.0))
+
+    def test_commission_drag_blocks_one_share_trade(self):
+        # 1 share: R about $10, round-trip commission $2 = 20% of R > 1%
+        one = {"max_quantity_per_order": 1, "max_order_value": 1e9}
+        self.assertIsNone(self.size(caps=one))
+        self.assertIsNotNone(self.size(caps=one, rules_extra={"max_commission_pct_of_risk": None}))
+
+    def test_entry_is_gtd_at_cutoff(self):
+        cutoff = dt.datetime(2026, 10, 19, 15, 31, tzinfo=ET)
+        self.assertEqual(self.size(good_till=cutoff).good_till, cutoff)
+
 
 MONDAY_11 = dt.datetime(2026, 10, 19, 11, 0, tzinfo=ET)
 
@@ -158,7 +346,7 @@ class FakeMarket(FakeIB):
     rising daily trend, 4% gap, new highs above premarket and prior day, RVOL 3."""
 
     def __init__(self, now=MONDAY_11, shares=0, gap_open=96.0):
-        super().__init__(shares, [], 0.0, now)
+        super().__init__(shares, [], 0.0, now, quote=(97.69, 97.71))
         today = now.date()
         self.daily = [NS(date=today - dt.timedelta(days=210 - i), close=50 + i * 0.2,
                          high=51 + i * 0.2, low=49 + i * 0.2, open=50 + i * 0.2)

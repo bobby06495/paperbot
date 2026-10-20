@@ -718,7 +718,7 @@ def snapshot(now: dt.datetime | None = None, runner=subprocess.run) -> dict:
         "orders": lifecycle["orders"], "intents": lifecycle["intents"][:200],
         "alerts": [l for l in log if l["level"] in ("WARNING", "ERROR", "CRITICAL")
                    or "ALERT" in l["msg"]][-100:],
-        "strategy": {"rules": rules, "limits": config.get("limits", {}), "risk": rules.get("risk", {}),
+        "strategy": {"rules": rules, "limits": limits, "risk": rules.get("risk", {}),
                      "time_in_force": config.get("time_in_force"),
                      "steps": [{"key": k, "label": l} for k, l in tm.STEPS],
                      "funnel": funnel(scanner),

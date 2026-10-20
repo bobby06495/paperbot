@@ -8,11 +8,6 @@
   "fx_fallback": "auto",
   "limits": {
     "allowed_symbols": ["*"],
-    "max_quantity_per_order": 1,
-    "max_order_value": 2500.0,
-    "max_orders_per_day": 5,
-    "max_open_orders": 2,
-    "max_daily_loss": 1000.0,
     "limit_orders_only": true
   }
 }

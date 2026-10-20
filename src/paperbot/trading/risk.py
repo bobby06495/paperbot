@@ -8,17 +8,27 @@ The strategy returns three kinds of requests, all defined in this module:
   CancelRequest  cancel one of the bot's own working orders
 
 RiskGuard.check() approves OrderIntents and RiskGuard.check_stop() approves
-StopUpdates. Entry limits (symbols, size, order counts, daily-loss halt and
-the rules.json risk section) apply only to BUYs. Exits and stops only have to
-be valid and no larger than the shares held, so they are never blocked by
-entry limits or a halt, and can never turn a long position into a short.
+StopUpdates. Entry limits (symbols, size, order counts, daily-loss halt,
+drawdown breaker, buying power, commission drag and the rules.json risk
+section) apply only to BUYs. Exits and stops only have to be valid and no
+larger than the shares held, so they are never blocked by entry limits or a
+halt, and can never turn a long position into a short.
+
+Limits come from two files (load_limits): the safety rails allowed_symbols and
+limit_orders_only from config.json "limits", every quantitative threshold from
+the "risk" section of rules.json. Both are type-checked at startup and a
+missing, invalid or misplaced key stops the bot (fail closed).
 
 Daily counters live in logs/state.json, written atomically and read fail
-closed (see runstate.py), and roll over at midnight US Eastern Time. This
-module never connects to IBKR.
+closed (see runstate.py), and roll over at midnight US Eastern Time. The
+multi-day drawdown breaker (DrawdownBreaker) keeps its own file,
+logs/drawdown_state.json, read fail closed too; once tripped it blocks
+entries until reset by hand (paperbot-bot --reset-drawdown). This module
+never connects to IBKR.
 """
 import datetime as dt
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -40,20 +50,46 @@ def today_et(now: dt.datetime | None = None) -> dt.date:
 # orderRef tags, so the bot only ever manages its own orders
 REF_ENTRY, REF_STOP, REF_EXIT = "paperbot:entry", "paperbot:stop", "paperbot:exit"
 
+# IBKR Fixed pricing for US stocks, per order: $0.005/share, min $1.00, max 1% of value
+COMMISSION_PER_SHARE, COMMISSION_MIN, COMMISSION_MAX_PCT = 0.005, 1.00, 1.0
+
+
+def round_trip_commission(quantity: int, price: float) -> float:
+    """Estimated commission to buy and later sell `quantity` shares at `price`."""
+    per_side = max(COMMISSION_MIN, COMMISSION_PER_SHARE * quantity)
+    return 2 * min(per_side, quantity * price * COMMISSION_MAX_PCT / 100)
+
+
+def commission_drag(quantity: int, limit: float, stop: float, max_pct: float | None) -> str | None:
+    """Why the commission is too large a share of the trade's risk R, or None if it is fine.
+    R = quantity x (limit - stop), the dollars lost if the protective stop fills."""
+    if max_pct is None:
+        return None
+    risk = quantity * (limit - stop)
+    fees = round_trip_commission(quantity, limit)
+    if risk <= 0 or fees > risk * max_pct / 100:
+        return (f"commission {fees:.2f} > {max_pct:g}% of trade risk R {max(risk, 0):.2f} "
+                f"({quantity} shares)")
+    return None
+
 
 @dataclass
 class Limits:
+    # Safety rails from config.json "limits".
     allowed_symbols: list[str]  # ["*"] = any symbol
+    # Required thresholds from the "risk" section of rules.json.
     max_quantity_per_order: int
     max_order_value: float
     max_orders_per_day: int  # entries (BUYs) sent per day
     max_open_orders: int  # working entry/exit orders; protective stops not counted
     max_daily_loss: float
-    limit_orders_only: bool = True  # applies to entries/exits; protective stops are STP
-    # From the "risk" section of rules.json; None = not enforced.
+    limit_orders_only: bool = True  # config.json; entries/exits only, protective stops are STP
+    # Optional, from the "risk" section of rules.json; None = not enforced.
     max_risk_per_trade_pct: float | None = None
     max_position_size_pct_of_portfolio: float | None = None
     max_concurrent_positions: int | None = None
+    max_commission_pct_of_risk: float | None = None  # round-trip fees vs. R
+    max_drawdown_usd: float | None = None  # multi-day breaker (DrawdownBreaker)
 
     def allows_symbol(self, symbol: str) -> bool:
         allowed = {s.upper() for s in self.allowed_symbols}
@@ -69,6 +105,8 @@ class OrderIntent:
     reason: str = ""
     stop_price: float | None = None  # BUY: protective stop sent with the entry
     closing: bool = False  # True = SELL that reduces an existing long position
+    good_till: dt.datetime | None = None  # BUY: IBKR expires it then (GTD) if still unfilled
+    oca_group: str | None = None  # SELL: joins the protective stop's OCA group at IBKR
 
 
 @dataclass
@@ -94,17 +132,98 @@ class AccountState:
     net_liquidation: float | None
     long_positions: dict[str, float] = field(default_factory=dict)  # SYMBOL -> shares
     open_buy_symbols: set[str] = field(default_factory=set)  # symbols with a working BUY
+    buying_power: float | None = None  # USD; None = unknown, which blocks entries
 
     def concurrent_positions(self) -> int:
         return len(set(self.long_positions) | self.open_buy_symbols)
 
 
+class ConfigError(ValueError):
+    """config.json / rules.json limits are missing, misplaced or invalid."""
+
+
+# Where each limit lives, and its type. config.json "limits" holds only the safety
+# rails; every quantitative threshold lives in the "risk" section of rules.json.
+CONFIG_LIMITS = {"allowed_symbols": list, "limit_orders_only": bool}
+RULES_REQUIRED = {"max_quantity_per_order": int, "max_order_value": float,
+                  "max_orders_per_day": int, "max_open_orders": int, "max_daily_loss": float}
+RULES_OPTIONAL = {"max_risk_per_trade_pct": float, "max_position_size_pct_of_portfolio": float,
+                  "max_concurrent_positions": int, "max_commission_pct_of_risk": float,
+                  "max_drawdown_usd": float}
+
+
+def _cast(where: str, key: str, value, kind):
+    """value as `kind`, or ConfigError. JSON booleans are never accepted as numbers,
+    numeric strings are never accepted at all, and every threshold must be > 0."""
+    if kind is list:
+        if not (isinstance(value, list) and value
+                and all(isinstance(s, str) and s.strip() for s in value)):
+            raise ConfigError(f"{where} {key} must be a non-empty list of symbols, got {value!r}")
+        return [s.strip() for s in value]
+    if kind is bool:
+        if not isinstance(value, bool):
+            raise ConfigError(f"{where} {key} must be true or false, got {value!r}")
+        return value
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigError(f"{where} {key} must be a number, got {value!r}")
+    if kind is int and value != int(value):
+        raise ConfigError(f"{where} {key} must be a whole number, got {value!r}")
+    if value <= 0:
+        raise ConfigError(f"{where} {key} must be greater than 0, got {value!r}")
+    return kind(value)
+
+
 def load_limits(config: dict, rules_path: Path) -> Limits:
-    """Limits from config.json, plus the "risk" section of rules.json if present."""
-    risk = {}
-    if rules_path.exists():
-        risk = json.loads(rules_path.read_text()).get("risk", {})
-    return Limits(**{**config["limits"], **risk})  # rules.json wins on overlap
+    """Limits from the safety rails in config.json "limits" (CONFIG_LIMITS) and the
+    thresholds in the "risk" section of rules.json (RULES_REQUIRED, RULES_OPTIONAL).
+
+    Fails closed with ConfigError: a missing required key, a wrong type, a value
+    <= 0, an unknown key, or a threshold still in config.json (one source per cap,
+    so a stale config.json can never silently override rules.json). There are no
+    defaults for the caps; only limit_orders_only defaults to true. Optional
+    rules.json keys may be null (not enforced).
+    """
+    cfg_limits = config.get("limits")
+    if not isinstance(cfg_limits, dict):
+        raise ConfigError('config.json needs a "limits" object with allowed_symbols')
+    misplaced = sorted(k for k in cfg_limits if k in RULES_REQUIRED or k in RULES_OPTIONAL)
+    if misplaced:
+        raise ConfigError(f"config.json limits still contains {misplaced}; these now live in the "
+                          f'"risk" section of {rules_path.name}. Move them there and restart.')
+    unknown = sorted(set(cfg_limits) - set(CONFIG_LIMITS))
+    if unknown:
+        raise ConfigError(f"config.json limits has unknown keys {unknown}")
+    try:
+        risk = json.loads(rules_path.read_text()).get("risk")
+    except (OSError, ValueError) as e:
+        raise ConfigError(f"cannot read {rules_path.name}: {e}") from None
+    if not isinstance(risk, dict):
+        raise ConfigError(f'{rules_path.name} needs a "risk" object')
+    unknown = sorted(set(risk) - set(RULES_REQUIRED) - set(RULES_OPTIONAL))
+    if unknown:
+        raise ConfigError(f"{rules_path.name} risk has unknown keys {unknown}")
+    missing = sorted(k for k in RULES_REQUIRED if k not in risk)
+    if missing:
+        raise ConfigError(f"{rules_path.name} risk is missing {missing}")
+    if "allowed_symbols" not in cfg_limits:
+        raise ConfigError("config.json limits is missing allowed_symbols")
+
+    values = {k: _cast("config.json limits", k, v, CONFIG_LIMITS[k]) for k, v in cfg_limits.items()}
+    values.update({k: _cast(f"{rules_path.name} risk", k, risk[k], kind)
+                   for k, kind in RULES_REQUIRED.items()})
+    values.update({k: None if risk[k] is None else _cast(f"{rules_path.name} risk", k, risk[k], kind)
+                   for k, kind in RULES_OPTIONAL.items() if k in risk})
+    return Limits(**values)
+
+
+def require_limits(config: dict, rules_path: Path) -> Limits:
+    """load_limits() for a process that is starting: a ConfigError is logged as an
+    ALERT (pushed by notify.py) and stops the process before it connects or trades."""
+    try:
+        return load_limits(config, rules_path)
+    except ConfigError as e:
+        logging.getLogger("paperbot").error("ALERT refusing to start: %s", e)
+        raise SystemExit(f"Refusing to start: {e}") from None
 
 
 def verify_paper(port: int, accounts: list[str]) -> str:
@@ -116,19 +235,86 @@ def verify_paper(port: int, accounts: list[str]) -> str:
     return accounts[0]
 
 
+class DrawdownBreaker:
+    """Multi-day circuit breaker on the cumulative daily P&L.
+
+    Every update stores today's IBKR daily P&L under today's ET date, so the
+    last value of each day is kept. The cumulative sum of all days is the
+    equity curve; when it falls max_drawdown_usd or more below its peak the
+    breaker trips and stays tripped across days and restarts until reset()
+    (paperbot-bot --reset-drawdown). Daily P&L is used instead of net
+    liquidation so FX moves of a non-USD account and deposits cannot trip or
+    hide it. The file is written atomically and read fail closed.
+    """
+
+    def __init__(self, path: Path, max_drawdown_usd: float, today=today_et):
+        self.path = path
+        self.max_drawdown = abs(max_drawdown_usd)
+        self._today = today
+        state = read_json_state(path)
+        if state is None:
+            state = {"days": {}, "peak": 0.0, "tripped": False, "reason": ""}
+        elif (not isinstance(state.get("days"), dict) or not isinstance(state.get("tripped"), bool)
+              or not isinstance(state.get("peak"), (int, float))):
+            raise StateCorrupt(path, "days/peak/tripped missing or invalid")
+        self.state = state
+
+    @property
+    def tripped(self) -> bool:
+        return self.state["tripped"]
+
+    @property
+    def reason(self) -> str:
+        return self.state.get("reason", "")
+
+    def cumulative(self) -> float:
+        return sum(float(v) for v in self.state["days"].values())
+
+    def update(self, daily_pnl: float | None) -> bool:
+        """Record today's P&L; returns True if this update tripped the breaker."""
+        if daily_pnl is None:
+            return False
+        day = self._today().isoformat()
+        if self.state["days"].get(day) == daily_pnl:
+            return False  # nothing changed: no write
+        self.state["days"][day] = daily_pnl
+        cum = self.cumulative()
+        self.state["peak"] = max(float(self.state["peak"]), cum)
+        drawdown = self.state["peak"] - cum
+        newly = False
+        if not self.state["tripped"] and drawdown >= self.max_drawdown:
+            self.state["tripped"], newly = True, True
+            self.state["reason"] = (f"drawdown {drawdown:.2f} from peak cumulative P&L "
+                                    f"{self.state['peak']:.2f} reached limit {self.max_drawdown:.2f}")
+            self.state["tripped_at"] = dt.datetime.now(ET).isoformat(timespec="seconds")
+        write_json_atomic(self.path, self.state)
+        return newly
+
+    def reset(self):
+        """Re-arm after a trip: the current cumulative P&L becomes the new peak."""
+        self.state.update({"tripped": False, "reason": "", "peak": self.cumulative()})
+        self.state.pop("tripped_at", None)
+        write_json_atomic(self.path, self.state)
+
+
 class RiskGuard:
-    """Daily order count, daily-loss halt and per-order checks.
+    """Daily order count, daily-loss halt, drawdown breaker and per-order checks.
 
     The state file is loaded fail closed: a corrupt file raises StateCorrupt
     instead of resetting today's count or halt. "Today" is the ET date.
+    The drawdown breaker is active when limits.max_drawdown_usd is set and a
+    drawdown_path is given.
     """
     STATE_KEYS = {"date": str, "orders_today": int, "halted": bool, "halt_reason": str}
 
-    def __init__(self, limits: Limits, state_path: Path, today=today_et):
+    def __init__(self, limits: Limits, state_path: Path, today=today_et,
+                 drawdown_path: Path | None = None):
         self.limits = limits
         self.state_path = state_path
         self._today = today
         self.state = self._load()
+        self.breaker = (DrawdownBreaker(drawdown_path, limits.max_drawdown_usd, today)
+                        if drawdown_path is not None and limits.max_drawdown_usd else None)
 
     def _load(self) -> dict:
         today = self._today().isoformat()
@@ -151,8 +337,15 @@ class RiskGuard:
 
     @property
     def halted(self) -> bool:
+        """True while entries are stopped: today's loss halt or a tripped drawdown breaker."""
         self._roll_day()
-        return self.state["halted"]
+        return self.state["halted"] or bool(self.breaker and self.breaker.tripped)
+
+    @property
+    def halt_reason(self) -> str:
+        if self.state["halted"]:
+            return self.state["halt_reason"]
+        return self.breaker.reason if self.breaker and self.breaker.tripped else ""
 
     def halt(self, reason: str):
         self.state["halted"] = True
@@ -160,9 +353,12 @@ class RiskGuard:
         self._save()
 
     def update_daily_pnl(self, daily_pnl: float | None):
-        """Halt for the rest of the day once the daily loss limit is reached."""
+        """Halt for the rest of the day once the daily loss limit is reached, and feed
+        the multi-day drawdown breaker."""
+        if self.breaker is not None:
+            self.breaker.update(daily_pnl)
         if daily_pnl is not None and daily_pnl <= -abs(self.limits.max_daily_loss):
-            if not self.halted:
+            if not self.state["halted"]:
                 self.halt(f"daily loss {daily_pnl:.2f} reached limit "
                           f"-{abs(self.limits.max_daily_loss):.2f}")
 
@@ -199,8 +395,13 @@ class RiskGuard:
             problems.append("opening SELL would go short (long only); mark exits closing=True")
         if intent.action == "BUY" and not _valid_stop(intent):
             problems.append("BUY needs a protective stop_price above 0 and below the limit price")
+        if intent.good_till is not None and dt.datetime.now(ET) >= intent.good_till:
+            problems.append(f"entry window closed (good till {intent.good_till:%H:%M:%S} ET)")
         if self.state["halted"]:
             problems.append(f"trading halted today: {self.state['halt_reason']}")
+        if self.breaker is not None and self.breaker.tripped:
+            problems.append(f"drawdown breaker tripped: {self.breaker.reason} "
+                            "(reset with paperbot-bot --reset-drawdown)")
         if daily_pnl is None:
             problems.append("daily P&L unavailable, cannot check loss limit")
         if not lim.allows_symbol(intent.symbol):
@@ -219,6 +420,7 @@ class RiskGuard:
             problems.append(f"{open_orders} open orders (max {lim.max_open_orders})")
         if intent.action == "BUY":
             problems += self._check_rules_risk(intent, account)
+            problems += self._check_costs(intent, account)
         return problems
 
     def check_stop(self, update: StopUpdate, account: AccountState | None) -> list[str]:
@@ -266,6 +468,24 @@ class RiskGuard:
             if is_new and count >= lim.max_concurrent_positions:
                 problems.append(f"{count} positions/entries open "
                                 f"(max {lim.max_concurrent_positions})")
+        return problems
+
+    def _check_costs(self, intent: OrderIntent, account: AccountState | None) -> list[str]:
+        """Buying power (when the account is known) and commission drag, for a BUY."""
+        problems = []
+        priced = (intent.limit_price is not None and intent.limit_price > 0
+                  and isinstance(intent.quantity, int) and intent.quantity > 0)
+        if account is not None and priced:
+            value = intent.quantity * intent.limit_price
+            if account.buying_power is None:
+                problems.append("buying power unavailable, cannot check margin")
+            elif value > account.buying_power:
+                problems.append(f"order value {value:.2f} > buying power {account.buying_power:.2f}")
+        if priced and _valid_stop(intent):
+            drag = commission_drag(intent.quantity, intent.limit_price, intent.stop_price,
+                                   self.limits.max_commission_pct_of_risk)
+            if drag:
+                problems.append(drag)
         return problems
 
     def record_order(self):
