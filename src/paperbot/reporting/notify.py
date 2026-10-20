@@ -115,6 +115,13 @@ def _deliver(title: str, body: str, priority: str):
         _log_error(traceback.format_exc())
 
 
+def live_title(title: str) -> str:
+    """Every push from a live-mode bot starts with [LIVE], so it can never be mistaken
+    for paper trading."""
+    from paperbot import paths
+    return f"[LIVE] {title}" if paths.MODE == "live" else title
+
+
 def notify(title: str, body: str, priority: str = "default") -> None:
     """Send a push notification in the background. Never raises, never blocks."""
     try:
@@ -122,7 +129,7 @@ def notify(title: str, body: str, priority: str = "default") -> None:
             return
         if not ((TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID) or NOTIFY_URL):
             return
-        args = (str(title)[:200], str(body)[:MAX_BODY], str(priority))
+        args = (live_title(str(title))[:200], str(body)[:MAX_BODY], str(priority))
         threading.Thread(target=_deliver, args=args, name="notify", daemon=False).start()
     except Exception:  # noqa: BLE001
         _log_error(traceback.format_exc())

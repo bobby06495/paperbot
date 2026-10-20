@@ -17,7 +17,10 @@ import pandas as pd
 
 from paperbot.market import morning_prefilter as mp
 from paperbot.market import sp500_tickers
-from paperbot.trading import strategy
+from types import SimpleNamespace
+
+from paperbot.core import common
+from paperbot.strategies import rule_strategy as strategy
 
 ET = mp.ET
 TODAY = dt.date(2026, 10, 19)
@@ -97,11 +100,12 @@ class WatchlistMergeTest(unittest.TestCase):
         self.watchlist = Path(self.tmp.name) / "watchlist.txt"
         self.universe = Path(self.tmp.name) / "universe.txt"
         self.universe.write_text("AAPL\nMSFT\n")
-        self.patches = [mock.patch.object(strategy, "WATCHLIST_FILE", self.watchlist),
-                        mock.patch.object(strategy, "UNIVERSE_FILE", self.universe)]
+        self.patches = [mock.patch.object(strategy, "WATCHLIST_FILE", self.watchlist)]
         for p in self.patches:
             p.start()
-        strategy._warned.clear()
+        common._warned.clear()
+        self.profile = SimpleNamespace(universe={"source": "watchlist", "index": "S&P 500",
+                                                 "fallback_file": str(self.universe)})
 
     def tearDown(self):
         for p in self.patches:
@@ -123,13 +127,12 @@ class WatchlistMergeTest(unittest.TestCase):
 
     def test_bot_scans_todays_watchlist(self):
         self.write()
-        self.assertEqual(strategy._universe({}, TODAY), ["BRK B"])
+        self.assertEqual(strategy._universe(self.profile, TODAY), ["BRK B"])
 
     def test_stale_or_missing_watchlist_falls_back_to_universe(self):
-        rules = {"universe_filters": {"index": "S&P 500"}}
-        self.assertEqual(strategy._universe(rules, TODAY), ["AAPL", "MSFT"])
+        self.assertEqual(strategy._universe(self.profile, TODAY), ["AAPL", "MSFT"])
         self.write(now=NOW - dt.timedelta(days=1))
-        self.assertEqual(strategy._universe(rules, TODAY), ["AAPL", "MSFT"])
+        self.assertEqual(strategy._universe(self.profile, TODAY), ["AAPL", "MSFT"])
 
 
 if __name__ == "__main__":

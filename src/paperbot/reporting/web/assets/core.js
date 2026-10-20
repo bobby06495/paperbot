@@ -169,8 +169,10 @@
       (s.prefilter || []).forEach((p, i) => out.push({ at: p, label: `Prefilter #${i + 1}`, sub: 'rebuilds today’s watchlist', tone: 'amber', day }));
       out.push({ at: s.entry_start, label: 'Entry window opens', sub: `${tm.entry_start} ET · scans begin`, tone: 'green', day });
       out.push({ at: s.entry_end, label: 'Entry window closes', sub: `${tm.entry_end} ET · no new entries`, tone: 'amber', day });
-      out.push({ at: s.force_close, label: 'Force close begins', sub: d.scheduler.mode === 'continuous' ? 'flatten every position' : 'acts at the next 5-min run', tone: 'violet', day });
-      out.push({ at: s.alert, label: 'Still-open alert', sub: '15:58 ET check', tone: 'red', day });
+      if (!d.model.holds_overnight) {
+        out.push({ at: s.force_close, label: 'Force close begins', sub: d.scheduler.mode === 'continuous' ? 'flatten every position' : 'acts at the next 5-min run', tone: 'violet', day });
+        out.push({ at: s.alert, label: 'Still-open alert', sub: '15:58 ET check', tone: 'red', day });
+      }
       out.push({ at: s.close, label: 'Market close', sub: 'DAY orders expire', tone: 'slate', day });
       out.push({ at: s.summary, label: 'Daily summary', sub: 'HT_Dashboard push', tone: 'slate', day });
     }
@@ -326,7 +328,8 @@
     const stale = age > (d.model.stale_minutes || 10) * 60000 && !['closed', 'pre_open'].includes(PB.phaseAt(now, d));
     set('pb-age', `<span class="${stale ? 'text-amber-300' : ''}">data ${PB.dur(age)} old</span>`);
     const mode = d.heartbeat && d.heartbeat.mode;
-    set('pb-sub', `Monitoring · IBKR paper${mode ? ` · ${PB.esc(mode)}` : ''}`);
+    const account = d.trading_mode === 'live' ? '<span class="font-semibold text-rose-300">LIVE</span>' : 'paper';
+    set('pb-sub', `Monitoring · IBKR ${account}${mode ? ` · ${PB.esc(mode)}` : ''}`);
     const fresh = d.fresh_day && !stale
       ? `<div class="border-b border-sky-400/20 bg-sky-400/10"><div class="mx-auto max-w-7xl px-4 py-2 text-sm text-sky-200 sm:px-6">
           New trading day (${PB.esc(d.day)}): today's figures start empty and fill in from the first run at ${PB.esc(d.model.times.open)} ET.

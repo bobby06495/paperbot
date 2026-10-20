@@ -1,8 +1,8 @@
 """One-pass launcher for Windows Task Scheduler (alternative to a long-running bot.py).
 
-    python -m paperbot.runtime.cycle               one dry-run pass (sends nothing)
-    python -m paperbot.runtime.cycle --submit      one real pass on the IB Gateway PAPER account
-    python -m paperbot.runtime.cycle --print-task  print a schtasks command (installs nothing)
+    python -m paperbot.core.scheduled_pass               one dry-run pass (sends nothing)
+    python -m paperbot.core.scheduled_pass --submit      one real pass on the IB Gateway PAPER account
+    python -m paperbot.core.scheduled_pass --print-task  print a schtasks command (installs nothing)
 (`paperbot-cycle` is the same command.) For the full schedule use paperbot-schedule.
 
 Schedule it every 5 minutes, around the clock. Each run:
@@ -71,32 +71,48 @@ TASK_NAME = "paperbot cycle"
 
 # ---------------------------------------------------------------- time gate (stdlib only)
 
-def force_close_at() -> dt.time:
+def _active_section() -> dict:
+    """The active strategy's rules.json section, read with the standard library only
+    (the saved choice in logs/active_strategy.json, else default_strategy)."""
+    rules = json.loads(paths.RULES_FILE.read_text())
     try:
-        text = json.loads(paths.RULES_FILE.read_text())["time_filter"]["force_close_et"]
+        key = json.loads((paths.LOGS_DIR / "active_strategy.json").read_text())["strategy"]
+    except (OSError, ValueError, KeyError, TypeError):
+        key = rules.get("default_strategy")
+    return rules["strategies"][key]
+
+
+def force_close_at() -> dt.time | None:
+    """The active strategy's force_close_et; None for a strategy that holds overnight."""
+    try:
+        text = _active_section()["time_filter"]["force_close_et"]
+        if text is None:
+            return None
         hour, minute = map(int, text.split(":"))
         return dt.time(hour, minute)
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return dt.time(15, 51)
 
 
-def time_gate(now: dt.datetime, force_close: dt.time) -> str:
+def time_gate(now: dt.datetime, force_close: dt.time | None) -> str:
     """'weekend', 'closed', 'force_close', 'post_close' or 'run' for an ET datetime."""
     if now.weekday() >= 5:
         return "weekend"
     t = now.time()
     if t < SESSION_START or t >= RUN_UNTIL:
         return "closed"
-    if force_close <= t < SESSION_END:
+    if force_close is not None and force_close <= t < SESSION_END:
         return "force_close"
     if t >= SESSION_END:
         return "post_close"
     return "run"
 
 
-def seconds_to_force_close(now: dt.datetime, force_close: dt.time) -> float:
+def seconds_to_force_close(now: dt.datetime, force_close: dt.time | None) -> float:
     """Seconds until force_close_et if the next scheduled run would start after it
-    (so this run must start the force close itself), else 0."""
+    (so this run must start the force close itself), else 0 (also with no force close)."""
+    if force_close is None:
+        return 0.0
     target = now.replace(hour=force_close.hour, minute=force_close.minute, second=0,
                          microsecond=0)
     seconds = (target - now).total_seconds()
@@ -159,11 +175,11 @@ def save_orphans(orphans: dict[str, int], now: dt.datetime):
 
 def connect_with_retry(ib, cfg: dict, log):
     """bot.connect, retried once after RETRY_DELAY_SECONDS; SystemExit(1) if both fail."""
-    from paperbot.trading import bot
+    from paperbot.core import engine as bot
     from ib_async import StartupFetch, StartupFetchALL
     for attempt in (1, 2):
         try:
-            bot.connect(ib, cfg, cfg["client_id"],
+            bot.connect(ib, cfg, None,
                         fetchFields=StartupFetchALL & ~StartupFetch.EXECUTIONS)
             return
         except SystemExit:
@@ -176,9 +192,9 @@ def connect_with_retry(ib, cfg: dict, log):
 
 def one_pass(ib, guard, cfg: dict, account: str, pnl, submit: bool) -> int:
     """The body of bot.py's loop, once. Returns the number of requests handled."""
-    from paperbot.trading import bot
-    from paperbot.trading import strategy
-    from paperbot.trading.account import daily_pnl
+    from paperbot.core import engine as bot
+    from paperbot.strategies import rule_strategy as strategy
+    from paperbot.core.account import daily_pnl
     daily = daily_pnl(ib, account, pnl)  # 0.0 when provably flat today; None blocks entries
     was_halted = guard.halted
     guard.update_daily_pnl(daily)
@@ -212,7 +228,7 @@ def sleep_until(ib, deadline: float) -> bool:
 
 
 def holds_bot_positions(ib, account: str) -> bool:
-    from paperbot.trading import strategy
+    from paperbot.strategies import rule_strategy as strategy
     owned = set(strategy.load_state()["positions"])
     return any(p.contract.symbol.upper() in owned and p.position > 0
                for p in ib.positions(account))
@@ -220,11 +236,14 @@ def holds_bot_positions(ib, account: str) -> bool:
 
 def run(gate: str, submit: bool) -> int:
     """Everything after the time gate. Heavy imports happen here, not at module load."""
-    from paperbot.trading import bot
+    from paperbot.core import engine as bot
+    from paperbot.core import orders, selector
+    from paperbot.core import profile as profiles
     from paperbot.runtime import runstate
-    from paperbot.trading import strategy
+    from paperbot.strategies import rule_strategy as strategy
     from ib_async import IB
-    from paperbot.trading.risk import RiskGuard, require_limits, verify_paper
+    from paperbot.core import broker
+    from paperbot.core.risk import RiskGuard
 
     if not bot.log.handlers:
         bot.setup_logging()
@@ -238,14 +257,25 @@ def run(gate: str, submit: bool) -> int:
         return 0
 
     cfg = json.loads(paths.CONFIG_FILE.read_text())
-    guard = RiskGuard(require_limits(cfg, bot.RULES), bot.RISK_STATE,
+    try:  # the saved strategy choice, validated before connecting
+        profile = profiles.load(selector.unattended_key())
+    except profiles.ConfigError as e:
+        log.error("ALERT refusing to start: %s", e)
+        raise SystemExit(f"Refusing to start: {e}") from None
+    if "scheduled" not in profile.modes:
+        log.error("ALERT %s runs in continuous mode only (paper-bot start); scheduled run "
+                  "refused", profile.label)
+        raise SystemExit(f"{profile.key} does not support scheduled runs")
+    strategy.configure(profile)
+    guard = RiskGuard(profile.limits, bot.RISK_STATE,
                       drawdown_path=bot.DRAWDOWN_STATE)  # fails closed
     strategy.load_state()  # fails closed before connecting
+    bot.preflight(bot.connection_settings(cfg), profile, guard, cfg)
     runstate.claim_pid()
     ib = IB()
     try:
         connect_with_retry(ib, cfg, log)
-        account = verify_paper(cfg["port"], ib.managedAccounts())
+        account = broker.verify_account(bot.connection_settings(cfg), ib.managedAccounts())
         log.info("cycle start (%s, %s) on paper account %s", gate,
                  "SUBMIT" if submit else "DRY RUN", account)
         pnl = ib.reqPnL(account)
@@ -263,8 +293,8 @@ def run(gate: str, submit: bool) -> int:
             price=fill.execution.price)
 
         strategy.SCAN_BUDGET_SECONDS = SCAN_BUDGET_SECONDS
-        strategy._orphans.clear()
-        strategy._orphans.update(load_orphans(dt.datetime.now(ET)))
+        orders._orphans.clear()
+        orders._orphans.update(load_orphans(dt.datetime.now(ET)))
 
         if gate == "post_close":
             bot.await_day_orders_done(ib, submit)  # ALERTs itself if not confirmed
@@ -290,13 +320,14 @@ def run(gate: str, submit: bool) -> int:
             bot.await_day_orders_done(ib, submit)
             handled += one_pass(ib, guard, cfg, account, pnl, submit)
 
-        save_orphans(dict(strategy._orphans), dt.datetime.now(ET))
+        save_orphans(dict(orders._orphans), dt.datetime.now(ET))
         if handled:
             ib.sleep(2)  # let IBKR acknowledge the last orders before disconnecting
         log.info("cycle done: %s request(s)", handled)
         return 0
     finally:
         ib.disconnect()
+        bot.wait_for_dashboard()  # the last dashboard rebuild finishes before exit
         runstate.release_pid()
 
 

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "paperbot"
 version = "1.0.0"
-description = "Interactive Brokers paper-trading bot (Trend Join Long) with broker-held stops"
+description = "Interactive Brokers trading bot: rules.json strategies, broker-held stops, paper or live"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Proprietary" }
@@ -21,8 +21,10 @@ dependencies = [
 ]
 
 [project.scripts]
-paperbot-bot = "paperbot.trading.bot:main"
-paperbot-cycle = "paperbot.runtime.cycle:main"
+paper-bot = "paperbot.cli:main"
+paperbot = "paperbot.cli:main"
+paperbot-bot = "paperbot.core.engine:main"
+paperbot-cycle = "paperbot.core.scheduled_pass:main"
 paperbot-stop = "paperbot.runtime.stopbot:main"
 paperbot-kill = "paperbot.runtime.kill_switch:main"
 paperbot-prefilter = "paperbot.market.morning_prefilter:main"

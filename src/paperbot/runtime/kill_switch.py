@@ -27,14 +27,15 @@ from ib_async import IB, StartupFetch
 
 from paperbot import paths
 from paperbot.runtime import runstate
-from paperbot.trading.risk import REF_ENTRY, REF_EXIT, REF_STOP, verify_paper
+from paperbot.core import broker
+from paperbot.core.risk import ConfigError, ref_role
 
 
-def main():
+def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description="Stop paperbot and cancel its orders.")
     parser.add_argument("--all", action="store_true",
                         help="cancel every open order on the account, protective stops included")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     runstate.request_stop()
     print("STOP file created; a running bot exits on its next loop.")
@@ -47,20 +48,24 @@ def main():
     cfg = json.loads(paths.CONFIG_FILE.read_text())
     # The bot's clientId can cancel the bot's orders; while the bot is running
     # that id is taken, and a global cancel works from any client.
-    client_id = cfg["client_id"] if bot_pid is None else cfg["client_id"] + 1
+    try:
+        conn = broker.settings(cfg)
+    except ConfigError as e:
+        raise SystemExit(f"Refusing: {e}") from None
+    client_id = conn.client_id if bot_pid is None else conn.client_id + 1
     ib = IB()
-    ib.connect(cfg["host"], cfg["port"], clientId=client_id, timeout=15,
+    ib.connect(conn.host, conn.port, clientId=client_id, timeout=15,
                fetchFields=StartupFetch.ORDERS_OPEN | StartupFetch.POSITIONS)
     try:
-        account = verify_paper(cfg["port"], ib.managedAccounts())
+        account = broker.verify_account(conn, ib.managedAccounts())
         open_trades = ib.reqAllOpenOrders()
         if args.all:
-            print(f"Paper account {account}: GLOBAL CANCEL of {len(open_trades)} open order(s)")
+            print(f"{conn.mode.title()} account {account}: GLOBAL CANCEL of {len(open_trades)} open order(s)")
             ib.reqGlobalCancel()
         else:
             ours = [t for t in ib.openTrades()
-                    if t.order.orderRef in (REF_ENTRY, REF_EXIT) and not t.isDone()]
-            print(f"Paper account {account}: cancelling {len(ours)} paperbot entry/exit "
+                    if ref_role(t.order.orderRef) in ("entry", "exit") and not t.isDone()]
+            print(f"{conn.mode.title()} account {account}: cancelling {len(ours)} paperbot entry/exit "
                   "order(s); protective stops are kept")
             for t in ours:
                 ib.cancelOrder(t.order)
@@ -69,7 +74,8 @@ def main():
         remaining = ib.reqAllOpenOrders()
         print("Still open:", len(remaining))
         for t in remaining:
-            role = "protective stop" if t.order.orderRef == REF_STOP else t.order.orderRef or "manual"
+            role = ("protective stop" if ref_role(t.order.orderRef) == "stop"
+                    else t.order.orderRef or "manual")
             print(f"  #{t.order.orderId} {t.order.action} {t.order.totalQuantity:g} "
                   f"{t.contract.symbol} {t.order.orderType} ({role})")
         if args.all:

@@ -60,19 +60,36 @@
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div><p class="text-[11px] font-semibold uppercase tracking-[.12em] text-ink-400">Active strategy</p>
           <h1 class="mt-1 text-2xl font-semibold tracking-tight text-white">${esc(r.strategy_name || '—')}</h1>
-          <p class="mt-1 text-sm text-ink-300">Joins strong gap-up trends on a fresh intraday high, with a broker-held stop below the day's low.</p></div>
+          <p class="mt-1 text-sm text-ink-300">${esc(r.summary || 'Rules from config/rules.json')}</p></div>
         <div class="flex flex-wrap gap-2">${PB.pill((r.direction || '').replace('_', ' '), 'sky')}${PB.pill(`${r.trade_timeframe || ''} bars`, 'slate')}${PB.pill('read-only view', 'slate')}</div>
       </div>
       <dl class="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-        ${fact('Universe', `${esc(uf.index || '—')}, top gappers`)}
+        ${fact('Universe', r.universe_symbols ? esc(r.universe_symbols.join(', ')) : `${esc(uf.index || '—')}, top gappers`)}
         ${fact('Min price', `$${esc(uf.min_price_usd)}`)}
         ${fact('Entry window', `${esc(tf.earliest_entry_et)}–${esc(tf.latest_entry_et)} ET`)}
-        ${fact('Force close', `${esc(tf.force_close_et)} ET`)}
+        ${fact('Force close', tf.force_close_et ? `${esc(tf.force_close_et)} ET` : 'none · holds overnight')}
         ${fact('Cadence', d.scheduler.mode === 'continuous' ? `every ${esc(d.model.loop_seconds)} s` : 'every 5 min (HT_Cycle)')}
         ${fact('Scan budget', `${esc(d.strategy.scan_budget_s)} s per pass`)}
       </dl>
       <p class="mt-4 text-xs text-ink-400">Values come from config/rules.json and config/config.json as of ${PB.et(d.generated_at)} ET. The bot reads them on its first pass, so edits apply after a restart.</p>
     </section>`;
+  }
+
+  /* ------------------------------------------------------------ blocks */
+
+  function renderBlocks(d) {
+    const host = $('blocks');
+    const b = (d.strategy.rules || {}).blocks;
+    if (!host || !b) return;
+    const kinds = [['entry', 'Entry checks (in order)'], ['stop', 'Initial stop'], ['manage', 'Position management'], ['exit', 'Exits']];
+    const item = (x) => {
+      const settings = Object.entries(x.settings || {}).filter(([, v]) => v !== null)
+        .map(([k, v]) => `${esc(k)}=${esc(v)}`).join(', ');
+      return `<li class="py-1.5 text-sm"><span class="font-mono text-slate-100">${esc(x.type)}</span>${x.label ? ` <span class="text-ink-400">(${esc(x.label)})</span>` : ''}${settings ? ` <span class="text-ink-300">${settings}</span>` : ''}</li>`;
+    };
+    const cols = kinds.map(([k, title]) => `<div><h3 class="text-[11px] font-semibold uppercase tracking-[.12em] text-ink-400">${title}</h3>
+      <ul class="mt-1 divide-y divide-ink-700/50">${(b[k] || []).map(item).join('') || '<li class="py-1.5 text-sm text-ink-400">none</li>'}</ul></div>`).join('');
+    host.innerHTML = PB.panel('Strategy blocks (rules.json)', `<div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">${cols}</div>`);
   }
 
   /* ------------------------------------------------------------ scanner */
@@ -342,6 +359,7 @@
     renderExits(d);
     renderSession(d);
     renderLimits(d);
+    renderBlocks(d);
     renderSizing(d);
     $('footer').innerHTML = `Generated ${PB.et(d.generated_at)} ET · scanner rows use each symbol's latest evaluation in logs/telemetry.jsonl · read-only`;
   });

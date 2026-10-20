@@ -16,8 +16,9 @@ halt, and can never turn a long position into a short.
 
 Limits come from two files (load_limits): the safety rails allowed_symbols and
 limit_orders_only from config.json "limits", every quantitative threshold from
-the "risk" section of rules.json. Both are type-checked at startup and a
-missing, invalid or misplaced key stops the bot (fail closed).
+the "risk" section of the chosen strategy in rules.json ("strategies.<key>.risk").
+Both are type-checked at startup and a missing, invalid or misplaced key stops
+the bot (fail closed).
 
 Daily counters live in logs/state.json, written atomically and read fail
 closed (see runstate.py), and roll over at midnight US Eastern Time. The
@@ -47,8 +48,19 @@ def today_et(now: dt.datetime | None = None) -> dt.date:
     """
     return (now or dt.datetime.now(ET)).astimezone(ET).date()
 
-# orderRef tags, so the bot only ever manages its own orders
+# orderRef tags, so the bot only ever manages its own orders. These are Trend Join
+# Long's (order_ref "paperbot"); other strategies use "paperbot:<key>:<role>".
 REF_ENTRY, REF_STOP, REF_EXIT = "paperbot:entry", "paperbot:stop", "paperbot:exit"
+ROLES = ("entry", "stop", "exit")
+
+
+def ref_role(ref) -> str | None:
+    """"entry", "stop" or "exit" for any paperbot strategy's orderRef ("paperbot:stop",
+    "paperbot:<key>:stop"); None for manual or other orders."""
+    if not isinstance(ref, str) or not ref.startswith("paperbot:"):
+        return None
+    role = ref.rsplit(":", 1)[-1]
+    return role if role in ROLES else None
 
 # IBKR Fixed pricing for US stocks, per order: $0.005/share, min $1.00, max 1% of value
 COMMISSION_PER_SHARE, COMMISSION_MIN, COMMISSION_MAX_PCT = 0.005, 1.00, 1.0
@@ -173,9 +185,24 @@ def _cast(where: str, key: str, value, kind):
     return kind(value)
 
 
-def load_limits(config: dict, rules_path: Path) -> Limits:
+def strategy_section(rules: dict, strategy: str, rules_name: str = "rules.json") -> dict:
+    """The rules.json "strategies.<strategy>" section, or ConfigError."""
+    strategies = rules.get("strategies")
+    if not isinstance(strategies, dict) or not strategies:
+        raise ConfigError(f'{rules_name} needs a "strategies" object with at least one strategy')
+    if strategy not in strategies:
+        raise ConfigError(f"{rules_name} has no strategy {strategy!r}; "
+                          f"available: {', '.join(sorted(strategies))}")
+    section = strategies[strategy]
+    if not isinstance(section, dict):
+        raise ConfigError(f"{rules_name} strategies.{strategy} must be an object")
+    return section
+
+
+def load_limits(config: dict, rules_path: Path, strategy: str) -> Limits:
     """Limits from the safety rails in config.json "limits" (CONFIG_LIMITS) and the
-    thresholds in the "risk" section of rules.json (RULES_REQUIRED, RULES_OPTIONAL).
+    thresholds in the "risk" section of one strategy in rules.json
+    ("strategies.<strategy>.risk": RULES_REQUIRED, RULES_OPTIONAL).
 
     Fails closed with ConfigError: a missing required key, a wrong type, a value
     <= 0, an unknown key, or a threshold still in config.json (one source per cap,
@@ -188,39 +215,40 @@ def load_limits(config: dict, rules_path: Path) -> Limits:
         raise ConfigError('config.json needs a "limits" object with allowed_symbols')
     misplaced = sorted(k for k in cfg_limits if k in RULES_REQUIRED or k in RULES_OPTIONAL)
     if misplaced:
-        raise ConfigError(f"config.json limits still contains {misplaced}; these now live in the "
-                          f'"risk" section of {rules_path.name}. Move them there and restart.')
+        raise ConfigError(f"config.json limits still contains {misplaced}; these now live in each "
+                          f'strategy\'s "risk" section of {rules_path.name}. Move them there and restart.')
     unknown = sorted(set(cfg_limits) - set(CONFIG_LIMITS))
     if unknown:
         raise ConfigError(f"config.json limits has unknown keys {unknown}")
     try:
-        risk = json.loads(rules_path.read_text()).get("risk")
+        rules = json.loads(rules_path.read_text())
     except (OSError, ValueError) as e:
         raise ConfigError(f"cannot read {rules_path.name}: {e}") from None
+    where = f"{rules_path.name} strategies.{strategy}.risk"
+    risk = strategy_section(rules, strategy, rules_path.name).get("risk")
     if not isinstance(risk, dict):
-        raise ConfigError(f'{rules_path.name} needs a "risk" object')
+        raise ConfigError(f'{where} must be an object')
     unknown = sorted(set(risk) - set(RULES_REQUIRED) - set(RULES_OPTIONAL))
     if unknown:
-        raise ConfigError(f"{rules_path.name} risk has unknown keys {unknown}")
+        raise ConfigError(f"{where} has unknown keys {unknown}")
     missing = sorted(k for k in RULES_REQUIRED if k not in risk)
     if missing:
-        raise ConfigError(f"{rules_path.name} risk is missing {missing}")
+        raise ConfigError(f"{where} is missing {missing}")
     if "allowed_symbols" not in cfg_limits:
         raise ConfigError("config.json limits is missing allowed_symbols")
 
     values = {k: _cast("config.json limits", k, v, CONFIG_LIMITS[k]) for k, v in cfg_limits.items()}
-    values.update({k: _cast(f"{rules_path.name} risk", k, risk[k], kind)
-                   for k, kind in RULES_REQUIRED.items()})
-    values.update({k: None if risk[k] is None else _cast(f"{rules_path.name} risk", k, risk[k], kind)
+    values.update({k: _cast(where, k, risk[k], kind) for k, kind in RULES_REQUIRED.items()})
+    values.update({k: None if risk[k] is None else _cast(where, k, risk[k], kind)
                    for k, kind in RULES_OPTIONAL.items() if k in risk})
     return Limits(**values)
 
 
-def require_limits(config: dict, rules_path: Path) -> Limits:
+def require_limits(config: dict, rules_path: Path, strategy: str) -> Limits:
     """load_limits() for a process that is starting: a ConfigError is logged as an
     ALERT (pushed by notify.py) and stops the process before it connects or trades."""
     try:
-        return load_limits(config, rules_path)
+        return load_limits(config, rules_path, strategy)
     except ConfigError as e:
         logging.getLogger("paperbot").error("ALERT refusing to start: %s", e)
         raise SystemExit(f"Refusing to start: {e}") from None

@@ -1,15 +1,23 @@
-"""Paper-only trading bot with built-in risk limits and broker-held stops.
+"""The paper bot runner: broker session, risk guard, orders. Strategy-agnostic.
 
-Usage (project venv, after `pip install -e .`; `paperbot-bot` is the same command):
-    python -m paperbot.trading.bot                 dry run (default): logs what it would do
-    python -m paperbot.trading.bot --submit        sends orders to the IB Gateway PAPER account
-    python -m paperbot.trading.bot --reset-state   moves corrupt state files aside
-    python -m paperbot.trading.bot --reset-drawdown
+Usage (`paperbot-bot` is the same command):
+    python -m paperbot.core.engine                 dry run (default): logs what it would do
+    python -m paperbot.core.engine --submit        sends orders to the IB Gateway PAPER account
+        --strategy KEY     run this rules.json strategy (no menu)
+        --yes              skip the start-up confirmation
+    python -m paperbot.core.engine --reset-state   moves corrupt state files aside
+    python -m paperbot.core.engine --reset-drawdown
                                   re-arms a tripped multi-day drawdown breaker
-    python -m paperbot.trading.bot --symbol NVDA --check-only
+    python -m paperbot.core.engine --symbol NVDA --check-only [--strategy KEY]
                                   evaluates one symbol (position, entry window, every
-                                  filter) and prints why it passes or fails; read-only
+                                  entry block) and prints why it passes or fails; read-only
                                   connection, never sends orders, can run next to the bot
+
+Before anything connects, the strategy is chosen (core/selector.py: menu in a
+terminal, --strategy, or the saved choice), its rules.json section is validated
+and loaded (core/profile.py), and the risk guard is built from its limits.
+preflight() then logs what will run (connection, strategy, rules.json hash,
+every effective limit) and refuses to start if any of those disagree.
 
 All log and journal timestamps are US Eastern Time, whatever the PC's time zone.
 
@@ -17,7 +25,9 @@ Notifications (notify.py, if Telegram or ntfy is configured in .env): every
 "ALERT" log line and error, BUY / STOP / PARTIAL / EXIT for fills of the bot's
 own orders (from IBKR's execution report, once each), and a crash message.
 Each of those fills is also appended to trades.csv (read by compute_perf.py).
-After every loop, logs/heartbeat.json and dashboard/index.html are refreshed.
+After every loop, logs/heartbeat.json and dashboard/index.html are refreshed;
+the dashboard rebuild (files only) runs in a background thread so it can never
+delay the next pass.
 
 How it works:
   * Refuses to start if the STOP file exists, another bot is running
@@ -48,10 +58,12 @@ import argparse
 import asyncio
 import csv
 import datetime as dt
+import hashlib
 import json
 import logging
 import math
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -62,11 +74,15 @@ from ib_async import (IB, LimitOrder, MarketOrder, Stock, StartupFetch, StartupF
 from paperbot import paths
 from paperbot.reporting.notify import AlertHandler, notify
 from paperbot.runtime import runstate
-from paperbot.trading import strategy
-from paperbot.trading.account import buying_power_usd, daily_pnl, net_liquidation_usd
-from paperbot.trading.risk import (ET, REF_ENTRY, REF_EXIT, REF_STOP, AccountState,
-                                   CancelRequest, DrawdownBreaker, OrderIntent, RiskGuard,
-                                   StopUpdate, load_limits, require_limits, verify_paper)
+from paperbot.core import broker, clock
+from paperbot.core import market_data as md
+from paperbot.core import profile as profiles
+from paperbot.core import selector
+from paperbot.core.account import buying_power_usd, daily_pnl, net_liquidation_usd
+from paperbot.core.risk import (ET, AccountState, CancelRequest, DrawdownBreaker, OrderIntent,
+                                RiskGuard, StopUpdate, ref_role, require_limits)
+from paperbot.strategies import rule_strategy as strategy
+from paperbot.system import procs
 
 RULES = paths.RULES_FILE
 CONFIG = paths.CONFIG_FILE
@@ -82,6 +98,8 @@ CANCEL_WAIT_SECONDS = 5  # how long to wait for IBKR to confirm a cancel
 DAY_ORDER_WAIT_SECONDS = 90  # after the close: how long IBKR gets to expire DAY orders
 POST_CLOSE_UNTIL = dt.time(16, 10)  # end of the post-close protect window (ET)
 OCA_REDUCE_WITH_BLOCK = 2  # IBKR ocaType: fills shrink the other orders, overfill blocked
+RECONNECT_FIRST_SECONDS, RECONNECT_MAX_SECONDS = 30, 300  # back-off while Gateway is down
+SOURCE = "paper-bot"  # heartbeat/telemetry source of the long-running runner
 
 log = logging.getLogger("paperbot")
 
@@ -93,14 +111,44 @@ class ETFormatter(logging.Formatter):
         return dt.datetime.fromtimestamp(record.created, ET).strftime("%Y-%m-%d %H:%M:%S ET")
 
 
+LOG_FORMAT = ETFormatter("[%(asctime)s] %(levelname)s %(message)s")
+
+
+def _file_handler() -> logging.FileHandler:
+    handler = logging.FileHandler(LOGS / "bot.log", encoding="utf-8")
+    handler.setFormatter(LOG_FORMAT)
+    return handler
+
+
 def setup_logging():
-    LOGS.mkdir(exist_ok=True)
-    fmt = ETFormatter("[%(asctime)s] %(levelname)s %(message)s")
-    for handler in (logging.StreamHandler(), logging.FileHandler(LOGS / "bot.log")):
-        handler.setFormatter(fmt)
-        log.addHandler(handler)
+    LOGS.mkdir(parents=True, exist_ok=True)
+    console = logging.StreamHandler()
+    console.setFormatter(LOG_FORMAT)
+    log.addHandler(console)
+    log.addHandler(_file_handler())
     log.addHandler(AlertHandler())  # "ALERT" lines and errors -> Telegram / ntfy
     log.setLevel(logging.INFO)
+
+
+def rotate_logs_now():
+    """Scheduled job: archive earlier days' logs. bot.log is closed for the move (Windows
+    cannot move an open file) and reopened afterwards."""
+    import contextlib
+    import io
+    from paperbot.ops import rotate_logs
+    files = [h for h in log.handlers if isinstance(h, logging.FileHandler)]
+    for handler in files:
+        log.removeHandler(handler)
+        handler.close()
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            rotate_logs.main()
+    finally:
+        if files:
+            log.addHandler(_file_handler())
+    for line in out.getvalue().splitlines():
+        log.info("log rotation: %s", line.strip())
 
 
 def journal(event: str, **data):
@@ -124,7 +172,7 @@ def qualify(ib: IB, symbol: str, timeout: float) -> Stock | None:
 def cancel_working(ib: IB, why: str):
     """Cancel the bot's working entry and exit orders. Protective stops stay at IBKR."""
     for trade in ib.openTrades():
-        if trade.order.orderRef in (REF_ENTRY, REF_EXIT) and not trade.isDone():
+        if ref_role(trade.order.orderRef) in ("entry", "exit") and not trade.isDone():
             log.warning("cancelling order %s (%s)", trade.order.orderId, why)
             ib.cancelOrder(trade.order)
             journal("cancel", orderId=trade.order.orderId, why=why)
@@ -150,7 +198,7 @@ def await_day_orders_done(ib: IB, submit: bool, timeout: float = DAY_ORDER_WAIT_
     """
     def live() -> list[Trade]:
         return [t for t in ib.openTrades()
-                if t.order.orderRef in (REF_ENTRY, REF_EXIT) and not t.isDone()]
+                if ref_role(t.order.orderRef) in ("entry", "exit") and not t.isDone()]
 
     try:
         ib.reqAllOpenOrders()
@@ -184,7 +232,11 @@ def await_day_orders_done(ib: IB, submit: bool, timeout: float = DAY_ORDER_WAIT_
 def reset_drawdown() -> int:
     """paperbot-bot --reset-drawdown: re-arm a tripped breaker (the current
     cumulative P&L becomes the new peak)."""
-    limits = require_limits(json.loads(CONFIG.read_text()), RULES)
+    try:
+        key = selector.unattended_key()
+    except profiles.ConfigError as e:
+        raise SystemExit(f"Refusing: {e}") from None
+    limits = require_limits(json.loads(CONFIG.read_text()), RULES, key)
     if not limits.max_drawdown_usd:
         print("max_drawdown_usd is not set in rules.json; no breaker to reset.")
         return 0
@@ -200,10 +252,10 @@ def reset_drawdown() -> int:
     return 0
 
 
-def main():
+def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--submit", action="store_true",
-                        help="send orders to the paper account (default: dry run)")
+                        help="send orders to IBKR (default: dry run)")
     parser.add_argument("--reset-state", action="store_true",
                         help="move corrupt state files aside and exit")
     parser.add_argument("--reset-drawdown", action="store_true",
@@ -211,7 +263,12 @@ def main():
     parser.add_argument("--symbol", help="symbol to evaluate (requires --check-only)")
     parser.add_argument("--check-only", action="store_true",
                         help="evaluate --symbol once and exit; never sends orders")
-    args = parser.parse_args()
+    parser.add_argument("--strategy", metavar="KEY",
+                        help="rules.json strategy to run (default: menu, or the saved choice)")
+    parser.add_argument("--yes", action="store_true", help="skip the start-up confirmation")
+    parser.add_argument("--clear-stop", action="store_true",
+                        help="delete a STOP file left by `paper-bot stop` before starting")
+    args = parser.parse_args(argv)
     if args.check_only and not args.symbol:
         parser.error("--check-only needs --symbol")
     if args.symbol and not args.check_only:
@@ -221,77 +278,174 @@ def main():
     setup_logging()
 
     if args.check_only:
-        sys.exit(check_only(args.symbol))
+        sys.exit(check_only(args.symbol, args.strategy))
 
     if args.reset_drawdown:
         sys.exit(reset_drawdown())
 
     if args.reset_state:
-        backups = runstate.reset_corrupt([RISK_STATE, strategy.STATE, DRAWDOWN_STATE])
+        strategy_states = [p.state_file for p in selector.load_each().values()
+                           if not isinstance(p, profiles.ConfigError)]
+        backups = runstate.reset_corrupt([RISK_STATE, DRAWDOWN_STATE, *strategy_states])
         for b in backups:
             log.warning("moved corrupt state file to %s", b.name)
         if not backups:
             print("No corrupt state files; nothing changed.")
-        if any(b.name.startswith(strategy.STATE.name) for b in backups):
+        if any(b.name.startswith("strategy_state.json") for b in backups):
             print("Strategy state was reset: positions with a working paperbot stop are "
                   "re-adopted from that stop; others are left alone and reported.")
         return
 
+    # Everything below is checked BEFORE any IBKR connection: broker mode and
+    # connection, the strategy (menu / --strategy / saved choice), its limits.
     cfg = json.loads(CONFIG.read_text())
-    limits = require_limits(cfg, RULES)
-    guard = RiskGuard(limits, RISK_STATE, drawdown_path=DRAWDOWN_STATE)  # fails closed
-    strategy.load_state()  # same check for the strategy state, before connecting
+    conn = connection_settings(cfg)
+    interactive = sys.stdin.isatty()
     if runstate.stop_requested():
-        raise SystemExit(f"{runstate.STOP_FILE.name} file present; delete it to start the bot")
+        if not args.clear_stop:
+            log.info("STOP file present: not starting (delete it, or `paper-bot start` clears it)")
+            return
+        runstate.STOP_FILE.unlink(missing_ok=True)
+        log.info("STOP file removed: starting")
+    profile = selector.choose(args.strategy, interactive=interactive, assume_yes=args.yes,
+                              mode_text=conn.mode.upper())
+    broker.confirm_live(conn, interactive)
+    strategy.configure(profile)
+    guard = RiskGuard(profile.limits, RISK_STATE, drawdown_path=DRAWDOWN_STATE)  # fails closed
+    strategy.load_state()  # same check for the strategy state, before connecting
+    preflight(conn, profile, guard, cfg)
     runstate.claim_pid()
-
-    ib = IB()
     try:
-        connect(ib, cfg, cfg["client_id"],
-                fetchFields=StartupFetchALL & ~StartupFetch.EXECUTIONS)
-        account = verify_paper(cfg["port"], ib.managedAccounts())
-        mode = "SUBMIT" if args.submit else "DRY RUN"
-        log.info("connected to paper account %s, mode %s, limits %s", account, mode, limits)
+        with procs.keep_awake():
+            run_session(conn, cfg, profile, guard, args.submit)
+    finally:
+        wait_for_dashboard()
+        runstate.release_pid()
 
-        pnl = ib.reqPnL(account)
-        ib.sleep(3)  # give IBKR time to send the first P&L update
-        ib.orderStatusEvent += lambda t: journal(
-            "status", orderId=t.order.orderId, status=t.orderStatus.status,
-            filled=t.orderStatus.filled)
-        ib.execDetailsEvent += lambda t, fill: journal(
-            "fill", orderId=fill.execution.orderId, symbol=fill.contract.symbol,
-            side=fill.execution.side, shares=fill.execution.shares,
-            price=fill.execution.price)
 
-        day_orders_confirmed: dt.date | None = None  # post-close check done for this date
-        while True:
+def preflight(conn: broker.Connection, profile, guard: RiskGuard, cfg: dict,
+              rules_path: Path | None = None):
+    """Log what is about to run and refuse to start (ALERT + SystemExit) unless the
+    selected strategy (saved choice, else default), the strategy module, the risk
+    guard and rules.json on disk all agree with `profile`. Called after configure(),
+    before anything connects."""
+    rules_path = rules_path or RULES
+    try:
+        text = rules_path.read_bytes()
+        on_disk = profiles.load(profile.key, rules_path, cfg)
+    except (OSError, profiles.ConfigError) as e:
+        problems = [f"cannot re-check {rules_path.name}: {e}"]
+        text, on_disk = b"", None
+    else:
+        problems = []
+    if on_disk is not None and (on_disk.raw != profile.raw or on_disk.limits != profile.limits):
+        problems.append(f"{rules_path.name} changed since strategy {profile.key} was loaded")
+    try:
+        selected = selector.unattended_key(rules_path)  # the saved choice, else the default
+    except profiles.ConfigError as e:
+        selected = f"invalid ({e})"
+    if selected != profile.key:
+        problems.append(f"selected strategy {selected!r} is not {profile.key!r}")
+    if strategy.load_profile() is not profile:
+        problems.append(f"strategy module runs {strategy.load_profile().key!r}, not {profile.key!r}")
+    if guard.limits != profile.limits:
+        problems.append("risk guard limits differ from the strategy's limits")
+
+    digest = hashlib.sha256(text).hexdigest()[:12]
+    log.info("PREFLIGHT %s", conn.describe())
+    log.info("PREFLIGHT strategy %s (%s) from %s sha256 %s", profile.key, profile.label,
+             rules_path.name, digest)
+    for line in profile.describe()[1:]:
+        log.info("PREFLIGHT %s", line.strip())
+    log.info("PREFLIGHT limits %s", ", ".join(f"{k}={v}" for k, v in vars(profile.limits).items()))
+    if problems:
+        for problem in problems:
+            log.error("ALERT refusing to start: %s", problem)
+        raise SystemExit(f"Refusing to start: {problems[0]}")
+
+
+def connection_settings(cfg: dict) -> broker.Connection:
+    """config.json's broker connection for its mode; an ALERT and SystemExit if invalid."""
+    try:
+        return broker.settings(cfg)
+    except profiles.ConfigError as e:
+        log.error("ALERT refusing to start: %s", e)
+        raise SystemExit(f"Refusing to start: {e}") from None
+
+
+def open_session(ib: IB, conn: broker.Connection) -> tuple[str, object] | None:
+    """Connect, check the account matches the mode, start P&L. None if Gateway is not
+    reachable (retried by the caller); SystemExit if the account is wrong."""
+    try:
+        ib.connect(conn.host, conn.port, clientId=conn.client_id, timeout=15,
+                   fetchFields=StartupFetchALL & ~StartupFetch.EXECUTIONS)
+    except (OSError, asyncio.TimeoutError, TimeoutError, ConnectionError) as e:
+        log.warning("cannot connect to IB Gateway at %s:%s (clientId %s): %r",
+                    conn.host, conn.port, conn.client_id, e)
+        ib.disconnect()
+        return None
+    account = broker.verify_account(conn, ib.managedAccounts())
+    md._tickers.clear()  # streaming quotes of an old connection are dead
+    pnl = ib.reqPnL(account)
+    ib.sleep(3)  # give IBKR time to send the first P&L update
+    return account, pnl
+
+
+def run_session(conn: broker.Connection, cfg: dict, profile, guard: RiskGuard, submit: bool,
+                ib: IB | None = None, max_passes: int | None = None):
+    """The long-running loop: one strategy pass every loop_seconds, the built-in
+    scheduler's daily jobs, and automatic reconnection when IB Gateway restarts or
+    the network drops (protective stops stay at IBKR meanwhile). Ends on a STOP
+    file or Ctrl+C. max_passes is for tests."""
+    ib = ib or IB()
+    jobs = clock.Clock(clock.default_jobs(profile, rotate_logs_now))
+    ib.orderStatusEvent += lambda t: journal(
+        "status", orderId=t.order.orderId, status=t.orderStatus.status,
+        filled=t.orderStatus.filled)
+    ib.execDetailsEvent += lambda t, fill: journal(
+        "fill", orderId=fill.execution.orderId, symbol=fill.contract.symbol,
+        side=fill.execution.side, shares=fill.execution.shares,
+        price=fill.execution.price)
+    account = pnl = None
+    failures, passes = 0, 0
+    day_orders_confirmed: dt.date | None = None  # post-close check done for this date
+    try:
+        while max_passes is None or passes < max_passes:
+            jobs.tick()
             if runstate.stop_requested():
-                cancel_working(ib, "STOP file")
+                if ib.isConnected():
+                    cancel_working(ib, "STOP file")
                 log.warning("STOP file found, shutting down (protective stops left at IBKR)")
                 break
-
-            daily = daily_pnl(ib, account, pnl)  # 0.0 when provably flat today; None blocks entries
-            was_halted = guard.halted
-            guard.update_daily_pnl(daily)
-            if guard.halted and not was_halted:
-                cancel_working(ib, guard.halt_reason)
-            notify_fills_safely(ib, account)
-            now = dt.datetime.now(ET)
-            if post_close(now) and day_orders_confirmed != now.date():
-                if await_day_orders_done(ib, args.submit):
-                    day_orders_confirmed = now.date()
-
-            held_back: set[str] = set()  # symbols whose cancel was not confirmed
-            for request in strategy.decide(ib, account):
-                symbol = request.symbol.upper()
-                if symbol in held_back:
-                    log.warning("skipping %s: waiting for a cancel on %s", request, symbol)
+            if not ib.isConnected():
+                session = open_session(ib, conn)
+                if session is None:
+                    failures += 1
+                    wait = min(RECONNECT_MAX_SECONDS, RECONNECT_FIRST_SECONDS * 2 ** (failures - 1))
+                    if failures == 1:
+                        log.error("ALERT IB Gateway not reachable at %s:%s; retrying every "
+                                  "%s-%ss (stops stay at IBKR)", conn.host, conn.port,
+                                  RECONNECT_FIRST_SECONDS, RECONNECT_MAX_SECONDS)
+                    _wait(ib, wait)
                     continue
-                if not handle_request(ib, guard, cfg, account, request, daily, args.submit):
-                    held_back.add(symbol)
-            after_pass(ib, account, "bot.py", args.submit)
-
-            ib.sleep(cfg["loop_seconds"])
+                if account is not None and session[0] != account:
+                    raise SystemExit(f"Refusing to continue: account changed from {account} "
+                                     f"to {session[0]} after reconnecting")
+                account, pnl = session
+                log.info("%s to %s account %s, mode %s, strategy %s, limits %s",
+                         "connection to IB Gateway restored; connected" if failures else "connected",
+                         conn.mode, account, "SUBMIT" if submit else "DRY RUN", profile.key,
+                         profile.limits)
+                failures = 0
+            try:
+                day_orders_confirmed = one_pass(ib, guard, cfg, account, pnl, submit,
+                                                day_orders_confirmed)
+            except (ConnectionError, OSError, asyncio.TimeoutError) as e:
+                log.error("ALERT connection to IB Gateway lost (%r); reconnecting", e)
+                ib.disconnect()
+                continue
+            passes += 1
+            _wait(ib, cfg["loop_seconds"])
     except KeyboardInterrupt:
         log.info("stopped by Ctrl+C (open orders and protective stops left in place)")
     except Exception as e:
@@ -303,31 +457,74 @@ def main():
         raise
     finally:
         ib.disconnect()
-        runstate.release_pid()
 
 
-def connect(ib: IB, cfg: dict, client_id: int, **kwargs):
-    """Connect to IB Gateway, or log a clear message and exit with code 1."""
+def _wait(ib: IB, seconds: float):
+    """Sleep in short steps (keeps IBKR events flowing; a STOP file is seen quickly)."""
+    deadline = time.monotonic() + seconds
+    while (left := deadline - time.monotonic()) > 0 and not runstate.stop_requested():
+        ib.sleep(min(5.0, left))
+
+
+def one_pass(ib: IB, guard: RiskGuard, cfg: dict, account: str, pnl, submit: bool,
+             day_orders_confirmed: dt.date | None = None) -> dt.date | None:
+    """One strategy pass: loss checks, fills, post-close check, decide -> guard -> IBKR."""
+    daily = daily_pnl(ib, account, pnl)  # 0.0 when provably flat today; None blocks entries
+    was_halted = guard.halted
+    guard.update_daily_pnl(daily)
+    if guard.halted and not was_halted:
+        cancel_working(ib, guard.halt_reason)
+    notify_fills_safely(ib, account)
+    now = dt.datetime.now(ET)
+    if post_close(now) and day_orders_confirmed != now.date():
+        if await_day_orders_done(ib, submit):
+            day_orders_confirmed = now.date()
+
+    held_back: set[str] = set()  # symbols whose cancel was not confirmed
+    for request in strategy.decide(ib, account):
+        symbol = request.symbol.upper()
+        if symbol in held_back:
+            log.warning("skipping %s: waiting for a cancel on %s", request, symbol)
+            continue
+        if not handle_request(ib, guard, cfg, account, request, daily, submit):
+            held_back.add(symbol)
+    after_pass(ib, account, SOURCE, submit)
+    return day_orders_confirmed
+
+
+def connect(ib: IB, cfg: dict, client_id: int | None = None, **kwargs) -> broker.Connection:
+    """Connect to IB Gateway for config.json's mode (client_id None = the configured one),
+    or log a clear message and exit 1."""
+    conn = connection_settings(cfg)
+    client_id = conn.client_id if client_id is None else client_id
     try:
-        ib.connect(cfg["host"], cfg["port"], clientId=client_id, timeout=15, **kwargs)
+        ib.connect(conn.host, conn.port, clientId=client_id, timeout=15, **kwargs)
     except (OSError, asyncio.TimeoutError, TimeoutError, ConnectionError) as e:
         log.error("cannot connect to IB Gateway at %s:%s (clientId %s): %r. Is Gateway "
-                  "running, logged in to the paper account, with the API enabled?",
-                  cfg["host"], cfg["port"], client_id, e)
+                  "running, logged in to the %s account, with the API enabled?",
+                  conn.host, conn.port, client_id, e, conn.mode)
         raise SystemExit(1) from None
+    return conn
 
 
-def check_only(symbol: str) -> int:
-    """bot.py --symbol X --check-only: evaluate one symbol and print the result.
+def check_only(symbol: str, key: str | None = None) -> int:
+    """--symbol X --check-only: evaluate one symbol and print the result.
 
-    Uses a read-only connection with its own clientId (client_id + 2), so it
-    can run while the bot is running and can never place an order.
+    Uses the given strategy (else the saved choice) without changing the saved
+    choice, and a read-only connection with its own clientId (client_id + 2), so
+    it can run while the bot is running and can never place an order.
     """
+    try:
+        key = key or selector.unattended_key()
+    except profiles.ConfigError as e:
+        raise SystemExit(f"Refusing: {e}") from None
+    strategy.configure(profiles.require(key))
     cfg = json.loads(CONFIG.read_text())
+    conn = connection_settings(cfg)
     ib = IB()
     try:
-        connect(ib, cfg, cfg["client_id"] + 2, readonly=True)
-        account = verify_paper(cfg["port"], ib.managedAccounts())
+        connect(ib, cfg, conn.client_id + 2, readonly=True)
+        account = broker.verify_account(conn, ib.managedAccounts())
         ib.reqAllOpenOrders()  # see the bot's working orders too
         result = strategy.check_symbol(ib, account, symbol)
     finally:
@@ -339,7 +536,7 @@ def check_only(symbol: str) -> int:
     if result.get("quantity") is not None:
         log.info("  would buy %s shares, stop %.2f (not sent: check-only)",
                  result["quantity"], result["stop"])
-    log.info("  logged to %s", strategy.SAFETY_LOG.relative_to(paths.PROJECT_ROOT))
+    log.info("  logged to %s", strategy.safety_log_path())
     return 0
 
 
@@ -363,7 +560,7 @@ def notify_fills(ib: IB, account: str):
     by_order: dict[int, list] = {}
     for fill in ib.reqExecutions():
         e = fill.execution
-        if (e.execId in seen or e.orderRef not in (REF_ENTRY, REF_STOP, REF_EXIT)
+        if (e.execId in seen or ref_role(e.orderRef) is None
                 or (e.acctNumber and e.acctNumber != account)):
             continue
         by_order.setdefault(e.orderId, []).append(fill)
@@ -404,7 +601,8 @@ def append_ledger(fills: list, path: Path | None = None):
             continue
         reported = bool(report and report.execId)
         symbol = fill.contract.symbol.upper()
-        stop = positions.get(symbol, {}).get("initial_stop") if e.orderRef == REF_ENTRY else None
+        stop = (positions.get(symbol, {}).get("initial_stop")
+                if ref_role(e.orderRef) == "entry" else None)
         rows.append({
             "timestamp_iso": e.time.astimezone(ET).isoformat(timespec="seconds"),
             "symbol": symbol,
@@ -450,8 +648,41 @@ def heartbeat_positions(ib: IB, account: str) -> list[dict]:
     return positions
 
 
+AFTER_PASS_WARN_SECONDS = 2.0  # heartbeat + telemetry slower than this is logged
+_dashboard_worker: threading.Thread | None = None
+
+
+def _refresh_dashboard():
+    try:
+        from paperbot.reporting import compute_perf  # pandas: imported only when needed
+        compute_perf.refresh_dashboard()
+    except Exception as e:  # noqa: BLE001
+        log.warning("dashboard refresh skipped: %r", e)
+
+
+def refresh_dashboard_in_background():
+    """Rebuild the dashboard (files only, no IBKR calls) in one background thread;
+    skipped while the previous rebuild is still running."""
+    global _dashboard_worker
+    if _dashboard_worker is not None and _dashboard_worker.is_alive():
+        log.debug("dashboard refresh still running; this pass skips it")
+        return
+    _dashboard_worker = threading.Thread(target=_refresh_dashboard, name="dashboard",
+                                         daemon=True)
+    _dashboard_worker.start()
+
+
+def wait_for_dashboard(timeout: float = 30.0):
+    """Let a running dashboard rebuild finish (a process about to exit)."""
+    if _dashboard_worker is not None:
+        _dashboard_worker.join(timeout)
+
+
 def after_pass(ib: IB, account: str, source: str, submit: bool):
-    """After every bot loop / cycle pass: heartbeat, telemetry, live dashboard. Never raises."""
+    """After every bot loop / cycle pass: heartbeat and telemetry (inline: they read
+    the ib cache, which is not thread-safe), then the dashboard in the background.
+    Never raises."""
+    started = time.monotonic()
     try:
         runstate.write_heartbeat({
             "time": dt.datetime.now(ET).isoformat(timespec="seconds"), "source": source,
@@ -464,11 +695,11 @@ def after_pass(ib: IB, account: str, source: str, submit: bool):
         telemetry.record_pass(ib, account, source, submit)
     except Exception as e:  # noqa: BLE001
         log.warning("telemetry skipped: %r", e)
-    try:
-        from paperbot.reporting import compute_perf  # pandas: imported only when needed
-        compute_perf.refresh_dashboard()
-    except Exception as e:  # noqa: BLE001
-        log.warning("dashboard refresh skipped: %r", e)
+    elapsed = time.monotonic() - started
+    if elapsed > AFTER_PASS_WARN_SECONDS:
+        log.warning("heartbeat + telemetry took %.1f s (over %.0f s)", elapsed,
+                    AFTER_PASS_WARN_SECONDS)
+    refresh_dashboard_in_background()
 
 
 def notify_fills_safely(ib: IB, account: str):
@@ -490,14 +721,14 @@ def fill_message(fills: list, held: dict[str, float]) -> tuple[str, str]:
                 and abs(f.commissionReport.realizedPNL) < UNSET_PNL]
     pnl = f"P&L ${sum(reported):+.2f}" if reported else "P&L n/a"
 
-    if first.orderRef == REF_ENTRY:
+    if ref_role(first.orderRef) == "entry":
         try:
             stop = strategy.load_state()["positions"].get(symbol, {}).get("stop")
         except Exception:  # noqa: BLE001
             stop = None
         stop_text = f"${stop:.2f}" if stop else "n/a"
         return f"BUY {symbol}", f"@ ${price:.2f}, stop {stop_text}, qty {shares:g}"
-    if first.orderRef == REF_STOP:
+    if ref_role(first.orderRef) == "stop":
         return f"STOP {symbol}", f"exit ${price:.2f}, {pnl}"
     remaining = held.get(symbol, 0)
     if remaining > 0:
@@ -547,7 +778,7 @@ def handle_cancel(ib: IB, req: CancelRequest, submit: bool) -> bool:
 
 def _find_stop(ib: IB, symbol: str) -> Trade | None:
     return next((t for t in ib.openTrades()
-                 if t.order.orderRef == REF_STOP and not t.isDone()
+                 if t.order.orderRef == strategy.refs()[1] and not t.isDone()
                  and t.contract.symbol.upper() == symbol.upper()), None)
 
 
@@ -581,7 +812,7 @@ def handle_stop(ib: IB, guard: RiskGuard, cfg: dict, account: str,
             journal("blocked", stop=req.__dict__, problems=["contract lookup failed"])
             return
         order = StopOrder("SELL", req.quantity, req.stop_price, account=account,
-                          tif="GTC", orderRef=REF_STOP, ocaGroup=oca_group(req.symbol),
+                          tif="GTC", orderRef=strategy.refs()[1], ocaGroup=oca_group(req.symbol),
                           ocaType=OCA_REDUCE_WITH_BLOCK)
         ib.placeOrder(contract, order)
         log.info("PLACED stop %s: %s %s @ %.2f (%s)", order.orderId, req.symbol,
@@ -593,7 +824,7 @@ def handle_intent(ib: IB, guard: RiskGuard, cfg: dict, account: str,
                   intent: OrderIntent, daily: float | None, submit: bool):
     """Send an entry (as a bracket with its protective stop) or a closing exit."""
     open_trades = ib.reqAllOpenOrders()
-    working = sum(1 for t in open_trades if t.order.orderRef != REF_STOP)
+    working = sum(1 for t in open_trades if ref_role(t.order.orderRef) != "stop")
     problems = guard.check(intent, working, daily, account_state(ib, account, open_trades))
     if problems:
         log.warning("BLOCKED %s: %s", intent, "; ".join(problems))
@@ -615,7 +846,7 @@ def handle_intent(ib: IB, guard: RiskGuard, cfg: dict, account: str,
     if intent.action == "BUY":
         orders = entry_bracket(ib, intent, account, cfg["time_in_force"])
     else:
-        orders = [_order(intent, account, cfg["time_in_force"], REF_EXIT)]
+        orders = [_order(intent, account, cfg["time_in_force"], strategy.refs()[2])]
     for order in orders:
         ib.placeOrder(contract, order)
     if intent.action == "BUY":
@@ -652,11 +883,12 @@ def entry_bracket(ib: IB, intent: OrderIntent, account: str, tif: str) -> list:
     """Parent BUY plus a child SELL STP (GTC) in its own OCA group. IBKR activates
     the stop when the parent fills, and cancels it if the parent is cancelled or
     expires (GTD) unfilled."""
-    parent = _order(intent, account, tif, REF_ENTRY)
+    ref_entry, ref_stop, _ = strategy.refs()
+    parent = _order(intent, account, tif, ref_entry)
     parent.orderId = ib.client.getReqId()
     parent.transmit = False  # sent together with the child below
     stop = StopOrder("SELL", intent.quantity, intent.stop_price, account=account,
-                     tif="GTC", orderRef=REF_STOP, parentId=parent.orderId, transmit=True,
+                     tif="GTC", orderRef=ref_stop, parentId=parent.orderId, transmit=True,
                      ocaGroup=oca_group(intent.symbol), ocaType=OCA_REDUCE_WITH_BLOCK)
     return [parent, stop]
 

@@ -1,12 +1,68 @@
 # paperbot
 
-A long-only trading bot for an **Interactive Brokers paper account**, driven by
-`config/rules.json` (strategy: *Trend Join Long*, 5-minute bars). It talks to a locally
-running **IB Gateway** through [`ib_async`](https://github.com/ib-api-reloaded/ib_async).
+A rules-driven, long-only trading bot for **Interactive Brokers** equities and ETFs.
+Strategies are sections of `config/rules.json`; you pick one each session from a menu.
+It runs the same way on **Windows, macOS, Linux, servers and Docker** with one command,
+`paper-bot start`, and talks to **IB Gateway** through
+[`ib_async`](https://github.com/ib-api-reloaded/ib_async).
 
-Every order passes a risk guard first, every entry carries a **protective stop
-held at IBKR**, and the bot refuses to run against anything that is not a paper
-account.
+Every order passes a risk guard first, every entry carries a **protective stop held at
+IBKR**, and the account it trades must match the configured mode: **paper** by default,
+**live** only after a configuration change plus an explicit confirmation.
+
+---
+
+## Quick start
+
+```bash
+# 1. install (any OS; Python 3.11+)
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt          # Windows: .venv\Scripts\pip ...
+.venv/bin/pip install --no-deps -e .
+
+# 2. start IB Gateway, log in to the PAPER account (API port 4002), then:
+paper-bot check           # offline setup check
+paper-bot start           # strategy menu -> confirmation -> the whole trading day
+```
+
+```
+  PAPER-BOT - choose today's strategy  |  mode PAPER
+  ---------------------------------------------------
+  1) Trend Join Long            Intraday stock breakouts - large-cap momentum   (current)
+     5m | entries 10:05-15:30 | flat 15:51 | continuous/scheduled
+  2) Macro Swing ETF            Multi-day sector pullbacks - holds positions overnight
+     1d | entries 15:45-15:55 | holds overnight | continuous/scheduled
+  3) Equities Mean Reversion    Intraday index ETF scalps on VWAP deviations
+     1m | entries 10:00-15:30 | flat 15:50 | continuous
+  Current: Trend Join Long - no open positions
+  Choice [1-3, Enter keeps current, q quits]:
+```
+
+`paper-bot start` keeps running and does the whole trading day by itself: a strategy pass
+every 30 s, the morning watchlist, log rotation and the daily summary (the **built-in
+scheduler**), and it reconnects on its own when IB Gateway restarts or the network drops.
+Stop it with `Ctrl+C` or `paper-bot stop` (protective stops always stay at IBKR).
+
+| Command | Does |
+|---|---|
+| `paper-bot start [--strategy KEY] [--yes] [--dry-run]` | choose (menu, or `--strategy`), confirm (`--yes` skips), run; `--dry-run` logs orders instead of sending |
+| `paper-bot stop` · `paper-bot kill [--all]` | graceful stop · cancel the bot's entries/exits (`--all`: every order) |
+| `paper-bot status` | mode, strategy, process, last pass, positions, scheduled jobs |
+| `paper-bot strategies` | every strategy in `rules.json` with all its settings (or why it is invalid) |
+| `paper-bot check` · `paper-bot test` | setup check · unit tests |
+| `paper-bot dashboard [--open]` | rebuild (and open) the monitoring dashboard |
+| `paper-bot service install / uninstall / status` | start automatically at boot or log-on (see *Run unattended*) |
+
+`paperbot` is the same command; the older `paperbot-*` commands still work.
+
+Before it connects, every start (and every scheduled run) logs a `PREFLIGHT` summary:
+- the connection;
+- the strategy, with a short SHA-256 of `rules.json`;
+- the timeframe, window, universe and blocks;
+- every effective risk limit.
+
+It refuses to start, with an ALERT, if the selected strategy, the loaded profile, the risk
+guard and `rules.json` on disk do not all agree.
 
 ---
 
@@ -14,163 +70,238 @@ account.
 
 ```
 paperbot/
-├─ pyproject.toml         package metadata, dependencies, paperbot-* commands
-├─ requirements.txt       exact dependency versions this project is tested with
-├─ .env.example           copy to .env and fill in (Telegram); .env is never committed
-├─ .gitignore  .gitattributes  .githooks/pre-commit
-├─ config/                config.json · rules.json · universe.txt     (tracked)
+├─ pyproject.toml          package metadata, dependencies, the paper-bot command
+├─ requirements.txt        exact dependency versions this project is tested with
+├─ .env.example            copy to .env and fill in (Telegram); .env is never committed
+├─ config/                 config.json · rules.json · universe.txt              (tracked)
 ├─ src/paperbot/
-│  ├─ paths.py            every file location, resolved from the project root
-│  ├─ trading/            bot (engine, orders) · strategy · risk
-│  ├─ runtime/            runstate (STOP/pid/state files) · cycle · stopbot · kill_switch
-│  ├─ market/             sp500_tickers · morning_prefilter
-│  ├─ reporting/          notify (Telegram/ntfy) · compute_perf (summary) · telemetry · dashboard (+ web/ pages)
-│  └─ ops/                setup_schedule · cleanup_schedule · rotate_logs · check_setup
-├─ scripts/manual/        one-off IBKR scripts (connection check, manual MU buy/close)
-├─ tests/                 offline unit tests (no Gateway, no network)
-└─ data/ logs/ dashboard/ STOP     runtime output, all git-ignored
+│  ├─ cli.py               the paper-bot command
+│  ├─ core/                the runner, no strategy knowledge: engine (session loop, orders),
+│  │                       clock (built-in scheduler), selector (menu), profile (rules.json),
+│  │                       broker (paper/live), risk, sizing, orders, market_data, account
+│  ├─ strategies/          rule_strategy: the one generic strategy that runs any profile
+│  ├─ blocks/              named building blocks: entry checks, stop rules, manage, exit
+│  ├─ indicators/          pure functions: sma, swing_low, relative_volume
+│  ├─ system/              the only OS-specific code: process checks, keep-awake, services
+│  ├─ runtime/             runstate (STOP/pid/state files) · stopbot · kill_switch
+│  ├─ market/              sp500_tickers · morning_prefilter
+│  ├─ reporting/           notify · compute_perf · telemetry · dashboard (+ web/ pages)
+│  └─ ops/                 check_setup · rotate_logs · run_tests (+ legacy Windows scheduling)
+├─ deploy/                 Dockerfile, docker-compose.yml (bot + headless IB Gateway)
+├─ scripts/                Windows double-click launchers (= paper-bot start/stop), manual/
+├─ tests/                  offline unit tests (no Gateway, no network)
+└─ data/ logs/ dashboard/ STOP      runtime output, all git-ignored
 ```
 
 | Path | Contents |
 |---|---|
-| `config/config.json` | Connection (host, port 4002, client_id), safety rails (`limits`: allowed symbols, limit orders only), `fx_fallback` (see *Account currency*) |
-| `config/rules.json` | Strategy filters, entry window, exit rules and the `risk` section (every quantitative threshold) |
+| `config/config.json` | `mode` (paper/live), `connections` per mode, loop timing, safety rails (`limits`: allowed symbols, limit orders only), `fx_fallback` |
+| `config/rules.json` | `strategies`: one section per strategy (blocks, timeframe, hours, universe, risk) and `default_strategy` |
 | `config/universe.txt` | Static fallback symbols, one IBKR ticker per line (`#` comments). Share classes use a space: `BRK B` |
-| `data/watchlist.txt` | Today's top gappers, generated by the prefilter. The bot scans it instead of `universe.txt` when it was generated today |
-| `data/trades.csv` | Fill ledger written by the bot |
+| `data/watchlist.txt` | Today's top gappers, written by the prefilter (Trend Join Long's universe) |
+| `data/trades.csv` | Fill ledger (`data/live/trades.csv` in live mode) |
 | `.env` | Secrets only: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, optional `NOTIFY_URL` |
-| `logs/` | `bot.log`, `orders.jsonl`, `safety_log.jsonl`, state files, `heartbeat.json`, `cycle_errors.log`, `notify_errors.log`, `archive/` |
-| `dashboard/` | Monitoring pages (`index.html`, `logs.html`, `strategy.html`, `performance.html`), rebuilt after every bot/cycle pass |
-| `logs/telemetry.jsonl` | One line per bot/cycle pass for the dashboard (contract: `docs/telemetry.schema.json`) |
+| `logs/` | `bot.log`, `orders.jsonl`, state files, `heartbeat.json`, `scheduler_state.json`, `active_strategy.json`, `archive/` (live mode: `logs/live/`) |
+| `dashboard/` | Monitoring pages, rebuilt after every pass (live mode: `dashboard/live/`) |
 
-All settings live in `config/` only, and secrets only in `.env`; nothing is duplicated.
 `src/paperbot/paths.py` is the single place that knows where files are, so every command
-works from any folder, including Task Scheduler runs.
+works from any folder, service or container.
 
 ---
 
 ## 1. Install and initialize
 
-Requirements: **Python 3.11+** and **IB Gateway** (or TWS) logged in to your **paper** account.
-The virtual environment lives one level up, in `C:\Users\User\IBKR\.venv`.
+Requirements: **Python 3.11+** and **IB Gateway** (or TWS). Create a virtual environment
+anywhere (this PC uses `C:\Users\User\IBKR\.venv`, one level above the project):
 
 ```bash
-# from C:\Users\User\IBKR
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r paperbot\requirements.txt
-.\.venv\Scripts\python.exe -m pip install --no-deps -e paperbot
+.venv/bin/python -m pip install -r requirements.txt     # Windows: .venv\Scripts\python.exe
+.venv/bin/python -m pip install --no-deps -e .
 ```
 
-The last line installs paperbot itself in *editable* mode: the code stays here, and the
-`paperbot-*` commands appear in `.venv\Scripts`. In each new terminal, activate the venv
-once:
-```bash
-C:\Users\User\IBKR\.venv\Scripts\Activate.ps1
-```
-Every command below also works without activating, as `<venv>\Scripts\paperbot-bot.exe …` or
-`<venv>\Scripts\python.exe -m paperbot.trading.bot …`. In VS Code, select
-`C:\Users\User\IBKR\.venv\Scripts\python.exe` as the interpreter.
+The last line installs paperbot in *editable* mode: the code stays here and `paper-bot`
+appears in the venv's `bin/` (`Scripts\` on Windows). Activate the venv in each new
+terminal, or call it by path. Then create your secrets file: `cp .env.example .env`.
 
-Then create your secrets file from the template and fill it in:
-```bash
-copy .env.example .env
-```
+On Windows, `scripts\start_paperbot.ps1` (and the double-click `start_paperbot.cmd`) uses
+`-Python <path>`, else `PAPERBOT_PYTHON`, else the one `.venv` found in the project or its
+parent folder. If **both** exist, it stops and asks you to choose. It prints the interpreter
+and refuses to start unless that interpreter imports paperbot from this project.
 
 ### IB Gateway settings (Configure → Settings → API → Settings)
 | Setting | Value |
 |---|---|
 | Enable ActiveX and Socket Clients | on |
 | Read-Only API | **off** (the bot must place orders) |
-| Socket port | **4002** (paper; live is 4001 and is refused by the bot) |
+| Socket port | **4002** paper (4001 live: used only in live mode) |
 | Trusted IPs | 127.0.0.1 |
 
 ### Check the setup (offline, never connects)
 ```bash
-paperbot-check
-paperbot-test        # unit tests; results to logs/test_results.json + the dashboard
-python -m unittest discover -s tests        # same tests, console only (from the paperbot folder)
+paper-bot check      # config, every rules.json strategy, state files, notifications
+paper-bot test       # unit tests; results to logs/test_results.json + the dashboard
 ```
-`paperbot-test` records every test's status, duration, description (its docstring, else its
-name in words) and the warnings it raised: Python warnings (e.g. library deprecations) and
-WARNING-or-worse log lines such as `ALERT`, many of which are expected because the test
-deliberately drives that path. The dashboard shows them in its *Unit tests* section, one
-collapsible group per test module (groups with failures open). It exits 1 if any test fails.
-
-### One-command start and stop
-```bash
-paperbot-start       # checks, Telegram test, Gateway, deletes STOP, paperbot-check,
-                     # paperbot-test, market-hours prefilter + dry run, then paperbot-schedule
-paperbot-start -SkipTest -Yes      # skip the market-hours test / the YES prompt
-paperbot-shutdown                  # STOP, wait for a running pass, unschedule, restore sleep
-paperbot-shutdown -Pause           # STOP and wait only; tasks stay registered
-paperbot-shutdown -CancelOrders    # also cancel paperbot's entry/exit orders (stops kept)
-```
-They run `scripts/start_paperbot.ps1` and `scripts/stop_paperbot.ps1` (also double-clickable
-as the `.cmd` files next to them). `paperbot-start` stops at the first failing step, failing
-unit tests included, and registers nothing.
 
 ---
 
-## 2. Start the bot safely
+## 2. Strategies: pick one per session, add new ones in rules.json
 
-Always go in this order:
+Each section of `rules.json → strategies` is a complete strategy, assembled from named
+**blocks**. Selecting it loads all of its settings before anything connects: timeframe,
+entry window and force-close time, universe, entry checks, stop rule, position
+management, exits and risk limits.
 
-1. **IB Gateway** is running and logged in to the paper account (`DU…`).
-2. `paperbot-check` prints **Setup OK** and there is no `STOP` file.
-3. **Morning prefilter** (each trading day, after the 9:30 ET open and before 10:05 ET):
-   ```bash
-   paperbot-prefilter --dry-run   # preview only
-   paperbot-prefilter             # writes data/watchlist.txt
-   ```
-   It takes today's S&P 500 members from Wikipedia, keeps the 100 largest by market cap
-   (Yahoo Finance), and keeps those that gapped up ≥ 3 % from yesterday's close to today's
-   open (the same measure as D3) and trade ≥ $3. It writes the top 20 to the watchlist and
-   prints a JSON summary. `--min-gap` and `--min-price` override the thresholds. Alerts go to
-   stderr when Yahoo data looks broken (≥ 30 % of symbols failed). It exits with code 1 if
-   it's run before the open or gets no data. If you skip this step, the bot logs a warning
-   and scans `universe.txt` instead.
-4. Optional: **check one symbol.** This uses a read-only connection with its own client ID,
-   so it is safe while the bot runs, and it never sends orders. It prints every check in
-   order, with the reason a symbol fails, and on a pass, the quantity and stop it would use:
-   ```bash
-   paperbot-bot --symbol NVDA --check-only
-   ```
-5. **Dry run** first. It connects, evaluates everything, logs what it *would* do, and sends
-   nothing:
-   ```bash
-   paperbot-bot
-   ```
-6. Read `logs/bot.log`, `logs/orders.jsonl` and `logs/safety_log.jsonl`. When you are happy,
-   start for real (paper account only):
-   ```bash
-   paperbot-bot --submit
-   ```
+```json
+{ "default_strategy": "trend_join_long",
+  "strategies": {
+    "trend_join_long": {
+      "label": "Trend Join Long", "summary": "Intraday stock breakouts - large-cap momentum",
+      "timeframe": "5m", "holding": "intraday",
+      "universe": {"source": "watchlist", "fallback_file": "universe.txt"},
+      "time_filter": {"earliest_entry_et": "10:05", "latest_entry_et": "15:30", "force_close_et": "15:51"},
+      "entry": [{"type": "prior_close_above_sma", "label": "D2", "period": 200},
+                {"type": "min_gap_pct", "label": "D3", "min_pct": 3.0}, "..."],
+      "stop":   {"type": "low_of_day_minus_pct", "pct": 1.0},
+      "manage": [{"type": "partial_profit", "at_R": 0.75, "fraction": 0.3333},
+                 {"type": "breakeven", "at_R": 1.0}, {"type": "trail_swing_low", "left": 2, "right": 2}],
+      "exit":   [{"type": "force_close"}],
+      "risk":   {"max_risk_per_trade_pct": 1.0, "max_order_value": 30000.0, "...": "..."} } } }
+```
 
-The bot refuses to start if:
-- the port is not a paper port, or the account ID does not start with `D`
-- a `STOP` file exists
-- another bot is already running (`logs/bot.pid`)
-- a state file in `logs/` is corrupt (see *Recovery* below)
-- it cannot reach IB Gateway. It prints one clear message, without a traceback, and exits with code 1.
+| Strategy | What it trades | Entry | Stop | Exit |
+|---|---|---|---|---|
+| `trend_join_long` | today's S&P 500 gappers, 5m bars, flat every day | breakout above prior-day/premarket/day high, gap ≥ 3 %, RVOL ≥ 2, above SMA200 (10:05–15:30) | day's low − 1 % | ⅓ at +0.75R, breakeven at +1R, swing-low trail, force close 15:51 |
+| `macro_swing_etf` | 11 SPDR sector ETFs, daily bars, **held overnight** | price > SMA200 and RSI(2) < 10, using the live price as today's close (15:45–15:55) | 2 × ATR(14), GTC | at 15:50: price > SMA(5), or 10 trading days held |
+| `equity_mean_reversion` | SPY, QQQ, IWM, 1-minute bars, flat every day, **continuous mode only**, up to 3 entries per symbol per day | last completed 1m close ≤ session VWAP − 2 sd (10:00–15:30) | 1 sd below the entry | back at VWAP, 30 minutes held, force close 15:50 |
 
-### What it does each loop (every `loop_seconds`, default 30 s)
-1. **Protects positions (any hour).** Each position it opened must have a SELL STP (GTC)
-   at IBKR sized to the shares not already covered by a working exit. A missing stop is
-   re-created and an `ALERT` is logged. A paperbot stop left without a position is cancelled.
-2. **Manages exits (regular hours).** The stop moves to breakeven at +1R, then trails the
-   latest 5-minute swing low (2 bars each side). At +0.75R a third of the position is
-   sold; the stop is shrunk first.
-3. **Force-closes from 15:51 ET.** It cancels the stop and any stale order, then sends a
-   marketable limit SELL for the actual remaining shares, re-priced every loop until flat.
-   `ALERT` lines appear if anything is still open at 15:58 or after the close.
-4. **Looks for entries from 10:05 to 15:30 ET.** It scans the watchlist (or `universe.txt`)
-   against the filters in `rules.json`, at most 10 s per loop (it resumes on the next loop),
-   so exits are never starved. Each entry is a **bracket**: a BUY limit order plus its
-   protective STP, sent together.
+Mean Reversion's own risk block allows fees up to **5 %** of R (`max_commission_pct_of_risk`):
+scalps with ~0.15 % stops on $500+ ETFs cannot keep fees under 1 % of R at a $30k order cap.
+Its per-trade risk is half the others' (0.5 %), with at most 2 positions.
+
+**Daily (`1d`) strategies** evaluate the completed daily bars plus today's **live mid price
+as the close**, near the end of the session; their entries expire one minute after the
+window. **Multi-day holding** (`"holding": "multi_day"`, `force_close_et: null`) keeps a
+position overnight on its GTC stop until an exit block fires. Exits never fire on the entry
+day, and a decided exit is kept until it fills, through the next session if needed. Every
+exit is a marketable SELL in the stop's OCA group, so the stop stays live until the SELL fills.
+
+**Adding a strategy.** Copy a section, give it a new key and label, and change its blocks
+and settings. It appears in the menu automatically; `paper-bot strategies` shows it, and
+`paper-bot check` validates it. A typo stops start-up with the exact place, e.g.
+`strategies.x.entry[1]: unknown entry type "rsi_bellow"; valid: ...`. Then add its limits
+to `APPROVED_LIMITS` in `tests/test_risk_policy.py` (the reviewed safety lock on every
+strategy's limits). Each strategy gets its own order tags and state folder, so strategies
+never touch each other's orders.
+
+| Kind | Blocks available | Settings |
+|---|---|---|
+| entry | `min_prior_close`, `min_price` | `min_usd` |
+| | `prior_close_above_sma` | `period` (200) |
+| | `close_above_sma` | `period`: today's price above the SMA of daily closes |
+| | `rsi_below` | `period` (2), `max`: Wilder RSI of daily closes |
+| | `above_prior_day_high` | none |
+| | `above_premarket_high`, `new_high_of_day` * | none |
+| | `min_gap_pct` * | `min_pct` |
+| | `min_rvol` * | `min`, `lookback_days` (14) |
+| | `below_vwap_sigma` * | `sigma`: last close ≤ session VWAP − sigma × sd |
+| stop | `low_of_day_minus_pct` * | `pct` |
+| | `atr_multiple` | `period` (14), `multiple`: below today's price |
+| | `sigma_below_entry` * | `sigma` × the session VWAP sd below the entry price |
+| manage | `partial_profit` * | `at_R`, `fraction` (< 1) |
+| | `breakeven` * | `at_R` |
+| | `trail_swing_low` * | `left` (2), `right` (2) |
+| exit | `force_close` * | none (uses `time_filter.force_close_et`; intraday holding) |
+| | `close_above_sma` | `period`, optional `at_et` ("HH:MM") |
+| | `time_stop` | `days` (trading days) or `minutes`, optional `at_et` |
+| | `target_vwap` * | none: exit when the live price is back at the session VWAP |
+
+\* needs intraday bars: not allowed on a `1d` strategy (start-up refuses it).
+
+Every block also takes an optional `label` (e.g. `"D3"`) that prefixes its log reasons.
+Section keys: `label`, `summary`, `timeframe` (`1m`, `5m`, `15m`, `1h`, `1d`), `holding`
+(`intraday` or `multi_day`), `universe` (`{"source": "watchlist"}`, `{"symbols": [...]}` or `{"file": "x.txt"}`),
+`time_filter`, `entry`, `stop`, `manage`, `exit`, `risk`, plus optional `order_ref`,
+`modes` (`["continuous"]` refuses the legacy 5-minute scheduled runs), `entry_reason`,
+`state_dir`, `max_entries_per_symbol_per_day` (default 1; re-entries after an exit). A new **kind** of signal is one small block class in
+`src/paperbot/blocks/` (about 20–40 lines, `@register("entry", "name")`); the engine, menu,
+sizing and risk code need no change.
+
+**Switching strategy** is refused while the previous one still manages positions (they
+would be left unmanaged); finish or close them first.
+
+**Sizing and rounding** are the same for every strategy (`core/sizing.py`): whole shares,
+the smallest of 1 % risk, 10 % position, the share and order-value caps and buying power,
+then the commission check. Prices go to the $0.01 tick in the safe direction (BUY limits
+up, SELL limits and long stops down).
+
+---
+
+## 3. Paper or live: configuration only
+
+```json
+"mode": "paper",
+"connections": {
+  "paper": {"host": "127.0.0.1", "port": 4002, "client_id": 21},
+  "live":  {"host": "127.0.0.1", "port": 4001, "client_id": 21, "account_id": "U0000000"}
+}
+```
+
+Change `"mode"` to `"live"` and set your live `account_id`. No code changes. The bot then:
+- accepts only live ports (4001/7496) and exactly the configured account; paper only
+  paper ports (4002/7497) and one `D…` account. Any mismatch refuses to start.
+- asks you to **type the account id** at start-up. A service or container needs
+  `PAPERBOT_LIVE_CONFIRM=<account_id>` instead; without it, live refuses to start.
+- keeps its own state, logs, ledger and dashboard (`logs/live/`, `data/live/`,
+  `dashboard/live/`), prefixes every push with `[LIVE]`, and the dashboard says LIVE.
+- uses the same risk engine, limits, drawdown breaker and approved-limits test.
+
+In live, real market-data subscriptions and commissions apply, and US accounts under
+$25k are limited to 3 day trades per 5 days (pattern day trader rule). The intraday
+strategies day-trade every position.
+
+---
+
+## 4. A trading day
+
+The bot refuses to start if the config or a strategy is invalid, the account does not
+match the mode, a state file in `logs/` is corrupt (see *Recovery*), or another bot is
+running (`logs/bot.pid`). A `STOP` file left by `paper-bot stop` is cleared when you run
+`paper-bot start` yourself; a service respects it and stays stopped.
+
+**Each pass (every `loop_seconds`, default 30 s), for the chosen strategy:**
+1. **Protects positions (any hour).** Each of its positions has a SELL STP (GTC) at IBKR,
+   sized to the shares not covered by a working exit. A missing stop is re-created (ALERT);
+   a stop without a position is cancelled.
+2. **Manages exits (regular hours):** its `manage` blocks: breakeven, swing-low trail, partial
+   profit (retried if unfilled).
+3. **Force-closes** from `force_close_et`: a marketable SELL in the stop's OCA group, re-priced
+   until flat; ALERTs if still open at 15:58 or after the close.
+4. **Looks for entries** in its entry window: its `entry` blocks on its universe, once per bar,
+   priced from live quotes. Each entry is a bracket (BUY + protective STP), expiring at the end
+   of the window.
+
+**Built-in scheduler** (weekdays, US Eastern; daylight saving handled automatically):
+
+| Job | ET | Runs |
+|---|---|---|
+| `rotate_logs` | 09:25 | archive earlier days' logs, cap the safety log, trim `trades.csv` to 90 days |
+| `prefilter` | 09:55, 10:25 … 12:55 | the morning gapper watchlist (only for strategies whose universe is the watchlist) |
+| `daily_summary` | 16:05 | performance summary + push, dashboard |
+
+A slot that was missed because the bot started late still runs if it is within its grace
+period. Status in `paper-bot status`, `logs/scheduler_state.json` and the dashboard.
+
+**Single-symbol check** (read-only connection with its own client id; safe while the bot runs):
+```bash
+paperbot-bot --symbol NVDA --check-only [--strategy KEY]
+```
+
+**Dry run first:** `paper-bot start --dry-run` connects and logs what it *would* send.
 
 ### Account currency
 All sizing and limits are in USD. IBKR reports account values in the account's base currency
-(a paper account inherits it from the live account). `src/paperbot/trading/account.py` decides
+(a paper account inherits it from the live account). `src/paperbot/core/account.py` decides
 the USD net liquidation the bot uses:
 1. IBKR's USD value when it reports one (a USD-based account): used as is.
 2. Otherwise, with `"fx_fallback": "auto"` in `config.json` (default), the base-currency value
@@ -178,103 +309,70 @@ the USD net liquidation the bot uses:
    day, saved in `logs/fx_rate.json`), else that saved rate if at most 5 days old.
 3. Otherwise no value: the entry scan is skipped and entries are blocked, with one ALERT a day.
 
-When the account switches to USD, step 1 applies automatically; nothing needs changing.
-`"fx_fallback": "off"` restores strict USD-only behaviour. Daily P&L is still the base-currency
-figure, so the $1,000 daily-loss halt triggers at 1,000 SGD (stricter, about 780 USD).
-
 **Daily P&L while flat.** IBKR sends no daily P&L while the account has nothing to report, and
 the risk guard blocks entries without one. `account.daily_pnl()` therefore uses 0.0 when the
-account provably has no P&L: no position and no execution today. If anything is held or was
-traded today and IBKR sends nothing, the value stays unknown and entries stay blocked, as before.
+account provably has no P&L: no position and no execution today.
 
 ### Limits (each key lives in exactly one file)
 - `config.json → limits` (safety rails): allowed symbols (`["*"]` = any), limit orders only.
-- `rules.json → risk` (thresholds): max shares and $ value per order, max entries per day,
-  max working entry/exit orders (stops not counted), daily loss halt, max 1 % of the account
-  at risk per trade, a position no bigger than 10 % of the account, at most 5 concurrent
+- `rules.json → strategies.<key>.risk` (thresholds): max shares and $ value per order, max
+  entries per day, max working entry/exit orders (stops not counted), daily loss halt, max 1 %
+  of the account at risk per trade, a position no bigger than 10 % of the account, concurrent
   positions, commission drag, multi-day drawdown.
-- Every value is type-checked at startup. A missing or invalid key, or a threshold left in
-  `config.json`, stops the bot with an ALERT naming the key; nothing falls back silently.
-- Exits and stops are never blocked by these limits or by a daily-loss halt, and can never
-  be larger than the position, so the bot can never go short.
-
-### Alternative: scheduled runs (Windows Task Scheduler)
-Instead of keeping `paperbot-bot --submit` open all session, Windows can start one pass
-every 5 minutes. **Use one or the other, not both.** The `logs/bot.pid` lock makes a
-scheduled run skip itself while the bot is running.
-
-```bash
-paperbot-cycle              # one dry-run pass
-paperbot-cycle --submit     # one real pass (paper)
-```
-
-Each run:
-- **Exits in under a second** on weekends and outside 09:30–16:10 ET, before loading anything heavy.
-- **Skips itself** if a `STOP` file exists or another run or the bot is active.
-- **Connects** as the bot's client (retrying once after 5 s) and runs **one pass** of exactly
-  the same logic as the bot, then disconnects.
-- **From 15:51 ET** it stays connected and repeats the pass every 30 s until flat or 16:00.
-
-Uncaught errors go to `logs/cycle_errors.log` and exit with code 1. Everything else is logged
-in `logs/bot.log`.
-
-**On a PC set to Singapore time, US market hours are overnight** (about 21:30–04:00 SGT, or
-22:30–05:00 in the northern winter). The PC must stay awake, and IB Gateway must stay logged
-in with its daily auto-restart on. Breakeven and trailing-stop changes and new entries move in
-5-minute steps instead of 30 s. Protection doesn't depend on that, because the stops are held
-at IBKR.
-
-### Full unattended schedule
-One command registers everything: rotation, prefilter, cycle, daily summary and the
-daylight-saving fix. Tasks run `<venv>\Scripts\python.exe -m paperbot.…`, so they need the
-editable install above. It also deletes the older single `paperbot cycle` task.
-```bash
-paperbot-schedule     # register / update all 11 HT_* tasks
-paperbot-unschedule   # remove them all, restore sleep settings
-```
-| Task | ET schedule | On this Singapore PC | Runs |
-|---|---|---|---|
-| `HT_LogRotate` | 09:25 Mon–Fri | 21:25 Mon–Fri | `paperbot.ops.rotate_logs` |
-| `HT_Prefilter_01`…`07` | 09:55, 10:25 … 12:55 Mon–Fri | 21:55 … 23:55 Mon–Fri; 00:25 / 00:55 Tue–Sat | `paperbot.market.morning_prefilter` |
-| `HT_Cycle` | every 5 min, all days | from 22:00 | `paperbot.runtime.cycle --submit` (its own ET gate decides) |
-| `HT_Dashboard` | 16:05 Mon–Fri | 04:05 **Tue–Sat** | `paperbot.reporting.compute_perf` |
-| `HT_Reschedule` | 07:00 daily | 19:00 | `paperbot.ops.setup_schedule --if-dst-changed` |
-
-- **Local time and weekday.** ET times are converted to this PC's time *and* weekday: 16:05 ET
-  Monday is Tuesday morning in Singapore. The table shows US daylight-saving time. After New
-  York switches back to standard time (**Nov 1, 2026**), every local time moves an hour
-  later, and `HT_Reschedule` re-registers the tasks the morning after any change.
-- **Keep-awake.** The first setup saves your sleep timeouts to `logs/power_backup.json` and
-  sets *sleep on AC power* to never. Battery settings are untouched, so keep the PC plugged in.
-  `paperbot-unschedule` restores the saved value (30 min if no backup exists).
-- **Safety.** Tasks run as you, only while you're logged in, never elevated or as SYSTEM.
-  Re-running either command is safe. If one task fails to register, the rest still are, and the
-  command exits with code 1.
-- **Telegram.** 7 prefilter runs means 7 prefilter messages per trading day.
-- **Unattended trading.** `HT_Cycle` uses `--submit`, so once registered the bot **trades on
-  the paper account unattended** every US session.
+- Every value is type-checked at startup; a missing, invalid or misplaced key stops the bot with
+  an ALERT naming it. Exits and stops are never blocked by these limits, and can never be larger
+  than the position, so the bot can never go short.
 
 ---
 
-## 3. Stop the project gracefully
+## 5. Run unattended (boot / log-on, servers, cloud)
+
+Start once by hand (`paper-bot start`, choose the strategy), then:
+
+```bash
+paper-bot service install            # --dry-run shows exactly what it would do
+paper-bot service status
+paper-bot service uninstall
+```
+
+| OS | Installs | Notes |
+|---|---|---|
+| Linux | systemd user unit `~/.config/systemd/user/paper-bot.service` (restart on failure) | on a server also run `sudo loginctl enable-linger $USER` |
+| macOS | launchd agent `~/Library/LaunchAgents/com.paperbot.agent.plist` | logs to `logs/service.log` |
+| Windows | Task Scheduler task `PaperBot` at log-on (your account, no admin) | removes the old `HT_*` tasks |
+
+The service runs `paper-bot start --yes` without a menu, using the saved strategy. Live mode
+needs `paper-bot service install --live-confirm <account_id>`. While it runs, the bot keeps the
+computer from sleeping (Windows/macOS) without changing your power settings.
+
+**Docker / cloud VM** (bot + a headless IB Gateway that logs in by itself):
+```bash
+cp deploy/docker.env.example deploy/.env      # IBKR login, strategy, optional Telegram
+docker compose -f deploy/docker-compose.yml up -d --build
+docker compose -f deploy/docker-compose.yml exec paper-bot paper-bot status
+```
+Live logins still need IBKR's two-factor approval on your phone; no software can skip that.
+
+**Legacy Windows scheduling.** `paperbot-schedule` / `paperbot-cycle` (the `HT_*` Task Scheduler
+tasks running one pass every 5 minutes) still work but are no longer needed: `paper-bot start`
+does the same in one process on every OS. Use one or the other, not both
+(`paper-bot service install` on Windows removes the old tasks; `paperbot-unschedule` does too).
+
+---
+
+## 6. Stop the project gracefully
 
 | Command | What happens to orders | Use it when |
 |---|---|---|
-| `paperbot-stop` | The bot cancels its working entries/exits, **keeps protective stops**, exits. Waits up to 120 s and reports. Never kills a process. | Normal shutdown |
-| Create a file named `STOP` in the project folder | Same as above, on the next loop | No terminal handy |
+| `paper-bot stop` | The bot cancels its working entries/exits, **keeps protective stops**, exits. Waits up to 120 s and reports. Never kills a process. | Normal shutdown |
+| Create a file named `STOP` in the project folder | Same as above, on the next pass | No terminal handy |
 | `Ctrl+C` in the bot window | Exits immediately and leaves **every** order in place (stops included) | You want it gone now |
-| `paperbot-kill` | Creates `STOP`. If the bot isn't running, cancels its entries/exits itself. **Keeps stops.** | Stop and make sure no new entries fill |
-| `paperbot-kill --all` | Creates `STOP`, then a **global cancel** of every order. **Positions become unprotected.** | Emergency only |
+| `paper-bot kill` | Creates `STOP`. If the bot isn't running, cancels its entries/exits itself. **Keeps stops.** | Stop and make sure no new entries fill |
+| `paper-bot kill --all` | Creates `STOP`, then a **global cancel** of every order. **Positions become unprotected.** | Emergency only |
 
-**Scheduled runs:** to pause them, create a `STOP` file; each run then skips itself. To end
-them for good, run `paperbot-unschedule` (all `HT_*` tasks, plus sleep settings restored). A
-run that is in progress finishes its pass, which takes at most a few minutes.
-
-After stopping, **delete the `STOP` file** before starting the bot again.
-Open positions keep their GTC stop at IBKR while the bot is off. On its next start the bot
-re-adopts them, and re-creates any missing stop.
-
-Then shut down IB Gateway if you want. Stops are held by IBKR's servers, not by Gateway.
+Open positions keep their GTC stop at IBKR while the bot is off; on the next start the bot
+re-adopts them and re-creates any missing stop. Stops are held by IBKR's servers, not by
+Gateway, so you can shut Gateway down too.
 
 ---
 
@@ -297,15 +395,16 @@ python -c "from paperbot.reporting.notify import notify; notify('Test', 'Hello t
 | `BE X` / `TRAIL X` | The stop moves to breakeven / up to a new swing low | default |
 | `EOD Force Close` | First force-close attempt, with the number of positions | high |
 | `ALERT` / `ERROR` | Any `ALERT` log line or error, e.g. no protective stop, still open at 15:58, cannot connect. The same line is sent at most once per 10 minutes. | high |
-| `Bot CRASHED` / `Cycle CRASHED` | An uncaught error in the bot / a cycle run | high |
+| `Bot CRASHED` / `Cycle CRASHED` | An uncaught error in the bot / a legacy scheduled run | high |
+| `[LIVE] …` | Every message from a bot in live mode starts with `[LIVE]` | — |
 | `Prefilter …` | The prefilter (not `--dry-run`): survivors, failure, or degradation alert | default / high |
 
 Fill messages come from IBKR's execution report, read every bot loop or cycle run. A stop
 that fills while nothing is running is still reported, on the next run. Each fill is sent
 once (`logs/notify_state.json`). Sending happens in the background with a 5-second timeout, so
 it never delays trading. Problems are written to `logs/notify_errors.log` with the token
-masked. With scheduled runs, a failed Gateway connection during market hours produces an
-alert on every 5-minute run until it's fixed. Set `PAPERBOT_NOTIFY=off` to silence
+masked. When IB Gateway is unreachable the bot sends one ALERT per outage and keeps
+retrying (30 s, doubling up to 5 min). Set `PAPERBOT_NOTIFY=off` to silence
 everything (the test suite does this).
 
 ---
@@ -318,8 +417,7 @@ commission, stop_price; the initial stop is recorded on entry rows). It is writt
 fill notifications, so it works with the bot and with scheduled runs, including stops that
 fill between runs.
 
-**`paperbot-perf`** (best after the 16:00 ET close, e.g. 16:15 ET = about 04:15 Singapore
-time) reads the ledger and never writes to it or connects to IBKR. It prints a JSON summary
+**`paperbot-perf`** (the built-in scheduler runs it at 16:05 ET) reads the ledger and never writes to it or connects to IBKR. It prints a JSON summary
 and pushes it to Telegram:
 ```bash
 paperbot-perf                    # today (ET)
@@ -352,8 +450,8 @@ How it works:
 - Rebuild at any time (read-only, safe outside market hours):
   `python -m paperbot.reporting.dashboard`.
 - Tailwind CSS and fonts come from CDNs. Offline, the pages still show all data with basic styling.
-- Prices on the scanner are the last completed 5-minute closes the bot evaluated. Paperbot does not
-  stream quotes. US market holidays are not modelled in the countdowns.
+- Prices on the scanner are the last completed bar closes the bot evaluated (limit prices use live
+  quotes). US market holidays are not modelled in the countdowns.
 
 **Performance page: `dashboard/performance.html`.** It reloads itself every 30 s, and the bot and
 scheduled runs rebuild it after every pass. `paperbot-perf` also writes it, together with the
@@ -376,14 +474,14 @@ monitoring pages (`--no-html` skips both).
 The page uses Bootstrap 5 CSS from a CDN and no JavaScript. Without internet it still shows
 all the data, just unstyled.
 
-**`paperbot-rotate`** (best before the session, e.g. 08:00 ET = about 20:00 Singapore time):
+**`paperbot-rotate`** (the built-in scheduler runs it at 09:25 ET, inside the bot):
 - It moves every `logs/*.log` / `logs/*.jsonl` last written before today (ET) into
   `logs/archive/YYYY-MM-DD/`. A file written today stays until the next run.
 - `logs/safety_log.jsonl` over 5 MB goes to `logs/archive/YYYY-MM-DD_safety_log.jsonl` and
   a fresh empty file starts.
 - `data/trades.csv` keeps 90 days. Older rows are appended to
-  `logs/archive/trades_YYYYMMDD.csv` and the file is rewritten atomically. This is skipped
-  while the bot or a scheduled run is active.
+  `logs/archive/trades_YYYYMMDD.csv` and the file is rewritten atomically. Run by hand, it is
+  skipped while a bot is active; the bot's own scheduled run does it safely.
 - It uses `os.replace` only, with no copy-then-delete. A file another process has open is
   skipped and reported, never forced. State files (`*.json`), `bot.pid` and the archive are
   never touched. It prints `Rotated N files to logs/archive/` and always exits 0.
@@ -434,8 +532,9 @@ IBKR the whole time.
 All timestamps in logs and journals are **US Eastern Time** (`… ET`), and the daily counters
 (entries per day, loss halt) roll over at ET midnight, whatever time zone this PC is set to.
 
-Orders are tagged with `orderRef` (`paperbot:entry`, `paperbot:stop`, `paperbot:exit`).
-The bot only ever manages orders and positions it created. Manual trades are left alone.
+Orders are tagged with `orderRef`: Trend Join Long uses `paperbot:entry`, `paperbot:stop`,
+`paperbot:exit`; other strategies `paperbot:<key>:entry` etc. The bot only ever manages orders
+and positions the running strategy created. Manual trades are left alone.
 
 `scripts/manual/` holds the one-off scripts used while setting up: `ib_paper_check.py` and
 `check_connection.py` (read-only connection checks), and `place_nvda_order.py` /
@@ -443,9 +542,16 @@ The bot only ever manages orders and positions it created. Manual trades are lef
 and don't use the bot's risk guard.
 
 ## Known limitations
-- The unit tests use a fake IBKR connection. The bracket orders, stop modifications and
-  cancel/replace flow have **not yet been exercised against the live paper Gateway**.
-  Watch the first `--submit` sessions closely.
+- The unit tests use a fake IBKR connection. The bracket orders, OCA linking, stop
+  modifications, reconnects and the service/Docker set-ups have **not yet been exercised
+  against a real Gateway on every OS**. Watch the first sessions closely.
+- Long-only only; no short selling (the risk guard can never open a short).
+- Market holidays and half-days are not modelled: on a 13:00 close, a 15:45 entry window
+  never opens and a 15:50 exit waits for the next session (the GTC stop protects meanwhile).
+- Overnight positions can gap through their stop at the open; the stop then fills at the
+  next price, not at the stop price.
+- On low-priced ETFs (≈ $40) a stop under ~2.4 % makes per-share commissions exceed 1 % of
+  R, so the commission rule skips the entry. Intended, but it can skip quiet sectors.
 - If a bracket's entry is partly filled and then cancelled, the stop's quantity is
   corrected on the next loop rather than immediately.
 - The universe scan uses historical-data requests. The first scan of a day downloads a year

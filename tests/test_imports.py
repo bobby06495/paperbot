@@ -30,11 +30,25 @@ class ImportTest(unittest.TestCase):
     def test_cycle_import_is_lightweight(self):
         """cycle's off-hours exit must not pay for importing ib_async/pandas/the bot."""
         code = ("import sys, paperbot.runtime.cycle; print(any(m in sys.modules for m in "
-                "('ib_async', 'pandas', 'paperbot.trading.bot')))")
+                "('ib_async', 'pandas', 'paperbot.core.engine')))")
         with tempfile.TemporaryDirectory() as elsewhere:  # works from any working directory
             out = subprocess.run([sys.executable, "-c", code], cwd=elsewhere,
                                  capture_output=True, text=True, timeout=30)
         self.assertEqual(out.stdout.strip(), "False", out.stderr)
+
+    def test_old_module_paths_are_the_new_modules(self):
+        """One implementation: the pre-refactor import paths are aliases, not copies."""
+        for old, new in (("paperbot.trading.bot", "paperbot.core.engine"),
+                         ("paperbot.trading.risk", "paperbot.core.risk"),
+                         ("paperbot.trading.account", "paperbot.core.account"),
+                         ("paperbot.trading.strategy", "paperbot.strategies.rule_strategy"),
+                         ("paperbot.runtime.cycle", "paperbot.core.scheduled_pass")):
+            with self.subTest(old=old):
+                self.assertIs(importlib.import_module(old), importlib.import_module(new))
+        from paperbot.strategies import rule_strategy
+        from paperbot.trading import strategy as old_strategy
+        with mock.patch.object(old_strategy, "ACTIVE", "macro_swing_etf"):
+            self.assertEqual(rule_strategy.ACTIVE, "macro_swing_etf")  # same settings
 
     def test_paths_resolve_to_this_project(self):
         self.assertTrue(paths.PROJECT_ROOT.is_absolute())

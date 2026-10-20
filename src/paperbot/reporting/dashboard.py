@@ -43,6 +43,8 @@ HEARTBEAT = paths.LOGS_DIR / "heartbeat.json"
 CYCLE_ERRORS = paths.LOGS_DIR / "cycle_errors.log"
 TEST_RESULTS = paths.LOGS_DIR / "test_results.json"
 SCHEDULER_CACHE = paths.LOGS_DIR / "scheduler_cache.json"
+BUILTIN_SCHEDULER = paths.LOGS_DIR / "scheduler_state.json"  # core/clock.py (paper-bot start)
+CONTINUOUS_SOURCES = ("bot.py", "paper-bot")  # heartbeat sources of a long-running bot
 LOG_TAIL_BYTES = 4 * 1024 * 1024  # today's part of bot.log is well below this
 MAX_RUNS = 500  # telemetry passes embedded in full; older ones are counted only
 STALE_MINUTES = 10
@@ -258,7 +260,7 @@ def scheduler_tasks(now: dt.datetime, runner=subprocess.run, cache: Path | None 
 def run_counts(log: list[dict], runs: list[dict], errors: list[str]) -> dict:
     starts = [l for l in log if l["msg"].startswith("cycle start")]
     skipped = [l for l in log if l["msg"].startswith("cycle skipped")]
-    bot_passes = [r for r in runs if r.get("source") == "bot.py"]
+    bot_passes = [r for r in runs if r.get("source") in CONTINUOUS_SOURCES]
     by_hour: dict[str, int] = {}
     for item in starts:
         by_hour[item["time"][11:13]] = by_hour.get(item["time"][11:13], 0) + 1
@@ -500,14 +502,21 @@ def funnel(scanner: list[dict]) -> list[dict]:
 def health_checks(now: dt.datetime, sched: dict, heartbeat: dict, log: list[dict],
                   errors: list[str], risk_state: dict, tests: dict, watch_fresh: bool,
                   last_run: dict | None, current_phase: str, stop_file: bool,
-                  missed: list[str] | None = None) -> list[dict]:
+                  missed: list[str] | None = None, builtin: dict | None = None) -> list[dict]:
     def check(key, label, status, detail):
         return {"key": key, "label": label, "status": status, "detail": detail}
 
     out = []
     in_session = current_phase not in ("closed", "pre_open")
     cycle = (sched or {}).get("cycle") or {}
-    if not sched.get("available"):
+    if builtin is not None:  # paper-bot start: the bot schedules its own daily jobs
+        today = now.date().isoformat()
+        failed = [name for name, job in (builtin.get("jobs") or {}).items()
+                  if job.get("status") == "failed" and str(job.get("started", ""))[:10] == today]
+        out.append(check("scheduler", "Built-in scheduler", "warn" if failed else "pass",
+                         f"failed today: {', '.join(failed)}" if failed else
+                         f"daily jobs run inside paper-bot (updated {str(builtin.get('updated') or 'never')[11:19]} ET)"))
+    elif not sched.get("available"):
         out.append(check("scheduler", "Task Scheduler", "skip", "not available on this system"))
     elif not cycle.get("registered"):
         out.append(check("scheduler", "Task Scheduler (HT_Cycle)", "warn",
@@ -526,7 +535,8 @@ def health_checks(now: dt.datetime, sched: dict, heartbeat: dict, log: list[dict
                          interp["path"] if interp["ok"] else
                          (f"missing packages: {', '.join(interp['missing'])}" if interp["exists"]
                           else f"not found: {interp['path']}")))
-    last_ok = next((l for l in reversed(log) if l["msg"].startswith(("cycle start", "connected to paper"))), None)
+    last_ok = next((l for l in reversed(log) if l["msg"].startswith(("cycle start", "connected to ",
+                                                                      "connection to IB Gateway restored"))), None)
     last_bad = next((l for l in reversed(log) if l["msg"].startswith("cannot connect to IB Gateway")), None)
     if last_bad and (not last_ok or last_bad["time"] > last_ok["time"]):
         out.append(check("gateway", "IB Gateway connection", "fail",
@@ -586,13 +596,15 @@ def scheduler_status(now: dt.datetime, sched: dict, heartbeat: dict, current_pha
     """Overall scheduler state: ACTIVE, IDLE, PAUSED, STALE, DEGRADED, CRASHED, NOT SCHEDULED."""
     cycle = (sched or {}).get("cycle") or {}
     last = tm.parse_et(heartbeat.get("time"))
-    continuous = heartbeat.get("source") == "bot.py" and bot_pid is not None
+    continuous = heartbeat.get("source") in CONTINUOUS_SOURCES and bot_pid is not None
     if stop_file:
         return "PAUSED", "STOP file present: scheduled runs skip themselves until it is deleted"
     if heartbeat.get("status") == "crashed":
         return "CRASHED", f"last run crashed: {heartbeat.get('error', '')}"
     if continuous:
-        return "ACTIVE", f"continuous bot.py loop (pid {bot_pid})"
+        runner = "paper-bot with built-in scheduler" if heartbeat.get("source") == "paper-bot" \
+            else "continuous bot.py loop"
+        return "ACTIVE", f"{runner} (pid {bot_pid})"
     if sched.get("available") and not cycle.get("registered"):
         return "NOT SCHEDULED", "HT_Cycle is not registered"
     if sched.get("available") and not cycle.get("enabled"):
@@ -615,13 +627,13 @@ def snapshot(now: dt.datetime | None = None, runner=subprocess.run) -> dict:
 
     now = now or dt.datetime.now(ET)
     day = now.date().isoformat()
-    rules = _json(paths.RULES_FILE, {})
+    strategy_key, section, rules = tm.active_strategy(_json(paths.RULES_FILE, {}))
     config = _json(paths.CONFIG_FILE, {})
     times = tm.session_times(rules)
     current_phase = tm.phase(now, times)
     heartbeat = _json(HEARTBEAT, {})
     risk_state = _json(tm.RISK_STATE, {})
-    strategy_state = _json(tm.STRATEGY_STATE, {})
+    strategy_state = _json(tm.strategy_state_file(section, strategy_key), {})
     tests = _json(TEST_RESULTS, {})
     stop_file = runstate.stop_requested()
     bot_pid = runstate.running_pid()
@@ -639,7 +651,7 @@ def snapshot(now: dt.datetime | None = None, runner=subprocess.run) -> dict:
     else:
         universe_source = "universe"
         try:
-            from paperbot.trading.strategy import read_symbols
+            from paperbot.strategies.rule_strategy import read_symbols
             universe = read_symbols(paths.UNIVERSE_FILE)
         except OSError:
             universe = []
@@ -662,10 +674,11 @@ def snapshot(now: dt.datetime | None = None, runner=subprocess.run) -> dict:
         compute_perf.load_day(paths.TRADES_CSV, day)))
     acct = (last_run or {}).get("account") or {}
     scanner = scanner_view(watch, runs, universe_source, universe, strategy_state, held, day)
-    scheduled = heartbeat.get("source") != "bot.py"
+    scheduled = heartbeat.get("source") not in CONTINUOUS_SOURCES
+    builtin = _json(BUILTIN_SCHEDULER, {}) if heartbeat.get("source") == "paper-bot" else None
     missed = missed_runs(now, log, times) if scheduled else None
     checks = health_checks(now, sched, heartbeat, log, errors, risk_state, tests,
-                           watch_day == day, last_run, current_phase, stop_file, missed)
+                           watch_day == day, last_run, current_phase, stop_file, missed, builtin)
     scored = [c for c in checks if c["status"] != "skip"]
     worst = ("fail" if any(c["status"] == "fail" for c in scored) else
              "warn" if any(c["status"] == "warn" for c in scored) else "pass")
@@ -677,6 +690,7 @@ def snapshot(now: dt.datetime | None = None, runner=subprocess.run) -> dict:
         "schema": "paperbot.dashboard/1",
         "telemetry_schema": tm.SCHEMA_VERSION,
         "generated_at": _iso(now), "generated_at_ms": _ms(now),
+        "trading_mode": paths.MODE, "strategy_key": strategy_key,
         "day": day,
         "phase": {"key": current_phase, "label": tm.PHASES[current_phase]},
         "model": {"sessions": session_windows(now, times),
@@ -684,10 +698,12 @@ def snapshot(now: dt.datetime | None = None, runner=subprocess.run) -> dict:
                   "cycle_interval_min": 5, "force_loop_s": 30,
                   "loop_seconds": config.get("loop_seconds", 30),
                   "near_pct": NEAR_PCT, "stale_minutes": STALE_MINUTES,
-                  "holidays_modelled": False},
+                  "holidays_modelled": False,
+                  "holds_overnight": (rules.get("time_filter") or {}).get("force_close_et", "") is None},
         "scheduler": {**sched, "status": status, "detail": status_detail,
                       "stop_file": stop_file, "bot_pid": bot_pid,
-                      "mode": "continuous" if heartbeat.get("source") == "bot.py" else "scheduled"},
+                      "mode": "continuous" if heartbeat.get("source") in CONTINUOUS_SOURCES else "scheduled",
+                      "builtin": builtin},
         "heartbeat": heartbeat,
         "kpis": {"runs": run_counts(log, runs, errors),
                  "pnl": {"daily": acct.get("daily_pnl"), "unrealized": acct.get("unrealized_pnl"),
@@ -722,7 +738,7 @@ def snapshot(now: dt.datetime | None = None, runner=subprocess.run) -> dict:
                      "time_in_force": config.get("time_in_force"),
                      "steps": [{"key": k, "label": l} for k, l in tm.STEPS],
                      "funnel": funnel(scanner),
-                     "scan_budget_s": 150 if heartbeat.get("source") != "bot.py" else 10},
+                     "scan_budget_s": 150 if heartbeat.get("source") not in CONTINUOUS_SOURCES else 10},
         "scanner": {"source": universe_source, "generated": watch["generated"],
                     "size": len(universe), "rows": scanner},
         "performance": {k: today_perf[k] for k in ("total_trades", "wins", "losses", "win_rate_pct",

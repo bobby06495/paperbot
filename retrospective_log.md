@@ -7,7 +7,7 @@
 
 ## October 20, 2026: Execution, timing and risk hardening
 
-**Scope:** 12 flaws fixed across `strategy.py`, `bot.py`, `risk.py`, `account.py`, `cycle.py`, `config.json` and `rules.json`. The test suite grew from 187 to 266 tests, all passing, with no regressions.
+**Scope:** 17 issues fixed: 13 execution, timing and risk flaws, and 4 structural ones (the strategy hard-wired into the engine, a Windows-only runtime that could trade paper only, no exits other than the daily force close, and rules that made scalping impossible). The test suite grew from 187 to 400 tests, all passing, with no regressions.
 
 **Summary for the reader in a hurry.**
 
@@ -25,6 +25,11 @@
 | 10 | No multi-day loss limit | Unbounded capital bleed across days | Latched drawdown breaker, $3,000 |
 | 11 | Thresholds split over two files, parsed twice, unchecked | Silent overrides, mid-session config failures | One home per key, one typed parser, fail closed |
 | 12 | Risk limits raised with no portfolio-level regression check | Unreviewed drift of what the bot may do | Approved-limits lock plus reference-account scenario tests |
+| 13 | Strategy hard-wired into the engine | Every new strategy = engine surgery, regression risk | Generic engine + rules.json strategies built from blocks, start-up menu |
+| 14 | Windows-only runtime, paper-only by code, no reconnect | Not portable; live needs code edits; Gateway restart = crash | `paper-bot` CLI, built-in scheduler, auto-reconnect, paper/live by config |
+| 15 | Engine could only flatten every day at a fixed time | No swing strategies; exits only by stop or force close | Signal-exit framework, 1d timeframe, multi-day holding; Macro Swing ETF |
+| 16 | One global fee rule and one entry per symbol per day | Scalping strategies could never trade | Per-strategy fee limit and re-entry count; Equities Mean Reversion |
+| 17 | Start-up could not show or cross-check what was about to trade | A stale choice, edited rules or the wrong Python could reach IBKR silently | Pre-connect PREFLIGHT summary and checks, scan state per strategy, one verified interpreter |
 
 ---
 
@@ -257,8 +262,147 @@ Treat risk limits as policy: pin the approved values, test them against a realis
 
 ---
 
+### 13. October 20, 2026: The strategy was hard-wired into the engine
+
+**Identified Flaw / Risk.**
+Trend Join Long's filters, exits and timings lived in one module that the runner imported directly. The runner made 12 calls into it, the scheduled pass made 11, and the scheduled pass even wrote to its internals. The order machinery (stop sync, orphan stops, force close, partial profit) was mixed in with the strategy's own rules. `rules.json` held a single strategy at its top level. Adding or switching a strategy meant editing the engine, and every edit risked changing how existing positions are protected.
+
+**Changes Implemented.**
+- **Separated the runner from the strategy.** `core/` is the runner (engine, risk guard, sizing, order machinery, market data) with no strategy knowledge. `strategies/rule_strategy.py` is one generic strategy that runs any profile.
+- **Strategies are `rules.json` sections built from named blocks.** `blocks/` holds the entry checks, stop rules, management and exits; `indicators/` holds pure functions. `core/profile.py` validates a whole section at start-up, and every mistake names its exact place, e.g. `strategies.x.entry[1]: unknown entry type ...`.
+- **Start-up selector** (`core/selector.py`):
+  - a menu built from `rules.json`, plus `--strategy` and the saved choice;
+  - an invalid section is listed but cannot be chosen;
+  - switching is refused while the previous strategy still manages positions.
+  All of this happens before any broker connection.
+- **Each strategy keeps its orders and state separate.** It gets its own order tags (`paperbot:<key>:…`) and state folder. Trend Join Long keeps the original tags and paths, so its working IBKR stops carried over.
+- **One shared sizing module** (`core/sizing.py`): whole shares, the same limit order for every strategy, and prices rounded to the tick in the safe direction (BUY limits up, SELL limits and long stops down).
+
+**Engineering Reasoning.**
+A behaviour baseline was recorded from the old code *before* anything changed: 31 scenarios covering every filter's pass and fail path, sizing, and the order and state outcomes. The refactored engine reproduces all of them exactly. The only intended change came afterwards, as a separate step: directional rounding moved 13 prices by exactly $0.01 in the safe direction, and no quantity or filter result changed. With a generic engine plus declarative blocks, a new strategy is a `rules.json` section. A new kind of signal is one small block class, with no change to the engine, risk or sizing code.
+
+**Key Learning.**
+Before restructuring trading code, freeze its behaviour in a recorded baseline and prove the new code reproduces it. Make any deliberate behaviour change a separate, visible step.
+
+---
+
+### 14. October 20, 2026: A Windows-only runtime that could trade paper only, and crashed when IB Gateway restarted
+
+**Identified Flaw / Risk.**
+Running the bot depended on Windows: Task Scheduler (13 `HT_*` tasks re-registered whenever daylight saving changed), PowerShell launchers, power-setting changes, a Windows-only Python path and a Win32 process check. It could not run on macOS, Linux or a server. "Paper only" was enforced by hard-coded ports and the account prefix, so going live meant editing code. The long-running bot had no reconnect: IB Gateway's daily restart or a network drop ended it.
+
+**Changes Implemented.**
+- **One command on every platform.** `paper-bot start` (`cli.py`) runs the whole trading day in one process: strategy passes plus a **built-in scheduler** (`core/clock.py`) for log rotation, the watchlist and the daily summary. It runs on the US Eastern clock, with no re-registration at daylight saving. A missed slot within its grace period catches up, and every run is recorded for the dashboard.
+- **Automatic reconnect.** When IB Gateway is unreachable, the bot sends one ALERT per outage and retries with back-off (30 s up to 5 min). After reconnecting it checks the account again; a different account stops the bot. Protective stops stay at IBKR throughout.
+- **OS-specific code isolated in `system/`.** It holds the process check, keep-awake (without changing power settings), and `paper-bot service install` for systemd (Linux), launchd (macOS) and Task Scheduler at log-on (Windows). `deploy/` adds Docker with a headless IB Gateway for cloud servers.
+- **Paper or live by configuration only** (`core/broker.py`): `config.json` `mode` plus `connections`, with no code change.
+  - **Ports and accounts must match the mode.** Paper and live ports never overlap. Live accepts only the exact configured account; paper accepts only one `D…` account.
+  - **Live start-up must be confirmed:** by typing the account id at the terminal, or with `PAPERBOT_LIVE_CONFIRM` for unattended runs.
+  - **Live keeps its own data.** It has separate state, logs, ledger and dashboard folders, and every push is prefixed `[LIVE]`.
+
+**Engineering Reasoning.**
+Scheduling inside the bot removes the OS dependency and the daylight-saving re-registration in one move, and keeps a single owner of the connection and the pid lock. Live trading is config-only but never one setting away from real money: the mode, the ports, the exact account and an explicit confirmation must all agree. Every mismatch refuses to start.
+
+**Key Learning.**
+Keep platform specifics behind one small boundary and drive environment differences (paper vs live, host vs container) from configuration with strict cross-checks. Long-running trading processes must expect their broker connection to drop, and recover without losing protection.
+
+---
+
+### 15. October 20, 2026: Positions could only leave by their stop or the daily force close
+
+**Identified Flaw / Risk.**
+Every strategy had to be flat at a fixed time each day, and a position could only exit through its protective stop or that force close. Signals came only from completed intraday bars. A multi-day strategy (hold overnight, exit on a signal or after N days) could not be expressed. Several components also quietly assumed a 15:51 force close existed: the scheduled pass, the dashboard phases and the timeline.
+
+**Changes Implemented.**
+- **Signal-exit framework** (`core/orders.signal_exits`). Exit blocks decide *when* to exit; the closing itself reuses the force close's gap-free path: a marketable SELL in the stop's OCA group, re-priced until filled, with the stop live throughout. A decided exit is recorded in the position state and carried through re-pricing and into the next session. Multi-day strategies never exit on the entry day.
+- **Daily timeframe and multi-day holding.**
+  - **Data:** `1d` strategies see the completed daily bars plus today's live mid price as the close.
+  - **Holding:** `multi_day` keeps positions overnight on their GTC stops, with no force close and no "still open after the close" alert.
+  - **Scan cadence:** at most every 5 minutes inside the entry window.
+- **Validation.** Start-up refuses:
+  - a multi-day strategy with a force close;
+  - a `1d` strategy using an intraday-only block, naming the block;
+  - a strategy without exits;
+  - a `time_stop` with both or neither of `days` and `minutes`.
+- **New indicators:** Wilder RSI and ATR.
+- **New blocks:** `close_above_sma` and `rsi_below` (entry), `atr_multiple` (stop), `close_above_sma` and `time_stop` (exit). The trading-day count uses the daily bars, so weekends and holidays are not counted.
+- **No force-close time:** the scheduled pass, telemetry and the dashboard handle it (the phase becomes zero-length). The strategy page has a generic "Strategy blocks" panel.
+- **Macro Swing ETF** added purely as a `rules.json` section, with the approved draft settings.
+- **Per-strategy limits lock:** `test_risk_policy.py` now requires every strategy in `rules.json` to have approved limits and a reference scenario.
+
+**Engineering Reasoning.**
+Separating *when* to exit (a block) from *how* to exit (one shared, already-tested closing path) gives every future exit rule the OCA protection for free. Trend Join Long's force close was moved onto that shared path without a single change to its recorded baseline. The reference scenario for the new strategy surfaced a real interaction: per-share fees on a ~$40 ETF exceed 1% of R when the stop is under ~2.4%. The commission rule then skips the trade, which is intended and is now documented.
+
+**Key Learning.**
+Model the lifecycle explicitly (entry, management, exit, holding period) rather than assuming "flat by close". Every hidden default (here the 15:51 force close) is a latent bug for the next strategy that doesn't share it.
+
+---
+
+### 16. October 20, 2026: Rules that made a scalping strategy impossible
+
+**Identified Flaw / Risk.**
+Two engine-wide rules made an intraday index-ETF scalper impossible:
+- **The fee limit.** At ~$600 a share, a $30k order cap and ~0.15% one-sigma stops, round-trip fees are about 2–5% of R, far above the global 1% limit, so every trade was blocked.
+- **One entry per symbol per day.** A mean-reversion strategy that exits at VWAP could not take the next stretch.
+
+**Changes Implemented.**
+- **Fee limit per strategy.** It comes from each strategy's own risk block. Only Equities Mean Reversion allows 5%, as approved; the other strategies keep 1%.
+- **Re-entries per strategy.** A new optional `max_entries_per_symbol_per_day` (default 1) is counted per ET day in the strategy state. An older state counts as one entry, so Trend Join Long's rule is unchanged. The global 5-entries-per-day cap still applies.
+- **New indicator and blocks.** The session VWAP and its volume-weighted standard deviation; blocks `below_vwap_sigma` (entry), `sigma_below_entry` (stop) and `target_vwap` (exit). The 30-minute exit reuses `time_stop`.
+- **Equities Mean Reversion as a `rules.json` section:** SPY, QQQ and IWM on 1-minute bars, long only, flat by 15:50, continuous mode only. Scheduled 5-minute runs are refused before anything connects.
+- **Reference scenario.** Its limits are locked in `test_risk_policy.py`, with quiet (0.15%) and busy (0.3%) one-sigma stops.
+
+**Engineering Reasoning.**
+Making a safety threshold per strategy, rather than relaxing it globally, keeps the stricter 1% fee rule for the strategies it suits. It makes the cost of scalping explicit and reviewed: it sits in the approved-limits table with its reason. The default for re-entries is the old rule, so existing strategies cannot change behaviour by omission; the Trend Join Long baseline proves it.
+
+**Key Learning.**
+Risk rules that encode a trading style (fees vs. R, entries per day) belong to the strategy, not the engine. Defaults must reproduce the old behaviour exactly.
+
+---
+
+### 17. October 20, 2026: Start-up that could not prove what it was about to trade
+
+**Identified Flaw / Risk.**
+A code review of the multi-strategy refactor found that nothing visibly cross-checked the selected strategy, its limits and the runtime before a connection was made:
+- **No start-up summary for unattended runs.** The effective limits were logged only after connecting.
+- **No cross-check.** A stale saved choice, a `rules.json` edited after the menu, or a risk guard built from other limits would not have been detected.
+- **Stale scan state.** The entry-scan position was module-global and not tied to a strategy.
+- **Crashing blocks.** An unexpected error in one entry or exit block (a bug, odd data) aborted the whole pass instead of failing one symbol.
+- **Ambiguous launcher.** `start_paperbot.ps1` silently took the first of two `.venv` folders.
+- **Copied old-path modules.** The old import paths (`paperbot.trading.*`, `runtime.cycle`) were `import *` copies, so settings changed through one path did not reach the other.
+- **Dashboard in the loop.** The pandas dashboard rebuild ran inline, after every pass.
+
+**Changes Implemented.**
+- **`engine.preflight()`**, called by `paper-bot start` and the scheduled pass after every other check and before any connection:
+  - It logs `PREFLIGHT` lines: the connection, the strategy and label, the `rules.json` SHA-256 (first 12 hex digits), timeframe, window, universe, blocks, and every effective limit.
+  - It refuses to start with an ALERT if the selected strategy (saved choice, else default) differs from the one loaded, if the strategy module runs another profile, if the risk guard's limits differ, or if `rules.json` no longer matches what was loaded.
+- **Scan state per strategy.** It now records its strategy key and restarts when another strategy runs. `configure()` clears it. `decide()` refuses (ALERT) to run a profile other than the selected one.
+- **Block errors.** One `RESULT_DEFAULTS` (in `blocks/context.py`) fills every result key before any block runs. An unexpected error in an entry or stop block becomes `FAIL <block>: error ...` for that symbol only, and stays in the safety log. An exit check that crashes skips only that position, whose stop stays at IBKR.
+- **Launcher.** The interpreter is `-Python`, else `PAPERBOT_PYTHON`, else the single `.venv` found. With two `.venv` folders the script stops and lists both. The chosen interpreter is printed and must import `paperbot` from this project's `src`.
+- **Old import paths are aliases** of the new modules, the same objects, so the two can never diverge.
+- **Background dashboard.** The dashboard rebuild, which uses files only, runs in one background thread and is skipped while the previous one runs. Heartbeat and telemetry stay inline, since the ib cache is not thread-safe, and are timed: a warning above 2 s. Processes wait for the last rebuild before exiting.
+- **Tests (42 new):**
+  - preflight refusals and summary;
+  - exact-second ET boundaries, Friday to Saturday, the PC's zone vs. ET, and the end of daylight saving (2026-11-01);
+  - unconfirmed post-close orders in both run modes, and a force close that ends once flat;
+  - block crashes and scan reset;
+  - account-value parsing (unusable values, segment and BASE rows, zero and negative values);
+  - the harness running the real Trend Join Long profile;
+  - the old-path aliases;
+  - the non-blocking dashboard.
+
+**No change needed** for three review points: the limits are already locked to the exact approved values (`APPROVED_LIMITS`, entry 12) and to reference scenarios. `test_risk.py` now points there.
+
+**Engineering Reasoning.**
+Each check runs before a connection and turns a silent mismatch into a refusal with a reason, which is consistent with the fail-closed approach of entries 11–12. The summary goes to the log on every start, attended or not, so the record of what traded is in the log, not only on a terminal. Isolating a block failure to one symbol keeps protective work going: exits, stops and other symbols. Strict start-up checks and resilient per-symbol evaluation work together: refuse to start when the configuration is wrong, keep running when a single input is wrong.
+
+**Key Learning.**
+A safety-critical process should state, before it acts, exactly what it is going to run, and check that statement against every place that state is kept. Compatibility shims should be aliases, never copies.
+
+---
+
 ### Verification and follow-up for October 20, 2026
 
-- **Tests:** 266 pass (187 before). New coverage includes OCA force close, the post-close order confirmation (expiry, forced cancel, unconfirmed cancel, connection drop, dry run), the 15:50 to 15:51 handover, the minute-precision window, GTD and the sweep, the partial-profit retry states, quote validation and release, buying-power capping, commission drag and the drawdown breaker (persistence, latching, reset, corrupt file) and the limits loader (each key from its file, type casting, missing, invalid, unknown and misplaced keys).
+- **Tests:** 400 pass (187 before). New coverage includes OCA force close, the post-close order confirmation (expiry, forced cancel, unconfirmed cancel, connection drop, dry run), the 15:50 to 15:51 handover, the minute-precision window, GTD and the sweep, the partial-profit retry states, quote validation and release, buying-power capping, commission drag and the drawdown breaker (persistence, latching, reset, corrupt file) and the limits loader (each key from its file, type casting, missing, invalid, unknown and misplaced keys).
 - **Error handling:** connection drops and API timeouts in the new paths either fail closed (entries skipped, no stop beside an unconfirmed order) or degrade with an ALERT (force close prices from bars). Exits and protective stops are never blocked by any new risk check.
-- **Open item:** OCA linking, GTD orders and `reqMktData` are verified only against a fake IBKR connection. The first `--submit` paper session needs close watching: confirm that the bracket child keeps its `ocaGroup`, that force-close SELLs join it, and that the paper account receives live quotes.
+- **Open item:** OCA linking, GTD orders, `reqMktData`, reconnects and the service/Docker set-ups are verified only against fake connections and dry runs. The first `--submit` paper session needs close watching: confirm that the bracket child keeps its `ocaGroup`, that force-close SELLs join it, and that the paper account receives live quotes.
