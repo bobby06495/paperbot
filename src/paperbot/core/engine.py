@@ -253,6 +253,7 @@ def reset_drawdown() -> int:
 
 
 def main(argv: list[str] | None = None):
+    runstate.refuse_if_backtest("paperbot-bot")
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--submit", action="store_true",
                         help="send orders to IBKR (default: dry run)")
@@ -758,6 +759,7 @@ def handle_request(ib: IB, guard: RiskGuard, cfg: dict, account: str, request,
 
 def handle_cancel(ib: IB, req: CancelRequest, submit: bool) -> bool:
     """Cancel one of our orders and wait for IBKR to confirm it is done."""
+    runstate.refuse_if_backtest("order cancel")
     trade = next((t for t in ib.openTrades() if t.order.orderId == req.order_id), None)
     if trade is None or trade.isDone():
         return True
@@ -785,6 +787,7 @@ def _find_stop(ib: IB, symbol: str) -> Trade | None:
 def handle_stop(ib: IB, guard: RiskGuard, cfg: dict, account: str,
                 req: StopUpdate, submit: bool):
     """Place the protective SELL STP (GTC) for a position, or modify the working one."""
+    runstate.refuse_if_backtest("protective stop")
     open_trades = ib.reqAllOpenOrders()
     problems = guard.check_stop(req, account_state(ib, account, open_trades))
     if problems:
@@ -823,6 +826,7 @@ def handle_stop(ib: IB, guard: RiskGuard, cfg: dict, account: str,
 def handle_intent(ib: IB, guard: RiskGuard, cfg: dict, account: str,
                   intent: OrderIntent, daily: float | None, submit: bool):
     """Send an entry (as a bracket with its protective stop) or a closing exit."""
+    runstate.refuse_if_backtest("order submission")
     open_trades = ib.reqAllOpenOrders()
     working = sum(1 for t in open_trades if ref_role(t.order.orderRef) != "stop")
     problems = guard.check(intent, working, daily, account_state(ib, account, open_trades))

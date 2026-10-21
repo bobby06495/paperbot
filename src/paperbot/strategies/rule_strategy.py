@@ -146,21 +146,44 @@ def watchlist_date(path: Path | None = None) -> dt.date | None:
     return dt.date.fromisoformat(match.group(1)) if match else None
 
 
+def watchlist_index(path: Path | None = None) -> str:
+    """Index in the watchlist header ("# Index: Nasdaq-100"); lists written before the
+    index was recorded were always S&P 500."""
+    path = path or WATCHLIST_FILE
+    try:
+        header = path.read_text().splitlines()[:8]
+    except FileNotFoundError:
+        return "S&P 500"
+    for line in header:
+        match = re.match(r"# Index: (.+?)\s*$", line)
+        if match:
+            return match.group(1)
+    return "S&P 500"
+
+
 def _universe(profile: profiles.StrategyProfile, today: dt.date) -> list[str]:
-    """The symbols to scan today."""
+    """The symbols to scan today: today's watchlist when it was built for this strategy's
+    index, else the fallback list."""
     universe = profile.universe
     if "symbols" in universe:
         return list(universe["symbols"])
     if "file" in universe:
         return read_symbols(paths.CONFIG_DIR / universe["file"])
     fallback = paths.CONFIG_DIR / universe.get("fallback_file", "universe.txt")
+    index = universe.get("index", "S&P 500")
     if watchlist_date() == today:
-        warn_once(f"watchlist:{today}", logging.INFO, "scanning %s (generated today)",
-                  WATCHLIST_FILE.name)
-        return read_symbols(WATCHLIST_FILE)
-    warn_once(f"no-watchlist:{today}", logging.WARNING,
-              "%s not generated today (run morning_prefilter.py after 9:30 ET); "
-              "scanning %s instead", WATCHLIST_FILE.name, fallback.name)
+        built_for = watchlist_index()
+        if built_for == index:
+            warn_once(f"watchlist:{today}", logging.INFO, "scanning %s (generated today, %s)",
+                      WATCHLIST_FILE.name, index)
+            return read_symbols(WATCHLIST_FILE)
+        warn_once(f"watchlist-index:{today}:{built_for}", logging.WARNING,
+                  "%s was generated for %s but this strategy screens %s; scanning %s until "
+                  "the next prefilter run", WATCHLIST_FILE.name, built_for, index, fallback.name)
+    else:
+        warn_once(f"no-watchlist:{today}", logging.WARNING,
+                  "%s not generated today (run morning_prefilter.py after 9:30 ET); "
+                  "scanning %s instead", WATCHLIST_FILE.name, fallback.name)
     if not fallback.exists():
         warn_once("universe", logging.WARNING,
                   "%s missing: add the %s symbols (one per line) to scan for entries",

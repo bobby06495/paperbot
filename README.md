@@ -52,6 +52,7 @@ Stop it with `Ctrl+C` or `paper-bot stop` (protective stops always stay at IBKR)
 | `paper-bot check` · `paper-bot test` | setup check · unit tests |
 | `paper-bot dashboard [--open]` | rebuild (and open) the monitoring dashboard |
 | `paper-bot service install / uninstall / status` | start automatically at boot or log-on (see *Run unattended*) |
+| `paperbot-backtest run [--strategy KEY]` · `all [--with-experiments]` | historical backtest of any strategy (never trades; see *Backtesting*) |
 
 `paperbot` is the same command; the older `paperbot-*` commands still work.
 
@@ -86,10 +87,12 @@ paperbot/
 │  ├─ runtime/             runstate (STOP/pid/state files) · stopbot · kill_switch
 │  ├─ market/              sp500_tickers · morning_prefilter
 │  ├─ reporting/           notify · compute_perf · telemetry · dashboard (+ web/ pages)
+│  ├─ backtesting/         historical simulator driving the real strategy engine (paperbot-backtest)
 │  └─ ops/                 check_setup · rotate_logs · run_tests (+ legacy Windows scheduling)
 ├─ deploy/                 Dockerfile, docker-compose.yml (bot + headless IB Gateway)
 ├─ scripts/                Windows double-click launchers (= paper-bot start/stop), manual/
 ├─ tests/                  offline unit tests (no Gateway, no network)
+├─ backtesting/            config/ + experiments/ (tracked); results/ reports/ data_cache/ (ignored)
 └─ data/ logs/ dashboard/ STOP      runtime output, all git-ignored
 ```
 
@@ -98,11 +101,15 @@ paperbot/
 | `config/config.json` | `mode` (paper/live), `connections` per mode, loop timing, safety rails (`limits`: allowed symbols, limit orders only), `fx_fallback` |
 | `config/rules.json` | `strategies`: one section per strategy (blocks, timeframe, hours, universe, risk) and `default_strategy` |
 | `config/universe.txt` | Static fallback symbols, one IBKR ticker per line (`#` comments). Share classes use a space: `BRK B` |
+| `config/universe_nasdaq100.txt` | Static fallback for a Nasdaq-100 screen: the 101 members on 2026-10-20, largest first |
 | `data/watchlist.txt` | Today's top gappers, written by the prefilter (Trend Join Long's universe) |
 | `data/trades.csv` | Fill ledger (`data/live/trades.csv` in live mode) |
 | `.env` | Secrets only: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, optional `NOTIFY_URL` |
 | `logs/` | `bot.log`, `orders.jsonl`, state files, `heartbeat.json`, `scheduler_state.json`, `active_strategy.json`, `archive/` (live mode: `logs/live/`) |
 | `dashboard/` | Monitoring pages, rebuilt after every pass (live mode: `dashboard/live/`) |
+| `backtesting/config/backtest.json` | Backtest assumptions: capital, data provider, spread/slippage, volume cap, validation split (tracked) |
+| `backtesting/experiments/EXP-*.json` | Rule variants per strategy to test; never applied to `rules.json` (tracked) |
+| `backtesting/results/`, `reports/`, `data_cache/` | Backtest runs, HTML reports and downloaded market data (git-ignored) |
 
 `src/paperbot/paths.py` is the single place that knows where files are, so every command
 works from any folder, service or container.
@@ -175,6 +182,25 @@ management, exits and risk limits.
 | `macro_swing_etf` | 11 SPDR sector ETFs, daily bars, **held overnight** | price > SMA200 and RSI(2) < 10, using the live price as today's close (15:45–15:55) | 2 × ATR(14), GTC | at 15:50: price > SMA(5), or 10 trading days held |
 | `equity_mean_reversion` | SPY, QQQ, IWM, 1-minute bars, flat every day, **continuous mode only**, up to 3 entries per symbol per day | last completed 1m close ≤ session VWAP − 2 sd (10:00–15:30) | 1 sd below the entry | back at VWAP, 30 minutes held, force close 15:50 |
 
+**Switching the index (e.g. to QQQ's Nasdaq-100 stocks).** A strategy whose universe is the
+morning watchlist names its index in `rules.json`:
+```json
+"universe": {"source": "watchlist", "index": "Nasdaq-100", "top_n": 101,
+             "fallback_file": "universe_nasdaq100.txt"}
+```
+| Key | Values |
+|---|---|
+| `index` | `"S&P 500"` (default) or `"Nasdaq-100"`; anything else stops the bot and the prefilter with an error naming the key |
+| `top_n` | how many of the largest members (by market cap) the prefilter screens (default 100; the Nasdaq-100 has 101 lines, so 101 screens all) |
+| `fallback_file` | the `config/` list scanned when there is no watchlist for today's index (default `universe.txt`; `universe_nasdaq100.txt` ships with the Nasdaq-100 members) |
+
+The prefilter's gap and price thresholds are the strategy's own `min_gap_pct` and `min_price`
+blocks, so the screen and the entry checks always agree; change them in that one place
+(`paperbot-prefilter --min-gap / --min-price` override them for one run). The watchlist header
+records its index (`# Index: Nasdaq-100`): after a switch, the bot ignores a list built for the
+other index and scans the fallback file until the next prefilter run. `paper-bot check` shows
+what the prefilter will screen. Refresh `universe_nasdaq100.txt` when the index is rebalanced.
+
 Mean Reversion's own risk block allows fees up to **5 %** of R (`max_commission_pct_of_risk`):
 scalps with ~0.15 % stops on $500+ ETFs cannot keep fees under 1 % of R at a $30k order cap.
 Its per-trade risk is half the others' (0.5 %), with at most 2 positions.
@@ -234,6 +260,48 @@ would be left unmanaged); finish or close them first.
 the smallest of 1 % risk, 10 % position, the share and order-value caps and buying power,
 then the commission check. Prices go to the $0.01 tick in the safe direction (BUY limits
 up, SELL limits and long stops down).
+
+---
+
+## Backtesting
+
+*Historical simulation results do not guarantee future performance.*
+
+`paperbot-backtest` replays **any strategy in `rules.json`** over historical data and **never
+sends an order**. It runs the bot's real strategy engine: every simulated pass calls
+`rule_strategy.decide()`, so the same entry blocks, stop rules, management (breakeven, trail,
+partial profit), exits, sizing and live risk guard decide. Only IBKR is simulated (bars, quotes,
+fills, positions, the clock).
+
+```bash
+paperbot-backtest strategies                          # what can be backtested (all of rules.json)
+paperbot-backtest run --strategy trend_join_long      # one strategy, last 120 days, IBKR data
+paperbot-backtest run --strategy macro_swing_etf --provider yfinance   # no Gateway needed
+paperbot-backtest all                                 # every strategy (baseline)
+paperbot-backtest propose                             # experiment ideas per strategy -> backtesting/experiments/
+paperbot-backtest all --with-experiments              # baselines + every experiment + comparisons
+paperbot-backtest experiment EXP-trend_join_long-rvol-lower
+paperbot-backtest compare <run_id_A> <run_id_B>
+paperbot-backtest list · report [--period weekly|monthly] · prune --keep 50 --dry-run
+```
+
+| Where | What |
+|---|---|
+| `dashboard/backtest.html` (top-bar **BACKTESTING**) | Overview, strategy reports, portfolio, trades, performance, risk, rule experiments, data quality, run comparison, limitations |
+| `backtesting/results/<strategy>/<run_id>/` | One folder per run, never overwritten: metadata, config snapshot, trades, orders, fills, equity, daily/monthly results, metrics, validation, `report.html` |
+| `backtesting/reports/` | latest report per strategy, portfolio summary, weekly/monthly reports |
+
+| Data provider | Needs | History |
+|---|---|---|
+| `ibkr` (default) | IB Gateway logged in to the **paper** account | years; read-only connection, client id `client_id + 3`; live ports and accounts refused |
+| `yfinance` (automatic fallback) | internet | ~30 days of 1m, ~60 days of 5m bars: too short for conclusions |
+| `synthetic` | nothing | generated prices for tests/demos, labelled **SYNTHETIC** everywhere |
+
+Safety: every backtest process sets `PAPERBOT_BACKTEST=1` (and `PAPERBOT_NOTIFY=off`); `paper-bot`,
+`paperbot-bot`, `paperbot-cycle` and the order functions in `core/engine.py` refuse to run under it.
+`config/rules.json` is never written (hashed before and after each run); rule changes found by
+experiments must be reviewed and copied in by hand. Backtests are manual only (no scheduled job).
+Full guide: [backtesting/README.md](backtesting/README.md).
 
 ---
 
@@ -439,6 +507,7 @@ IBKR and never changes the scheduler.
 | `logs.html` Run log | Every run today (plus skipped runs and failed starts) with four expandable steps: market scan fetch, validations, signal evaluation, order events; the full order lifecycle (placed, modified, partial fills, cancels, liquidations) |
 | `strategy.html` Strategy & scanner | Active parameters, the entry-filter funnel, exit ladder, risk limits, a sizing what-if, and the **market-scanning view**: each watched symbol's last evaluated price, the check that stopped it and how far it is from passing |
 | `performance.html` | Trade performance (below), written by `compute_perf.py` |
+| `backtest.html` + `bt-*.html` | **BACKTESTING**: overview, strategy reports, portfolio, trades, performance, risk, rule experiments, data quality, run comparison, limitations (data from `paperbot-backtest`) |
 
 How it works:
 - `paperbot.reporting.telemetry` appends one line per pass to `logs/telemetry.jsonl`, from

@@ -33,7 +33,7 @@ MODULES = (
     "paperbot.reporting.notify", "paperbot.reporting.compute_perf",
     "paperbot.reporting.telemetry", "paperbot.reporting.dashboard", "paperbot.core.account",
     "paperbot.ops.rotate_logs", "paperbot.ops.setup_schedule", "paperbot.ops.cleanup_schedule",
-    "paperbot.ops.run_tests", "paperbot.ops.launch",
+    "paperbot.ops.run_tests", "paperbot.ops.launch", "paperbot.backtesting.cli",
 )
 
 
@@ -108,6 +108,23 @@ def run_checks() -> tuple[list[str], list[str]]:
                             "(share classes use a space, e.g. 'BRK B')")
         print(f"ok  {path.name}: {len(symbols)} symbols")
     from paperbot.core.risk import today_et
+    from paperbot.market import universe as watchlist_universe
+    try:
+        prefilter = watchlist_universe.prefilter_profile()
+    except (profiles.ConfigError, OSError, ValueError) as e:
+        prefilter = None
+        problems.append(f"prefilter settings: {e}")
+    if prefilter is not None:
+        setup = watchlist_universe.settings(prefilter)
+        print(f"ok  prefilter ({setup.strategy}) screens {setup.describe()}")
+        if not setup.fallback_file.exists():
+            warnings.append(f"{setup.fallback_file.name} missing: without today's watchlist the "
+                            f"bot has no {setup.index} symbols to scan")
+        built_for = strategy.watchlist_index()
+        if strategy.watchlist_date() == today_et() and built_for != setup.index:
+            warnings.append(f"watchlist.txt was built for {built_for} but {setup.strategy} screens "
+                            f"{setup.index}: the bot scans {setup.fallback_file.name} until the "
+                            "next prefilter run")
     generated = strategy.watchlist_date()
     if generated != today_et():
         fallback = "universe.txt" if paths.UNIVERSE_FILE.exists() else "nothing (no universe.txt)"

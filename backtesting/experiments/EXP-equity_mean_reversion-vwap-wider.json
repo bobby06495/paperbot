@@ -1,0 +1,18 @@
+{
+  "id": "EXP-equity_mean_reversion-vwap-wider",
+  "strategy_id": "equity_mean_reversion",
+  "title": "Equities Mean Reversion: vwap wider",
+  "status": "proposed",
+  "created": "2026-10-21",
+  "hypothesis": "Requiring a larger stretch below VWAP (V1) gives entries with more room to revert.",
+  "reason": "Shallow stretches may be noise rather than dislocations.",
+  "evidence": "No baseline run yet: proposed from the configuration alone.",
+  "changes": {
+    "entry.0.sigma": 2.5
+  },
+  "baseline_values": {
+    "entry.0.sigma": 2.0
+  },
+  "data_periods": "Choose on the validation segment only. The out-of-sample segment is reported once as an untouched-data check.",
+  "approval": "Not applied. Changing config/rules.json requires a human review."
+}

@@ -35,6 +35,20 @@ HEARTBEAT_FILE = paths.LOGS_DIR / "heartbeat.json"
 
 # ---------------------------------------------------------------- STOP file
 
+BACKTEST_ENV = "PAPERBOT_BACKTEST"  # set to "1" by every backtesting process
+
+
+class LiveTradingBlocked(RuntimeError):
+    """A backtesting process tried to reach live order code."""
+
+
+def refuse_if_backtest(what: str):
+    """Fail closed: live order code must never run inside a backtesting process."""
+    if os.environ.get(BACKTEST_ENV) == "1":
+        raise LiveTradingBlocked(f"{what} refused: this is a backtesting process "
+                                 f"({BACKTEST_ENV}=1); backtests never send orders")
+
+
 def stop_requested() -> bool:
     return STOP_FILE.exists()
 

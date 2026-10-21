@@ -1,0 +1,18 @@
+{
+  "id": "EXP-equity_mean_reversion-hold-longer",
+  "strategy_id": "equity_mean_reversion",
+  "title": "Equities Mean Reversion: hold longer",
+  "status": "proposed",
+  "created": "2026-10-21",
+  "hypothesis": "Allowing more time before the time stop lets more trades reach the target.",
+  "reason": "The time limit is a fixed guess.",
+  "evidence": "No baseline run yet: proposed from the configuration alone.",
+  "changes": {
+    "exit.1.minutes": 60
+  },
+  "baseline_values": {
+    "exit.1.minutes": 30
+  },
+  "data_periods": "Choose on the validation segment only. The out-of-sample segment is reported once as an untouched-data check.",
+  "approval": "Not applied. Changing config/rules.json requires a human review."
+}

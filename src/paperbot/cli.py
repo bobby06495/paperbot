@@ -161,6 +161,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if os.environ.get("PAPERBOT_BACKTEST") == "1":  # backtests never start the live runner
+        print("paper-bot refused: this is a backtesting process (PAPERBOT_BACKTEST=1)")
+        return 1
     args = build_parser().parse_args(argv)
     return args.func(args) or 0
 

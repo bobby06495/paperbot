@@ -45,6 +45,7 @@ import argparse
 import datetime as dt
 import json
 import math
+import os
 import sys
 import time
 import traceback
@@ -339,6 +340,9 @@ def record_error(text: str):
 
 
 def main(argv: list[str] | None = None) -> int:
+    if os.environ.get("PAPERBOT_BACKTEST") == "1":  # same check as runstate.refuse_if_backtest
+        print("paperbot-cycle refused: this is a backtesting process (PAPERBOT_BACKTEST=1)")
+        return 1
     parser = argparse.ArgumentParser(description="One scheduled pass of paperbot.")
     parser.add_argument("--submit", action="store_true",
                         help="send orders to the paper account (default: dry run)")

@@ -57,6 +57,16 @@ DASHBOARD_DIR = (PROJECT_ROOT / "dashboard" / _MODE_DIR).resolve()
 DASHBOARD_FILE = DASHBOARD_DIR / "index.html"  # executive summary (reporting/dashboard.py)
 PERFORMANCE_FILE = DASHBOARD_DIR / "performance.html"  # trade performance (compute_perf.py)
 
+# historical backtesting (paperbot.backtesting): config and experiments are tracked;
+# results, reports and the market-data cache are generated and never tracked. Shared
+# by paper and live mode: backtests use market data only, never account data.
+BACKTEST_DIR = PROJECT_ROOT / "backtesting"
+BACKTEST_CONFIG_FILE = BACKTEST_DIR / "config" / "backtest.json"
+BACKTEST_EXPERIMENTS_DIR = BACKTEST_DIR / "experiments"
+BACKTEST_RESULTS_DIR = BACKTEST_DIR / "results"
+BACKTEST_REPORTS_DIR = BACKTEST_DIR / "reports"
+BACKTEST_CACHE_DIR = BACKTEST_DIR / "data_cache"
+
 # the interpreter that runs paperbot; scheduled/background jobs reuse it on every OS
 PYTHON = Path(sys.executable).resolve()
 # legacy Windows Task Scheduler setup (ops/setup_schedule.py): project/.venv or its parent's

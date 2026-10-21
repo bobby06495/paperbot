@@ -17,7 +17,8 @@ A section's keys:
   holding                 "intraday" (flat every day; needs a force_close exit) or
                           "multi_day" (held overnight on the GTC stop until an exit
                           signal; no force close, force_close_et null)
-  universe                {"source": "watchlist", "fallback_file": "universe.txt"}
+  universe                {"source": "watchlist", "index": "S&P 500" | "Nasdaq-100",
+                          "top_n": 100, "fallback_file": "universe.txt"} (market/universe.py)
                           or {"symbols": [...]} or {"file": "my_list.txt"} (config/)
   time_filter             earliest_entry_et, latest_entry_et, force_close_et ("HH:MM")
   entry, stop, manage, exit   block objects (see blocks/)
@@ -206,7 +207,8 @@ def _universe(where: str, value) -> dict:
             raise ConfigError(f"{where}.file: config/{value.get('file')} not found")
         return dict(value)
     if value.get("source") == "watchlist":
-        return {"fallback_file": "universe.txt", **value}
+        from paperbot.market import universe as watchlist_universe  # index, top_n, fallback
+        return watchlist_universe.validate(where, value)
     raise ConfigError(f'{where} needs "symbols": [...], "file": "...", or "source": "watchlist"')
 
 

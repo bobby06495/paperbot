@@ -1,0 +1,18 @@
+{
+  "id": "EXP-macro_swing_etf-rsi-deeper",
+  "strategy_id": "macro_swing_etf",
+  "title": "Macro Swing ETF: rsi deeper",
+  "status": "proposed",
+  "created": "2026-10-21",
+  "hypothesis": "Waiting for a deeper pullback (P1) improves the entry price enough to offset fewer signals.",
+  "reason": "The pullback depth is a single fixed number that has not been varied.",
+  "evidence": "No baseline run yet: proposed from the configuration alone.",
+  "changes": {
+    "entry.1.max": 5.0
+  },
+  "baseline_values": {
+    "entry.1.max": 10.0
+  },
+  "data_periods": "Choose on the validation segment only. The out-of-sample segment is reported once as an untouched-data check.",
+  "approval": "Not applied. Changing config/rules.json requires a human review."
+}

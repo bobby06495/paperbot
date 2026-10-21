@@ -279,6 +279,7 @@
     ['logs.html', 'Run log'],
     ['strategy.html', 'Strategy & scanner'],
     ['performance.html', 'Performance'],
+    ['backtest.html', 'BACKTESTING'],
   ];
 
   PB.renderHeader = (active) => {

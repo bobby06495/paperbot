@@ -1,0 +1,18 @@
+{
+  "id": "EXP-equity_mean_reversion-stop-wider",
+  "strategy_id": "equity_mean_reversion",
+  "title": "Equities Mean Reversion: stop wider",
+  "status": "proposed",
+  "created": "2026-10-21",
+  "hypothesis": "A wider stop gives mean-reversion trades room to work.",
+  "reason": "Most mean-reversion losses may come from stops inside normal noise.",
+  "evidence": "No baseline run yet: proposed from the configuration alone.",
+  "changes": {
+    "stop.sigma": 1.5
+  },
+  "baseline_values": {
+    "stop.sigma": 1.0
+  },
+  "data_periods": "Choose on the validation segment only. The out-of-sample segment is reported once as an untouched-data check.",
+  "approval": "Not applied. Changing config/rules.json requires a human review."
+}

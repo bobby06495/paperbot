@@ -36,6 +36,7 @@ paperbot-unschedule = "paperbot.ops.cleanup_schedule:main"
 paperbot-test = "paperbot.ops.run_tests:main"
 paperbot-start ="paperbot.ops.launch:start"
 paperbot-shutdown = "paperbot.ops.launch:shutdown"
+paperbot-backtest = "paperbot.backtesting.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
