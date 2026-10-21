@@ -211,6 +211,11 @@ class DataProvider:
     def limitations(self) -> list[str]:
         return []
 
+    def revision(self, symbol: str, bar: str) -> str:
+        """Changes when this provider's intraday data for `symbol` changes (uncached
+        providers only; the cache tracks corrections itself)."""
+        return ""
+
     def close(self):
         pass
 
@@ -233,6 +238,10 @@ class InMemoryProvider(DataProvider):
     def intraday(self, symbol, days, bar="5m"):
         self.requests.append(("intraday", symbol, tuple(days), bar))
         return {d: list(self._intraday.get(symbol, {}).get(d, [])) for d in days}
+
+    def revision(self, symbol, bar):
+        days = self._intraday.get(symbol, {})
+        return _hash(repr(sorted((d, _bar_tuples(days[d])) for d in days)))
 
 
 class SyntheticProvider(DataProvider):
@@ -540,6 +549,10 @@ def _hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
+def _bar_tuples(bars) -> list[tuple]:
+    return [(b.date, b.open, b.high, b.low, b.close, b.volume) for b in bars]
+
+
 class DataCache:
     """What a real provider returned, on disk: <root>/<provider>/1d/<SYM>.csv and
     <root>/<provider>/<bar>/<SYM>/<YYYY-MM-DD>.csv, plus _index.json per symbol.
@@ -548,6 +561,7 @@ class DataCache:
     def __init__(self, root: Path, provider: DataProvider, refresh: bool = False, bar: str = "5m"):
         self.root = root / provider.name.split()[0]
         self.provider, self.refresh, self.bar = provider, refresh, bar
+        self._changes: dict | None = None  # (symbol, bar) -> corrections recorded
 
     @staticmethod
     def _safe(symbol: str) -> str:
@@ -562,6 +576,24 @@ class DataCache:
         except (OSError, ValueError):
             return {}
 
+    def revision(self, symbol: str) -> str:
+        """How many times a cached intraday day of `symbol` was corrected by the provider
+        (changes.jsonl): part of the dataset identity, so corrected data is a new dataset."""
+        if self._changes is None:
+            self._changes = {}
+            try:
+                lines = (self.root / "changes.jsonl").read_text(encoding="utf-8").splitlines()
+            except OSError:
+                lines = []
+            for line in lines:
+                try:
+                    c = json.loads(line)
+                except ValueError:
+                    continue
+                key = (c.get("symbol"), c.get("bar"))
+                self._changes[key] = self._changes.get(key, 0) + 1
+        return str(self._changes.get((symbol, self.bar), 0))
+
     def _record_change(self, symbol, day, old, new):
         path = self.root / "changes.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -569,6 +601,9 @@ class DataCache:
             f.write(json.dumps({"time": dt.datetime.now(UTC).isoformat(timespec="seconds"),
                                 "symbol": symbol, "bar": self.bar, "day": str(day),
                                 "old_hash": old, "new_hash": new}) + "\n")
+        if self._changes is not None:
+            key = (symbol, self.bar)
+            self._changes[key] = self._changes.get(key, 0) + 1
 
     def intraday(self, symbol: str, days: list[dt.date]) -> tuple[dict, dict]:
         """({day: [Bar]}, {day: content hash}) for the requested days."""
@@ -680,7 +715,7 @@ class MarketData:
                     bars, h = self.cache.daily(symbol, start, end)
                 else:
                     bars = self.provider.daily(symbol, start, end)
-                    h = _hash(repr([(b.date, b.open, b.high, b.low, b.close, b.volume) for b in bars]))
+                    h = _hash(repr(_bar_tuples(bars)))
             except DataError:
                 raise
             except Exception as e:  # noqa: BLE001 - one symbol's failure is reported, not fatal
@@ -694,6 +729,10 @@ class MarketData:
 
     def daily(self, symbol: str) -> list[Bar]:
         return self._daily.get(symbol, [])
+
+    def revision(self, symbol: str) -> str:
+        """Identifies the version of `symbol`'s intraday data (see DataCache.revision)."""
+        return self.cache.revision(symbol) if self.cache else self.provider.revision(symbol, self.bar)
 
     def prefetch(self, needed: dict[str, set]):
         """Fetch (and cache) every symbol-day the run will need, one batch per symbol."""
@@ -711,8 +750,7 @@ class MarketData:
                 got, hashes = self.cache.intraday(symbol, days)
             else:
                 got = self.provider.intraday(symbol, days, self.bar)
-                hashes = {d: _hash(repr([(b.date, b.close, b.volume) for b in bars]))
-                          for d, bars in got.items()}
+                hashes = {d: _hash(repr(_bar_tuples(bars))) for d, bars in got.items()}
         except DataError:
             raise
         except Exception as e:  # noqa: BLE001
@@ -726,8 +764,7 @@ class MarketData:
             bars = [Bar(b.date.astimezone(ET), b.open, b.high, b.low, b.close, b.volume)
                     for b in bars if b.date.astimezone(ET).date() == day]
             self._days[(symbol, day)] = bars
-            if day in hashes:
-                self.hashes[f"{symbol}:{self.bar}:{day.isoformat()}"] = hashes[day]
+            self.hashes[f"{symbol}:{self.bar}:{day.isoformat()}"] = hashes.get(day, "")
             if bars:
                 self.quality.intraday_days_loaded += 1
                 check_session(symbol, day, bars, self.quality, self.bar)

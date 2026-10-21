@@ -152,5 +152,63 @@ class CacheTest(unittest.TestCase):
         self.assertEqual(got, {})
 
 
+
+class DatasetIdTest(unittest.TestCase):
+    """The dataset id changes when any bar a run can use changes, and is shared by
+    variants that read different symbol-days of the same data."""
+    DAY2 = DAY + dt.timedelta(days=1)
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        daily = {"X": [Bar(DAY, 1, 2, 0.5, 1.5, 10), Bar(self.DAY2, 1.5, 2, 1, 1.8, 10)],
+                 "SPY": [Bar(DAY, 500, 501, 499, 500.5, 1e6)]}
+        intraday = {"X": {DAY: [bar(9, 30), bar(9, 35, 101.0)], self.DAY2: [bar(9, 30, 99.0)]}}
+        self.provider = RealLikeProvider(daily, intraday)
+
+    def dataset_id(self, days=(DAY,), provider=None, cache=True, refresh=False):
+        from paperbot.backtesting.runner import _dataset_id
+        provider = provider or self.provider
+        data = MarketData(provider, self.dir if cache else None, refresh=refresh)
+        data.load_daily(["X", "SPY"], DAY, self.DAY2)
+        data.prefetch({"X": set(days)})
+        return _dataset_id(provider, "5m", DAY, self.DAY2, ["X"], data, "SPY")
+
+    def test_variants_reading_different_days_share_the_id(self):
+        self.assertEqual(self.dataset_id((DAY,)), self.dataset_id((DAY, self.DAY2)))
+
+    def test_changed_daily_bar_changes_the_id(self):
+        before = self.dataset_id()
+        self.provider._daily["X"][0] = Bar(DAY, 1, 2, 0.5, 1.6, 10)
+        self.assertNotEqual(before, self.dataset_id(refresh=True))
+
+    def test_changed_benchmark_changes_the_id(self):
+        before = self.dataset_id()
+        self.provider._daily["SPY"][0] = Bar(DAY, 500, 501, 499, 498.0, 1e6)
+        self.assertNotEqual(before, self.dataset_id(refresh=True))
+
+    def test_corrected_cached_intraday_bar_changes_the_id(self):
+        before = self.dataset_id()
+        self.provider._intraday["X"][DAY] = [bar(9, 30), bar(9, 35, 101.5)]
+        after = self.dataset_id(refresh=True)
+        self.assertNotEqual(before, after)
+        self.assertEqual(after, self.dataset_id())  # stable once corrected
+
+    def test_changed_uncached_intraday_bar_changes_the_id(self):
+        provider = InMemoryProvider(self.provider._daily, {"X": dict(self.provider._intraday["X"])})
+        before = self.dataset_id(provider=provider, cache=False)
+        provider._intraday["X"][self.DAY2] = [bar(9, 30, 98.0)]  # a day this run did not read
+        self.assertNotEqual(before, self.dataset_id(provider=provider, cache=False))
+
+    def test_every_intraday_hash_includes_open_high_low(self):
+        provider = InMemoryProvider(self.provider._daily, {"X": {DAY: [bar(9, 30)]}})
+        data = MarketData(provider, None)
+        data.prefetch({"X": {DAY}})
+        provider._intraday["X"][DAY] = [bar(9, 30, high=100.5)]
+        other = MarketData(provider, None)
+        other.prefetch({"X": {DAY}})
+        key = f"X:5m:{DAY.isoformat()}"
+        self.assertNotEqual(data.hashes[key], other.hashes[key])
+
+
 if __name__ == "__main__":
     unittest.main()

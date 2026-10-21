@@ -239,7 +239,8 @@ def run_one(spec: StrategySpec, cfg: dict, provider, *, start: dt.date | None = 
         m = metrics.compute(result.trades, result.open_trades, result.equity, result.daily,
                             cfg["starting_capital"], bench, cfg["validation"])
         per = metrics.periods(result.days, result.trades, result.equity, result.daily, cfg["validation"])
-        dataset_id = _dataset_id(provider, spec.tape, s, e, q.symbols_with_data, data)
+        dataset_id = _dataset_id(provider, spec.tape, s, e, q.symbols_with_data, data, bench_symbol)
+        runs.write_json(run_dir / "data_hashes.json", {"dataset_id": dataset_id, "series": data.hashes})
         usage_entry = runs.record_usage(dataset_id, run_id, meta["experiment_id"], results_dir)
         stress_result = _stress(profile, provider, cache_dir, cfg, q.symbols_with_data, s, e,
                                 spec.tape) if stress else None
@@ -312,12 +313,16 @@ def run_one(spec: StrategySpec, cfg: dict, provider, *, start: dt.date | None = 
             raise BacktestFailed(f"{spec.rules_file} changed during the backtest", run_dir)
 
 
-def _dataset_id(provider, tape, s, e, symbols, data: MarketData) -> str:
-    """Identifies the market data a comparison runs on: provider, bar size, period,
-    symbols and the content hash of every daily series. Variants on the same data share it."""
-    wanted = {f"{x}:1d" for x in symbols}
+def _dataset_id(provider, tape, s, e, symbols, data: MarketData, benchmark: str | None = None) -> str:
+    """Identifies the market data a comparison runs on: provider, bar size, period, symbols,
+    the content hash of every daily series (the benchmark's too) and the revision of each
+    symbol's intraday data. Variants on the same data share it even when their rules make
+    them read different symbol-days; a provider correction of any cached bar (or different
+    test data) gives a new id. The hash of every series a run read is in data_hashes.json."""
+    wanted = {f"{x}:1d" for x in [*symbols, *([benchmark] if benchmark else [])]}
     daily = "|".join(f"{k}={v}" for k, v in sorted(data.hashes.items()) if k in wanted)
-    key = f"{provider.name}|{tape}|{s}|{e}|{','.join(sorted(symbols))}|{daily}"
+    intraday = "|".join(f"{x}@{data.revision(x)}" for x in sorted(symbols))
+    key = f"{provider.name}|{tape}|{s}|{e}|{','.join(sorted(symbols))}|{daily}|{intraday}"
     return (f"{provider.name.split()[0]}-{tape}-{s:%Y%m%d}-{e:%Y%m%d}-"
             f"{hashlib.sha256(key.encode()).hexdigest()[:10]}")
 

@@ -431,7 +431,6 @@
     ambiguous_bar: 'Ambiguous bar: a stop and a profit target could both have been reached in one 5-minute bar; the stop was assumed first (conservative).',
     gap_through_stop: 'The price opened below the stop, so the stop filled at the (worse) opening price.',
     entry_filled_below_stop: 'The entry filled at an opening price already below the stop; the position was stopped out immediately.',
-    force_close_price_estimated: 'Force-close price estimated from the 15:50 bar (lower of open and close): the 15:51 price is not in 5-minute data.',
     partial_entry_fill: 'The entry filled over several bars because of the volume participation cap.',
     volume_capped_no_fill: 'A bar had too little volume for any fill under the participation cap.',
     missing_bar: 'A 5-minute bar was missing while the position was open.',

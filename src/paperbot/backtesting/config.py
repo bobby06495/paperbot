@@ -6,6 +6,7 @@ NOT here: they come from config/rules.json (read-only) or an experiment file.
 """
 import copy
 import json
+import math
 from pathlib import Path
 
 from paperbot import paths
@@ -75,7 +76,62 @@ def _merge(base: dict, override: dict, where: str = "") -> dict:
     return out
 
 
+NULLABLE = {"benchmark_symbol", "fallback_provider"}  # null / "" = none
+
+
+def _check_types(base: dict, cfg: dict, where: str = ""):
+    """Every setting must have its default's type: a bool is never accepted as a number
+    (Python treats True as 1), whole-number settings must be integers and numbers must
+    be finite."""
+    for key, default in base.items():
+        name, value = f"{where}{key}", cfg.get(key)
+        if isinstance(default, dict):
+            if not isinstance(value, dict):
+                raise BacktestConfigError(f"backtest setting {name} must be an object")
+            _check_types(default, value, f"{name}.")
+        elif key in NULLABLE and value in (None, ""):
+            continue
+        elif isinstance(default, bool):
+            if not isinstance(value, bool):
+                raise BacktestConfigError(f"backtest setting {name} must be true or false, not {value!r}")
+        elif isinstance(default, (int, float)):
+            wanted = (int,) if isinstance(default, int) else (int, float)
+            if isinstance(value, bool) or not isinstance(value, wanted):
+                kind = "a whole number" if wanted == (int,) else "a number"
+                raise BacktestConfigError(f"backtest setting {name} must be {kind}, not {value!r}")
+            if not math.isfinite(value):
+                raise BacktestConfigError(f"backtest setting {name} must be finite, not {value!r}")
+        elif isinstance(default, str):
+            if not isinstance(value, str):
+                raise BacktestConfigError(f"backtest setting {name} must be text, not {value!r}")
+        elif isinstance(default, list):
+            if not isinstance(value, list) or not all(isinstance(x, str) and x.strip() for x in value):
+                raise BacktestConfigError(f"backtest setting {name} must be a list of symbols")
+
+
+def _at_least(cfg: dict, path: str, low, inclusive: bool = True):
+    *parents, key = path.split(".")
+    value = cfg
+    for p in parents:
+        value = value[p]
+    value = value[key]
+    if value < low or (not inclusive and value == low):
+        raise BacktestConfigError(f"backtest setting {path} must be {'>=' if inclusive else '>'} {low}")
+
+
 def validate(cfg: dict) -> dict:
+    """Fail closed: a malformed setting is a BacktestConfigError naming the field, never a
+    traceback, and never silently changes an assumption."""
+    try:
+        return _validate(cfg)
+    except BacktestConfigError:
+        raise
+    except (TypeError, KeyError, AttributeError) as e:
+        raise BacktestConfigError(f"invalid backtest settings: {e!r}") from None
+
+
+def _validate(cfg: dict) -> dict:
+    _check_types(DEFAULTS, cfg)
     ex, val = cfg["execution"], cfg["validation"]
     if cfg["currency"] != "USD":
         raise BacktestConfigError("only USD is supported (the strategy sizes in USD)")
@@ -95,6 +151,18 @@ def validate(cfg: dict) -> dict:
     total = val["in_sample"] + val["validation"] + val["out_of_sample"]
     if abs(total - 1) > 1e-6 or min(val["in_sample"], val["validation"], val["out_of_sample"]) < 0:
         raise BacktestConfigError("validation in_sample + validation + out_of_sample must sum to 1")
+    if cfg["fallback_provider"] not in (None, "", "ibkr", "yfinance"):  # never synthetic prices
+        raise BacktestConfigError(f"fallback_provider must be yfinance, ibkr or null, not "
+                                  f"{cfg['fallback_provider']!r}")
+    for path in ("lookback_calendar_days", "max_watchlist", "validation.walk_forward_folds",
+                 "validation.min_trades_for_assessment", "validation.bootstrap_samples",
+                 "retention.keep_last_runs_per_strategy",
+                 "ibkr.client_id_offset"):  # offset 0 would be the bot's own client id
+        _at_least(cfg, path, 1)
+    for path in ("daily_warmup_calendar_days", "execution.decision_delay_seconds",
+                 "ibkr.request_pause_seconds"):
+        _at_least(cfg, path, 0)
+    _at_least(cfg, "ibkr.timeout_seconds", 0, inclusive=False)
     return cfg
 
 

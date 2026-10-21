@@ -16,7 +16,7 @@ import uuid
 from pathlib import Path
 
 from paperbot import paths
-from paperbot.runtime.runstate import pid_alive
+
 
 UTC = dt.timezone.utc
 ENGINE_VERSION = "1.0.0"
@@ -136,30 +136,69 @@ def load_run(run_dir: Path) -> dict:
 
 # ---------------------------------------------------------------- lock
 
+def _try_lock(f) -> bool:
+    """Non-blocking exclusive OS lock on the open file `f` (first byte)."""
+    try:
+        if os.name == "nt":
+            import msvcrt
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except OSError:
+        return False
+
+
+def _unlock(f):
+    try:
+        if os.name == "nt":
+            import msvcrt
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        pass
+
+
 class RunLock:
-    """One backtest process at a time (manual or scheduled). A lock left by a dead
-    process is taken over."""
+    """One backtest process at a time (manual or scheduled). The operating system holds
+    the lock (msvcrt / flock on .backtest.lock), so acquiring it is atomic and it is
+    released when the owner exits or dies: no stale-lock takeover is needed. The lock
+    file is never deleted (deleting it could let two processes lock different files);
+    the owner's pid is written to .backtest.owner.json for the refusal message."""
 
     def __init__(self, results: Path | None = None):
-        self.path = (results or paths.BACKTEST_RESULTS_DIR) / ".backtest.lock"
+        folder = results or paths.BACKTEST_RESULTS_DIR
+        self.path, self.owner = folder / ".backtest.lock", folder / ".backtest.owner.json"
+        self._file = None
 
     def __enter__(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        data = read_json(self.path)
-        if isinstance(data, dict) and data.get("pid") and data["pid"] != os.getpid() \
-                and pid_alive(int(data["pid"])):
-            raise RunLocked(f"another backtest is running (pid {data['pid']}, since "
-                            f"{data.get('started')}); wait for it to finish")
-        write_json(self.path, {"pid": os.getpid(),
-                               "started": dt.datetime.now(UTC).isoformat(timespec="seconds")})
+        f = open(self.path, "a+b")
+        if not _try_lock(f):
+            f.close()
+            data = read_json(self.owner) or {}
+            raise RunLocked(f"another backtest is running (pid {data.get('pid', '?')}, since "
+                            f"{data.get('started', '?')}); wait for it to finish")
+        self._file = f
+        write_json(self.owner, {"pid": os.getpid(),
+                                "started": dt.datetime.now(UTC).isoformat(timespec="seconds")})
         return self
 
     def __exit__(self, *exc):
-        try:
-            if (read_json(self.path) or {}).get("pid") == os.getpid():
-                self.path.unlink()
-        except OSError:
-            pass
+        if self._file is not None:
+            try:
+                if (read_json(self.owner) or {}).get("pid") == os.getpid():
+                    self.owner.unlink()
+            except OSError:
+                pass
+            _unlock(self._file)
+            self._file.close()
+            self._file = None
         return False
 
 

@@ -25,7 +25,9 @@ What this module adds is what a backtest must model instead of IBKR:
 Timing: one pass per bar of the tape (the strategy's timeframe; 5m for a 1d
 strategy), at bar end + decision_delay_seconds, plus one pass at force_close_et
 when it is not on the bar grid. A pass sees only completed bars. Orders it sends
-fill from the following bar.
+fill only in bars that start after it (SimOrder.eligible): each bar is processed
+as its open (orders already working), then the passes inside it, then its range
+(orders still working); a stop raised by a pass applies from the next bar.
 
 Fill model (bps = 1/100 %; quote proxy: ask/bid = last close +/- half_spread):
   BUY LMT (entry)   open <= limit: min(limit, open x (1 + half_spread + slippage));
@@ -67,6 +69,7 @@ from paperbot.runtime import runstate
 from paperbot.strategies import rule_strategy
 
 SIM_ACCOUNT = "SIMULATED"
+PRICE_NEAR = 0.10  # an open within 10 % of min_price may be screened differently live
 log = logging.getLogger("paperbot.backtest")
 
 
@@ -103,6 +106,25 @@ class SimOrder:
         self.contract = NS(symbol=symbol, secType="STK")
         self.log = [NS(time=placed_at.astimezone(UTC))]
         self.first_quantity = quantity
+        self.aux_history = [(placed_at, aux)]  # (time set, stop price): a raise is not retroactive
+
+    def eligible(self, bar_start: dt.datetime) -> bool:
+        """An order can fill only in bars that start after it was sent (no prices from
+        before the order existed)."""
+        return self.placed_at <= bar_start
+
+    def set_stop(self, price: float, when: dt.datetime):
+        self.auxPrice = price
+        self.aux_history.append((when, price))
+
+    def stop_at(self, bar_start: dt.datetime) -> float:
+        """The stop price in force when the bar began (a raise sent during the bar
+        applies from the next bar)."""
+        price = self.aux_history[0][1]
+        for when, value in self.aux_history:
+            if when <= bar_start:
+                price = value
+        return price
 
     @property
     def order(self):
@@ -293,6 +315,7 @@ class Simulator:
         self.equity_rows, self.daily_rows, self.events = [], [], []
         self.funnel: dict[str, int] = {}
         self.watchlists: dict[str, list] = {}
+        self.price_near_threshold: list = []  # [day, symbol, open] (see watchlist())
         self.warnings: list[str] = []
         self.trade_context: dict = {}
         self._signals: dict[str, dict] = {}
@@ -485,7 +508,10 @@ class Simulator:
         """What morning_prefilter.py would have written for a watchlist strategy: symbols
         whose daily OPEN gapped at least the min_gap_pct block's threshold above the prior
         close (and open >= the min_price block), largest gap first, max_watchlist of them.
-        Only the open is used (known at 09:30)."""
+        Only the open is used (known at 09:30). The live prefilter checks the price
+        against its latest print when it runs (~09:30-10:05), so a symbol whose open is
+        near min_price may be screened differently: those symbol-days are counted
+        (price_near_threshold) and reported as a data-quality limitation."""
         gap_block, price_block = self._block("entry", "min_gap_pct"), self._block("entry", "min_price")
         min_gap = gap_block.min_pct if gap_block else 0.0
         min_price = price_block.min_usd if price_block else 0.0
@@ -495,6 +521,8 @@ class Simulator:
             if i == 0 or i >= len(bars) or bars[i].date != day:
                 continue
             gap = (bars[i].open / bars[i - 1].close - 1) * 100
+            if gap >= min_gap and min_price > 0 and abs(bars[i].open / min_price - 1) <= PRICE_NEAR:
+                self.price_near_threshold.append([day.isoformat(), s, round(bars[i].open, 4)])
             if gap >= min_gap and bars[i].open >= min_price:
                 gaps.append((gap, s))
         gaps.sort(key=lambda x: (-x[0], x[1]))
@@ -506,6 +534,16 @@ class Simulator:
             raise BacktestError("no trading days with daily data in the requested period")
         self.data.quality.trading_days = len(days)
         self.data.prefetch(self.plan(days))
+        price_block = self._block("entry", "min_price")
+        if self.profile.universe.get("source") == "watchlist" and price_block and price_block.min_usd > 0:
+            n = len(self.price_near_threshold)
+            self.data.quality.limit(
+                f"Watchlist price check: the simulated prefilter applies the ${price_block.min_usd:g} minimum "
+                f"price to each day's open; the live prefilter uses the latest price when it runs "
+                f"(~09:30-10:05 ET). {n} gapping symbol-day(s) opened within {PRICE_NEAR:.0%} of "
+                f"${price_block.min_usd:g}, where the two could disagree"
+                + (": " + ", ".join(f"{s} {d}" for d, s, _ in self.price_near_threshold[:10])
+                   + (" ..." if n > 10 else "") if n else "") + ".")
         with self.environment():
             for i, day in enumerate(days, 1):
                 self._run_day(day)
@@ -548,17 +586,17 @@ class Simulator:
         delay = dt.timedelta(seconds=self.ex["decision_delay_seconds"])
         open_ = dt.datetime.combine(day, RTH_OPEN, ET)
         low_equity = self._day_start_equity
-        prev = None  # start of the last executed bar
         for k in range(390 // BAR_MINUTES[self.tape]):
             bar_start = open_ + k * self.bar_len
-            while passes and passes[0] <= bar_start + delay:
-                when = passes.pop(0)
-                self._pass(when)
-                if prev is not None and when > prev + delay:  # a pass inside the previous bar
-                    self._fill_midbar(prev, when)
-            prev = bar_start
+            # the open, then this bar's passes (the scheduled one a few seconds in and any
+            # off-grid one such as a 15:51 force close), then the rest of the bar. What a
+            # pass sends fills from the first bar that starts after it (SimOrder.eligible).
             self.now = bar_start
-            self._execute(bar_start)
+            self._execute(bar_start, "open")
+            while passes and passes[0] < bar_start + self.bar_len:
+                self._pass(passes.pop(0))
+            self.now = bar_start
+            self._execute(bar_start, "range")
             equity = self._equity()
             low_equity = min(low_equity, equity)
             self.equity_rows.append(self._mark(bar_start + self.bar_len, equity))
@@ -644,7 +682,8 @@ class Simulator:
                     self.trades[trade_id].stop_history.append(
                         {"time": self.now.isoformat(timespec="seconds"), "event": request.reason,
                          "old": stop.auxPrice, "new": request.stop_price})
-                stop.auxPrice = request.stop_price
+                if stop.auxPrice != request.stop_price:
+                    stop.set_stop(request.stop_price, self.now)
                 stop.totalQuantity = stop.filled + request.quantity
             else:
                 self._new(request.symbol, "stop", "SELL", request.quantity, refs[1],
@@ -726,81 +765,85 @@ class Simulator:
             self.trades.pop(entry.trade_id)  # never filled: an order, not a trade
 
     # ------------------------------------------------------------ execution in one bar
-    def _execute(self, bar_start: dt.datetime):
+    def _execute(self, bar_start: dt.datetime, phase: str):
+        """phase "open": the bar's first print, before the pass at bar_start + delay;
+        phase "range": the rest of the bar, after that pass."""
         symbols = {o.symbol for o in self.working()} | {s for s, p in self.positions.items() if p.qty}
         for symbol in sorted(symbols):
             bar = self._bar(symbol, bar_start)
             if bar is None:
                 pos = self.positions.get(symbol)
-                if pos and pos.qty:
+                if phase == "range" and pos and pos.qty:
                     self.trades[pos.trade_id].warn("missing_bar")
                 continue
-            self._fill_bar(symbol, bar, bar_start)
+            if phase == "open":
+                self._fill_open(symbol, bar, bar_start)
+                continue
+            self._fill_range(symbol, bar, bar_start)
             pos = self.positions.get(symbol)
             if pos and pos.qty:
                 pos.last_close = bar.close
 
-    def _fill_bar(self, symbol: str, bar, start: dt.datetime):
+    def _eligible(self, role: str, symbol: str, start: dt.datetime) -> list[SimOrder]:
+        return [o for o in self.working(role, symbol) if o.eligible(start)]
+
+    def _fill_open(self, symbol: str, bar, start: dt.datetime):
+        """Orders working when the bar began and marketable at its open fill at the open
+        (this happens before the pass that starts a few seconds into the bar)."""
         cost = _bps(self.ex["half_spread_bps"] + self.ex["slippage_bps"])
         self._expire_entries(start)
         self._bar_volume_used = {}
-        # 1. orders marketable at the open fill first, at the open
-        for e in self.working("entry", symbol):
+        for e in self._eligible("entry", symbol, start):
             if bar.open <= e.lmtPrice:
                 self._buy(e, bar, min(e.lmtPrice, bar.open * (1 + cost)), bar.open, start, "at open")
-        for x in self.working("exit", symbol):
+        for x in self._eligible("exit", symbol, start):
             if bar.open >= x.lmtPrice:
                 self._sell(x, max(x.lmtPrice, bar.open * (1 - cost)), bar.open, start, "at open")
-        # 2. stops (a working exit that could also have filled: stop assumed first, and
+        self._stop(symbol, bar, start, cost, at_open=True)  # a gap through the stop
+
+    def _fill_range(self, symbol: str, bar, start: dt.datetime):
+        """The bar's range, for orders that were working when it began and are still working
+        after the pass (one sent by the pass waits for the next bar; a stop raised by it
+        applies from the next bar)."""
+        cost = _bps(self.ex["half_spread_bps"] + self.ex["slippage_bps"])
+        # 1. stops (a working exit that could also have filled: stop assumed first, and
         #    that exit is then NOT filled in the same bar - the conservative outcome)
         ambiguous = self._stop(symbol, bar, start, cost)
-        # 3. exit limits reached inside the bar
-        for x in ([] if ambiguous else self.working("exit", symbol)):
-            if bar.high > x.lmtPrice:
+        # 2. exit limits reached inside the bar
+        for x in ([] if ambiguous else self._eligible("exit", symbol, start)):
+            if x.status == "working" and bar.high > x.lmtPrice:
                 self._sell(x, x.lmtPrice, x.lmtPrice, start, "limit reached intrabar")
-        # 4. entry limits traded through inside the bar (its stop may then trigger)
-        for e in self.working("entry", symbol):
+        # 3. entry limits traded through inside the bar (its stop may then trigger)
+        for e in self._eligible("entry", symbol, start):
             open_only = e.good_till is not None and start + self.bar_len > e.good_till
-            if not open_only and bar.low < e.lmtPrice:
+            if e.status == "working" and not open_only and bar.low < e.lmtPrice:
                 if self._buy(e, bar, e.lmtPrice, e.lmtPrice, start, "limit traded through intrabar"):
                     self._stop(symbol, bar, start, cost, after_entry=True)
 
-    def _fill_midbar(self, bar_start: dt.datetime, when: dt.datetime):
-        """An exit sent by an off-grid pass (e.g. force close at 15:51 on 5-minute bars) can
-        fill in the bar it was sent in. Its price inside that bar is unknown, so it fills
-        CONSERVATIVELY at the lower of the bar's open and close (never below its limit, no
-        fill if that is below the limit), flagged as estimated."""
-        cost = _bps(self.ex["half_spread_bps"] + self.ex["slippage_bps"])
-        for order in [o for o in self.working("exit") if o.placed_at == when]:
-            bar = self._bar(order.symbol, bar_start)
-            pos = self.positions.get(order.symbol)
-            if bar is None or not pos or not pos.qty:
-                continue
-            ref = min(bar.open, bar.close)
-            if ref * (1 - cost) >= order.lmtPrice:
-                self.trades[pos.trade_id].warn("midbar_fill_estimated")
-                self._sell(order, ref * (1 - cost), ref, when,
-                           "sent mid-bar: price estimated as the lower of the bar's open and close")
-
-    def _stop(self, symbol, bar, start, cost, after_entry=False) -> bool:
-        """Fill the active stop if the bar reached it. True when the bar was ambiguous
-        (a working exit's limit was also reached and the order of events is unknown)."""
+    def _stop(self, symbol, bar, start, cost, after_entry=False, at_open=False) -> bool:
+        """Fill the active stop if the bar reached it (at_open: only a gap through it at the
+        open). True when the bar was ambiguous (a working exit's limit was also reached
+        and the order of events is unknown)."""
         pos = self.positions.get(symbol)
         if not pos or pos.qty <= 0:
             return False
-        stop = next((o for o in self.working("stop", symbol) if o.active), None)
-        if stop is None or bar.low > stop.auxPrice:
+        stop = next((o for o in self.working("stop", symbol) if o.active and o.eligible(start)), None)
+        if stop is None:
+            return False
+        level = stop.stop_at(start)
+        if bar.low > level or (at_open and bar.open > level):
             return False
         trade = self.trades[pos.trade_id]
-        ambiguous = not after_entry and any(bar.high > x.lmtPrice for x in self.working("exit", symbol))
+        ambiguous = not after_entry and not at_open and any(bar.high > x.lmtPrice for x in self.working("exit", symbol)
+                                            if x.eligible(start))
         if ambiguous:
             trade.warn("ambiguous_bar")
             self.event("ambiguous_bar", symbol=symbol, policy=self.ex["ambiguous_bar_policy"])
-        if bar.open <= stop.auxPrice:
+        if bar.open <= level:
             ref, note = bar.open, "gap through stop: filled at the open"
             trade.warn("entry_filled_below_stop" if after_entry else "gap_through_stop")
         else:
-            ref, note = stop.auxPrice, "stop triggered"
+            ref, note = level, "stop triggered"
         trade.reason(self._stop_label(symbol))
         self._sell(stop, ref * (1 - cost), ref, start, note, quantity=min(stop.remaining, pos.qty))
         return ambiguous

@@ -282,8 +282,11 @@ def assessment(m: dict, periods: dict, quality: dict, stress: dict | None, quest
         f"{cfg['execution']['slippage_bps']} bps on market-like fills.",
         "Ambiguous bars: when a stop and a profit target could both have been reached in one bar, "
         "the stop is assumed first (conservative).",
-        "Timing: orders sent by a pass fill from the next bar; an off-grid force close (15:51 on 5-minute "
-        "bars) therefore sells from the 15:55 bar.",
+        "Timing: an order can fill only in bars that start after it was sent (a pass at 10:05:03 fills "
+        "from the 10:10 bar; a force close sent at 15:51 on 5-minute bars sells at the 15:55 open). A "
+        "stop raised during a bar applies from the next bar. The bot replaces an unfilled exit at the "
+        "next pass, so an exit in practice fills at the next bar's open or not at all (pessimistic for "
+        "exits a live order would have filled within its first minutes).",
         f"Buying power: cash x {cfg['execution']['buying_power_multiplier']} (the paper account's "
         "margin may allow more).",
         "Universe: today's index members from the fallback list, so stocks that left the index are "
@@ -315,6 +318,10 @@ LIMITATIONS = [
     ("Same code, simulated broker", "Each pass runs the bot's real strategy engine "
      "(rule_strategy.decide, the rules.json blocks, core/orders, the live risk guard); what is "
      "simulated is IBKR: quotes, order fills, positions and the clock."),
+    ("Watchlist timing", "The simulated morning prefilter screens each day's gap and minimum price "
+     "with the daily open; the live prefilter uses the latest price when it runs (~09:30-10:05 ET). "
+     "Symbols whose open is near the minimum price may be screened differently; each run counts them "
+     "under Data quality."),
     ("Survivorship bias", "A watchlist strategy screens today's index members (the fallback list). "
      "Stocks that were in the index historically but were later removed are missing, which usually "
      "makes results look better."),
@@ -324,8 +331,8 @@ LIMITATIONS = [
      "a working exit could both have filled, the stop is assumed first and the exit is not filled in "
      "that bar; such trades are flagged."),
     ("Pass timing", "One strategy pass per bar of the strategy's timeframe (+3 s), plus one at the "
-     "force-close time. Continuous mode (a pass every ~30 s) is approximated by these passes; orders "
-     "fill from the next bar's open."),
+     "force-close time. Continuous mode (a pass every ~30 s) is approximated by these passes. An order "
+     "fills only in bars that start after it was sent: never from prices printed before it existed."),
     ("Daily strategies", "A 1d strategy's 'live price' at its decision time is the last completed "
      "5-minute close."),
     ("Exit liquidity", "Entries are capped at a share of each bar's volume; exits and stops are "

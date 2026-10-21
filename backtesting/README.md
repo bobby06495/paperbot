@@ -52,7 +52,7 @@ A new strategy added to `rules.json` is backtestable with no extra code.
 
 | Strategy | Simulated on | Notes |
 |---|---|---|
-| `trend_join_long` | 5-minute bars | the daily watchlist is rebuilt from daily opens (top gappers ≥ the D3 block) |
+| `trend_join_long` | 5-minute bars | the daily watchlist is rebuilt from daily opens (top gappers ≥ the D3 block). The live prefilter checks the minimum price against its latest print (~09:30-10:05); the backtest uses the open and counts the symbol-days within 10 % of the minimum, where the two could disagree (Data quality) |
 | `macro_swing_etf` | 5-minute bars (signals use daily bars + the latest 5-minute close as "live" price) | positions held overnight on GTC stops; signal exits carried across days |
 | `equity_mean_reversion` | 1-minute bars | one pass per minute approximates continuous mode |
 
@@ -95,8 +95,8 @@ off-grid timestamps, incomplete sessions, missing symbol-days) is in `validation
 |---|---|
 | Entry BUY LMT (GTD) | next open ≤ limit → `min(limit, open × (1 + half-spread + slippage))`; else a later bar trading **below** the limit fills at the limit; expires at its GTD time. At most `participation_rate` × bar volume per bar (partial fills). |
 | Protective stop (STP, bracket child) | active once the entry filled; open ≤ stop (gap) → open less costs; else low ≤ stop → stop less costs |
-| Exits (partial profit, force close, signal exits) | open ≥ limit → open less costs (never below limit); else high > limit → limit; else it keeps working until the strategy cancels/re-prices it, as live |
-| Exit sent mid-bar (e.g. 15:51 on 5m bars) | fills in that bar at the lower of its open and close less costs, if not below the limit (flagged estimated) |
+| Exits (partial profit, force close, signal exits) | open ≥ limit → open less costs (never below limit); else high > limit → limit; else it keeps working until the strategy cancels/re-prices it, as live (the bot replaces an exit after 60 s, i.e. at the next pass, so an exit usually fills at the next open or not at all) |
+| Timing | an order fills only in bars that **start after it was sent**: a pass at 10:05:03 fills from the 10:10 bar; a force close sent at 15:51 (5m bars) sells at the 15:55 open. A bar is processed as: its open (orders already working), then the passes inside it, then its range (orders still working). A stop raised by a pass applies from the next bar. |
 | Same bar could hit the stop **and** a working exit | **stop assumed first** and that exit not filled in the bar (conservative), flagged `ambiguous_bar` |
 | Commission | IBKR Fixed (`core/risk.round_trip_commission` / 2 per order: $0.005/share, $1 min, 1% max) |
 
