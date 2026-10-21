@@ -7,7 +7,7 @@
 
 ## October 20, 2026: Execution, timing and risk hardening
 
-**Scope:** 12 flaws fixed across `strategy.py`, `bot.py`, `risk.py`, `account.py`, `cycle.py`, `config.json` and `rules.json`. The test suite grew from 187 to 266 tests, all passing, with no regressions.
+**Scope:** 13 flaws fixed across `strategy.py`, `bot.py`, `risk.py`, `account.py`, `cycle.py`, the prefilter, `config.json` and `rules.json`. The test suite grew from 187 to 283 tests, all passing, with no regressions.
 
 **Summary for the reader in a hurry.**
 
@@ -25,6 +25,7 @@
 | 10 | No multi-day loss limit | Unbounded capital bleed across days | Latched drawdown breaker, $3,000 |
 | 11 | Thresholds split over two files, parsed twice, unchecked | Silent overrides, mid-session config failures | One home per key, one typed parser, fail closed |
 | 12 | Risk limits raised with no portfolio-level regression check | Unreviewed drift of what the bot may do | Approved-limits lock plus reference-account scenario tests |
+| 13 | Prefilter index fixed in code; its gap threshold duplicated D3 | Index could not be changed by config; screen and entry rule could drift apart | Index, top_n and fallback from rules.json, gap from D3, index recorded in the watchlist |
 
 ---
 
@@ -257,8 +258,32 @@ Treat risk limits as policy: pin the approved values, test them against a realis
 
 ---
 
+### 13. October 20, 2026: Prefilter index fixed in code, gap threshold kept in two places
+
+**Identified Flaw / Risk.**
+On a quiet day (the largest top-100 gap was +1.87%), the question was whether the Nasdaq-100 (QQQ's holdings) would find more gappers. It found none either: 0 of 101 at 3%, largest +1.90%. But the check showed that the index could not be changed by configuration at all:
+- **The index was fixed in code.** `rules.json` `universe_filters.index` ("S&P 500") was only a label in a warning message. The prefilter always screened the S&P 500 top 100.
+- **The gap threshold existed twice.** The prefilter's own `--min-gap 3.0` default and the entry rule D3 were set separately. Lowering one without the other would either flood the watchlist with names D3 rejects, or hide names D3 would accept.
+- **No record of the index.** A watchlist built for one index would have been scanned after switching to another.
+
+**Changes Implemented.**
+- **Index registry.** `sp500_tickers.get_live_index_tickers()` supports "S&P 500" and "Nasdaq-100", each from its own Wikipedia page, with a minimum row count. A changed page layout still fails loudly instead of returning a short list.
+- **Settings in `rules.json`.** The new `market/universe.py` reads `universe_filters`: `index`, plus optional `top_n` and `fallback_file`. It checks every value: an unknown index, a bad number, a path outside `config/` or an unknown key refuses to start (ALERT) in the bot and the scheduled cycle, stops the prefilter (exit 1), and is reported by `paperbot-check`.
+- **One gap threshold.** The prefilter's gap is now D3 and its price floor is `min_price_usd`. `--min-gap` and `--min-price` still override for one run.
+- **Index in the watchlist.** The header records the index. The bot scans the watchlist only if it was generated today for the configured index; otherwise it scans `fallback_file`, with a warning. Older headers count as S&P 500.
+- **Nasdaq-100 fallback list.** New `config/universe_nasdaq100.txt` (101 members on 2026-10-20, largest first).
+- **Unchanged default.** The live `rules.json` still screens the S&P 500 top 100 at 3% and ≥ $3, which a test confirms.
+
+**Engineering Reasoning.**
+A threshold that two components must agree on belongs in one place. Making the prefilter read D3 removes a whole class of mismatch, rather than relying on someone remembering to edit both. Recording the index in the output file makes switching safe at any time of day, because a list that answers a different question is never mistaken for the current one.
+
+**Key Learning.**
+A config key that looks functional but is only a label is a trap: it invites edits that do nothing. Either wire it in and validate it, or remove it.
+
+---
+
 ### Verification and follow-up for October 20, 2026
 
-- **Tests:** 266 pass (187 before). New coverage includes OCA force close, the post-close order confirmation (expiry, forced cancel, unconfirmed cancel, connection drop, dry run), the 15:50 to 15:51 handover, the minute-precision window, GTD and the sweep, the partial-profit retry states, quote validation and release, buying-power capping, commission drag and the drawdown breaker (persistence, latching, reset, corrupt file) and the limits loader (each key from its file, type casting, missing, invalid, unknown and misplaced keys).
+- **Tests:** 283 pass (187 before). New coverage includes OCA force close, the post-close order confirmation (expiry, forced cancel, unconfirmed cancel, connection drop, dry run), the 15:50 to 15:51 handover, the minute-precision window, GTD and the sweep, the partial-profit retry states, quote validation and release, buying-power capping, commission drag and the drawdown breaker (persistence, latching, reset, corrupt file) and the limits loader (each key from its file, type casting, missing, invalid, unknown and misplaced keys).
 - **Error handling:** connection drops and API timeouts in the new paths either fail closed (entries skipped, no stop beside an unconfirmed order) or degrade with an ALERT (force close prices from bars). Exits and protective stops are never blocked by any new risk check.
 - **Open item:** OCA linking, GTD orders and `reqMktData` are verified only against a fake IBKR connection. The first `--submit` paper session needs close watching: confirm that the bracket child keeps its `ocaGroup`, that force-close SELLs join it, and that the paper account receives live quotes.

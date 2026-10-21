@@ -52,8 +52,10 @@ Positions this strategy did not open are never touched.
 
 Universe (one IBKR ticker per line, e.g. "BRK B", # for comments):
   * watchlist.txt, written each morning by morning_prefilter.py (today's top
-    S&P 500 gappers), when its header shows it was generated today (ET)
-  * otherwise the static universe.txt, with a warning once a day
+    gappers of rules.json universe_filters.index), when its header shows it
+    was generated today (ET) for that same index
+  * otherwise the fallback file (universe_filters.fallback_file, default
+    universe.txt), with a warning once a day
 """
 import datetime as dt
 import json
@@ -68,6 +70,7 @@ from zoneinfo import ZoneInfo
 from ib_async import IB, Stock, Trade
 
 from paperbot import paths
+from paperbot.market import universe as universe_settings
 from paperbot.reporting.notify import notify
 from paperbot.runtime import runstate
 from paperbot.runtime.runstate import StateCorrupt, read_json_state, write_json_atomic
@@ -133,6 +136,7 @@ def load_rules() -> dict:
             raise SystemExit(f"unsupported exit rules in {RULES_FILE.name}: {ex}")
         rules["_stop_pct"] = float(stop.group(1))
         rules["_swing"] = (int(trail.group(1)), int(trail.group(2)))
+        universe_settings.require(rules)  # index, top_n, fallback file: fail closed
         _caps = asdict(require_limits(json.loads(CONFIG_FILE.read_text()), RULES_FILE))
         _rules = rules
         log.info("loaded %s from %s", rules["strategy_name"], RULES_FILE.name)
@@ -334,21 +338,51 @@ def watchlist_date(path: Path | None = None) -> dt.date | None:
     return dt.date.fromisoformat(match.group(1)) if match else None
 
 
+def watchlist_index(path: Path | None = None) -> str:
+    """Index in the watchlist header ("# Index: Nasdaq-100"); lists written before
+    the index was recorded were always S&P 500."""
+    path = path or WATCHLIST_FILE
+    try:
+        header = path.read_text().splitlines()[:6]
+    except FileNotFoundError:
+        return universe_settings.DEFAULT_INDEX
+    for line in header:
+        match = re.match(r"# Index: (.+?)\s*$", line)
+        if match:
+            return match.group(1)
+    return universe_settings.DEFAULT_INDEX
+
+
+def _fallback_file(setup) -> Path:
+    """The configured fallback list (next to UNIVERSE_FILE, i.e. config/)."""
+    return UNIVERSE_FILE.with_name(setup.fallback_file.name)
+
+
 def _universe(rules: dict, today: dt.date) -> list[str]:
-    """Today's watchlist if it was generated today, else the static universe.txt."""
+    """Today's watchlist if it was generated today for the configured index, else
+    the fallback file (universe_filters.fallback_file, default universe.txt)."""
+    setup = universe_settings.settings(rules)
+    fallback = _fallback_file(setup)
     if watchlist_date() == today:
-        _warn_once(f"watchlist:{today}", logging.INFO, "scanning %s (generated today)",
-                   WATCHLIST_FILE.name)
-        return read_symbols(WATCHLIST_FILE)
-    _warn_once(f"no-watchlist:{today}", logging.WARNING,
-               "%s not generated today (run morning_prefilter.py after 9:30 ET); "
-               "scanning %s instead", WATCHLIST_FILE.name, UNIVERSE_FILE.name)
-    if not UNIVERSE_FILE.exists():
-        _warn_once("universe", logging.WARNING,
+        built_for = watchlist_index()
+        if built_for == setup.index:
+            _warn_once(f"watchlist:{today}", logging.INFO,
+                       "scanning %s (generated today, %s)", WATCHLIST_FILE.name, setup.index)
+            return read_symbols(WATCHLIST_FILE)
+        _warn_once(f"watchlist-index:{today}:{built_for}", logging.WARNING,
+                   "%s was generated for %s but rules.json screens %s; scanning %s until "
+                   "the next prefilter run", WATCHLIST_FILE.name, built_for, setup.index,
+                   fallback.name)
+    else:
+        _warn_once(f"no-watchlist:{today}", logging.WARNING,
+                   "%s not generated today (run morning_prefilter.py after 9:30 ET); "
+                   "scanning %s instead", WATCHLIST_FILE.name, fallback.name)
+    if not fallback.exists():
+        _warn_once(f"universe:{fallback.name}", logging.WARNING,
                    "%s missing: add the %s symbols (one per line) to scan for entries",
-                   UNIVERSE_FILE.name, rules["universe_filters"]["index"])
+                   fallback.name, setup.index)
         return []
-    return read_symbols(UNIVERSE_FILE)
+    return read_symbols(fallback)
 
 
 # ---------------------------------------------------------------- orders view

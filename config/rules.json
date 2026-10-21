@@ -4,7 +4,9 @@
   "trade_timeframe": "5m",
   "universe_filters": {
     "index": "S&P 500",
-    "min_price_usd": 3.0
+    "min_price_usd": 3.0,
+    "top_n": 100,
+    "fallback_file": "universe.txt"
   },
   "daily_filters": {
     "D1_above_prior_day_high": true,

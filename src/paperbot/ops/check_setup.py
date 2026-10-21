@@ -27,7 +27,8 @@ MODULES = (
     "paperbot.paths",
     "paperbot.runtime.runstate", "paperbot.trading.risk", "paperbot.trading.strategy",
     "paperbot.trading.bot", "paperbot.runtime.kill_switch", "paperbot.runtime.stopbot",
-    "paperbot.market.sp500_tickers", "paperbot.market.morning_prefilter",
+    "paperbot.market.sp500_tickers", "paperbot.market.universe",
+    "paperbot.market.morning_prefilter",
     "paperbot.runtime.cycle", "paperbot.reporting.notify", "paperbot.reporting.compute_perf",
     "paperbot.reporting.telemetry", "paperbot.reporting.dashboard", "paperbot.trading.account",
     "paperbot.ops.rotate_logs", "paperbot.ops.setup_schedule", "paperbot.ops.cleanup_schedule",
@@ -80,15 +81,26 @@ def run_checks() -> tuple[list[str], list[str]]:
     except (OSError, ValueError, KeyError, TypeError) as e:
         problems.append(f"config.json/rules.json: {e!r}")
 
+    setup = None
     try:
         rules = strategy.load_rules()
         print(f"ok  rules.json: {rules['strategy_name']}")
+        from paperbot.market import universe
+        setup = universe.settings(rules)
+        print(f"ok  prefilter screens {setup.describe()}, price >= ${setup.min_price:g}; "
+              f"fallback {setup.fallback_file.name}")
     except SystemExit as e:
         problems.append(f"rules.json: {e}")
     except (OSError, ValueError, KeyError, TypeError) as e:
         problems.append(f"rules.json: {e!r}")
 
-    for path in (strategy.UNIVERSE_FILE, strategy.WATCHLIST_FILE):
+    fallback_file = strategy.UNIVERSE_FILE
+    if setup is not None:
+        fallback_file = strategy._fallback_file(setup)
+        if not fallback_file.exists():
+            warnings.append(f"{fallback_file.name} (rules.json fallback_file) not found: with no "
+                            "watchlist for today the bot has nothing to scan")
+    for path in dict.fromkeys((strategy.UNIVERSE_FILE, fallback_file, strategy.WATCHLIST_FILE)):
         if not path.exists():
             continue
         symbols = strategy.read_symbols(path)
@@ -99,10 +111,15 @@ def run_checks() -> tuple[list[str], list[str]]:
         print(f"ok  {path.name}: {len(symbols)} symbols")
     from paperbot.trading.risk import today_et
     generated = strategy.watchlist_date()
+    fallback = (fallback_file.name if fallback_file.exists()
+                else f"nothing (no {fallback_file.name})")
     if generated != today_et():
-        fallback = "universe.txt" if strategy.UNIVERSE_FILE.exists() else "nothing (no universe.txt)"
         warnings.append(f"watchlist.txt {'from ' + str(generated) if generated else 'missing'}: "
                         f"the bot will scan {fallback} until morning_prefilter.py runs today")
+    elif setup is not None and strategy.watchlist_index() != setup.index:
+        warnings.append(f"watchlist.txt was built for {strategy.watchlist_index()}, rules.json "
+                        f"screens {setup.index}: the bot scans {fallback} until the next "
+                        "prefilter run")
 
     for path in (paths.LOGS_DIR / "state.json", strategy.STATE,
                  paths.LOGS_DIR / "drawdown_state.json"):

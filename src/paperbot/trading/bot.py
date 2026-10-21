@@ -60,6 +60,7 @@ from ib_async import (IB, LimitOrder, MarketOrder, Stock, StartupFetch, StartupF
                       StopOrder, Trade)
 
 from paperbot import paths
+from paperbot.market import universe
 from paperbot.reporting.notify import AlertHandler, notify
 from paperbot.runtime import runstate
 from paperbot.trading import strategy
@@ -240,6 +241,8 @@ def main():
     cfg = json.loads(CONFIG.read_text())
     limits = require_limits(cfg, RULES)
     guard = RiskGuard(limits, RISK_STATE, drawdown_path=DRAWDOWN_STATE)  # fails closed
+    setup = universe.require(json.loads(RULES.read_text()))  # index settings, fail closed
+    log.info("universe: %s", setup.describe())
     strategy.load_state()  # same check for the strategy state, before connecting
     if runstate.stop_requested():
         raise SystemExit(f"{runstate.STOP_FILE.name} file present; delete it to start the bot")

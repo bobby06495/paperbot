@@ -240,6 +240,8 @@ def run(gate: str, submit: bool) -> int:
     cfg = json.loads(paths.CONFIG_FILE.read_text())
     guard = RiskGuard(require_limits(cfg, bot.RULES), bot.RISK_STATE,
                       drawdown_path=bot.DRAWDOWN_STATE)  # fails closed
+    from paperbot.market import universe
+    universe.require(json.loads(bot.RULES.read_text()))  # index settings, before connecting
     strategy.load_state()  # fails closed before connecting
     runstate.claim_pid()
     ib = IB()
