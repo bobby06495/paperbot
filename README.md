@@ -159,6 +159,9 @@ Each section of `rules.json → strategies` is a complete strategy, assembled fr
 entry window and force-close time, universe, entry checks, stop rule, position
 management, exits and risk limits.
 
+For a beginner-friendly, code-grounded explanation of every configured strategy, worked
+examples, execution flow, and corner cases, see [docs/STRATEGY_GUIDE.md](docs/STRATEGY_GUIDE.md).
+
 ```json
 { "default_strategy": "trend_join_long",
   "strategies": {
@@ -180,7 +183,7 @@ management, exits and risk limits.
 |---|---|---|---|---|
 | `trend_join_long` | today's S&P 500 gappers, 5m bars, flat every day | breakout above prior-day/premarket/day high, gap ≥ 3 %, RVOL ≥ 2, above SMA200 (10:05–15:30) | day's low − 1 % | ⅓ at +0.75R, breakeven at +1R, swing-low trail, force close 15:51 |
 | `macro_swing_etf` | 11 SPDR sector ETFs, daily bars, **held overnight** | price > SMA200 and RSI(2) < 10, using the live price as today's close (15:45–15:55) | 2 × ATR(14), GTC | at 15:50: price > SMA(5), or 10 trading days held |
-| `equity_mean_reversion` | SPY, QQQ, IWM, 1-minute bars, flat every day, **continuous mode only**, up to 3 entries per symbol per day | last completed 1m close ≤ session VWAP − 2 sd (10:00–15:30) | 1 sd below the entry | back at VWAP, 30 minutes held, force close 15:50 |
+| `equity_mean_reversion` | SPY, QQQ, IWM, 1-minute bars, flat every day, **continuous mode only**, up to 3 entries per symbol per day | last completed 1m close ≤ session VWAP − 2 sd (10:00–15:30) | 1 sd below the signal bar's close | back at VWAP, 30 minutes held, force close 15:50 |
 
 **Switching the index (e.g. to QQQ's Nasdaq-100 stocks).** A strategy whose universe is the
 morning watchlist names its index in `rules.json`:
