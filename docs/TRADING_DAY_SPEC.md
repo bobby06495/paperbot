@@ -95,13 +95,13 @@ From the **09:35** run onward, positions carried in from earlier (§5.3) get ful
 
 ### 1.6 Watchlist build (09:55, re-run every 30 min until 12:55)
 
-`HT_Prefilter_01…07` run `paperbot.market.morning_prefilter`, which never connects to IBKR:
+`HT_Prefilter_01…07` run `paperbot.market.morning_prefilter`:
 1. Fetches today's S&P 500 members from Wikipedia.
 2. Keeps the **100 largest by market cap** (Yahoo Finance, 5 threads).
-3. Downloads 2 daily bars for those 100 in bulk.
-4. Computes gap = today's open ÷ yesterday's close − 1. A symbol survives if gap ≥ 3 % and its latest price ≥ $3.
+3. Requests about 5 days of regular-hours daily bars for those 100 from IB Gateway, over a **read-only** connection with its own clientId (`config.json` client_id + 4), 8 requests at a time. It can run next to the bot and can never place an order.
+4. Computes gap = today's open ÷ the previous session's close − 1 (the same IBKR data as the bot's gap check). A symbol survives if gap ≥ 3 % and its latest price ≥ $3.
 5. Sorts by gap, keeps the **top 20**, and writes them atomically to `data/watchlist.txt` with a header dated today.
-6. Sends an ALERT push if ≥ 30 % of the symbols failed to download (≥ 95 % = connection failure). Exits 1 if Yahoo has no bar for today yet.
+6. Sends an ALERT push if ≥ 30 % of the symbols have no IBKR data. A failed run exits 1 and does **not** write the watchlist, so the bot keeps an earlier list from today or falls back to `universe.txt`. It fails when Wikipedia or Yahoo is unavailable, IB Gateway can't be reached, IBKR has no bar for today yet, or ≥ 95 % of the symbols have no data. The `Prefilter FAILED` push names the step that failed.
 
 The strategy scans `watchlist.txt` only if its header date is today (ET). Otherwise it falls back to the static `config/universe.txt` (99 symbols) and logs a warning once per day. When a prefilter re-run changes the list, the scan position resets.
 

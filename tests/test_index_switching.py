@@ -17,7 +17,6 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest import mock
 
-import pandas as pd
 
 from paperbot import paths
 from paperbot.core import common
@@ -142,7 +141,7 @@ class PrefilterRunTest(unittest.TestCase):
         watchlist = Path(tmp.name) / "watchlist.txt"
         setup = universe.Settings("trend_join_long", "Nasdaq-100", 2, paths.CONFIG_DIR / "universe_nasdaq100.txt",
                                   4.0, 5.0)
-        data = pd.DataFrame({"x": [1.0]}, index=[pd.Timestamp(NOW)])
+        data = {"MSFT": [mp.DailyBar(NOW.date(), 1.0, 1.0)]}
         screened = {"survivors": [{"symbol": "MSFT", "gap_pct": 4.5, "open": 1.0, "prev_close": 1.0}],
                     "passed": 1, "below_gap": 1, "below_price": 0, "failed": []}
         fake_now = mock.MagicMock(wraps=dt.datetime)
@@ -150,7 +149,7 @@ class PrefilterRunTest(unittest.TestCase):
         with mock.patch.object(mp, "setup_for", return_value=setup), \
                 mock.patch.object(mp, "get_live_index_tickers", return_value=["AAPL", "MSFT", "NVDA"]) as members, \
                 mock.patch.object(mp, "market_caps", return_value={"AAPL": 3.0, "MSFT": 2.0, "NVDA": 1.0}), \
-                mock.patch.object(mp, "download", return_value=data) as download, \
+                mock.patch.object(mp, "ibkr_daily_bars", return_value=(data, {})) as download, \
                 mock.patch.object(mp, "screen", return_value=screened) as screen, \
                 mock.patch.object(mp, "WATCHLIST_PATH", watchlist), \
                 mock.patch.object(mp.dt, "datetime", fake_now), \

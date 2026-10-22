@@ -638,9 +638,11 @@ and don't use the bot's risk guard.
 - Limit prices need live quotes (`reqMktData`). A paper account without a market-data
   subscription shared from the live account gets none: entries and partial profits are then
   skipped, and force close prices from 5-minute bars (with an ALERT).
-- The prefilter uses free Wikipedia and Yahoo Finance data, which is unofficial and can be
-  rate-limited. Ranking 503 symbols by market cap makes about 500 small requests (5 at a
-  time), so expect roughly 1–3 minutes. It's a one-time snapshot: stocks that start gapping
-  after it runs are not added.
+- The prefilter takes the index members from Wikipedia and market caps from Yahoo Finance
+  (free, unofficial, can be rate-limited), then the gap prices from IB Gateway (read-only,
+  clientId + 4), so IB Gateway must be logged in by 09:55 ET. Ranking 503 symbols by market cap
+  makes about 500 small requests (5 at a time), so expect roughly 1–3 minutes. A failed run
+  keeps the previous watchlist and pushes `Prefilter FAILED` naming the step. It's a one-time
+  snapshot: stocks that start gapping after it runs are not added.
 - `logs/safety_log.jsonl` gets one line per symbol evaluated, so a full day of scanning 100
   symbols adds a few MB. `paperbot-rotate` caps it at 5 MB.
