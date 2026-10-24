@@ -1,0 +1,28 @@
+{"time": "2026-10-21T03:43:04-04:00", "level": "INFO", "message": "run 20261021T074304Z-97a7ca: Macro Swing ETF (baseline) with ibkr"}
+{"time": "2026-10-21T04:41:45-04:00", "level": "INFO", "message": "intraday 5m bars: 10/11 symbols"}
+{"time": "2026-10-21T04:47:39-04:00", "level": "INFO", "message": "intraday 5m bars: 11/11 symbols"}
+{"time": "2026-10-21T04:47:41-04:00", "level": "INFO", "message": "simulated 20/438 days"}
+{"time": "2026-10-21T04:47:43-04:00", "level": "INFO", "message": "simulated 40/438 days"}
+{"time": "2026-10-21T04:47:44-04:00", "level": "INFO", "message": "simulated 60/438 days"}
+{"time": "2026-10-21T04:47:45-04:00", "level": "INFO", "message": "simulated 80/438 days"}
+{"time": "2026-10-21T04:47:47-04:00", "level": "INFO", "message": "simulated 100/438 days"}
+{"time": "2026-10-21T04:47:49-04:00", "level": "INFO", "message": "simulated 120/438 days"}
+{"time": "2026-10-21T04:47:50-04:00", "level": "INFO", "message": "simulated 140/438 days"}
+{"time": "2026-10-21T04:47:52-04:00", "level": "INFO", "message": "simulated 160/438 days"}
+{"time": "2026-10-21T04:47:54-04:00", "level": "INFO", "message": "simulated 180/438 days"}
+{"time": "2026-10-21T04:47:56-04:00", "level": "INFO", "message": "simulated 200/438 days"}
+{"time": "2026-10-21T04:47:58-04:00", "level": "INFO", "message": "simulated 220/438 days"}
+{"time": "2026-10-21T04:48:00-04:00", "level": "INFO", "message": "simulated 240/438 days"}
+{"time": "2026-10-21T04:48:02-04:00", "level": "INFO", "message": "simulated 260/438 days"}
+{"time": "2026-10-21T04:48:04-04:00", "level": "INFO", "message": "simulated 280/438 days"}
+{"time": "2026-10-21T04:48:06-04:00", "level": "INFO", "message": "simulated 300/438 days"}
+{"time": "2026-10-21T04:48:08-04:00", "level": "INFO", "message": "simulated 320/438 days"}
+{"time": "2026-10-21T04:48:10-04:00", "level": "INFO", "message": "simulated 340/438 days"}
+{"time": "2026-10-21T04:48:13-04:00", "level": "INFO", "message": "simulated 360/438 days"}
+{"time": "2026-10-21T04:48:15-04:00", "level": "INFO", "message": "simulated 380/438 days"}
+{"time": "2026-10-21T04:48:18-04:00", "level": "INFO", "message": "simulated 400/438 days"}
+{"time": "2026-10-21T04:48:20-04:00", "level": "INFO", "message": "simulated 420/438 days"}
+{"time": "2026-10-21T04:48:23-04:00", "level": "INFO", "message": "simulated 438/438 days"}
+{"time": "2026-10-21T04:48:34-04:00", "level": "INFO", "message": "intraday 5m bars: 10/11 symbols"}
+{"time": "2026-10-21T04:48:35-04:00", "level": "INFO", "message": "intraday 5m bars: 11/11 symbols"}
+{"time": "2026-10-21T04:49:18-04:00", "level": "INFO", "message": "run 20261021T074304Z-97a7ca finished: completed_with_warnings, net P&L 13225.08 USD, 145 trades"}

@@ -1,0 +1,49 @@
+{
+ "run_id": "20261022T022010Z-ca875a",
+ "strategy_id": "macro_swing_etf",
+ "strategy_name": "Macro Swing ETF",
+ "strategy_version": "6a93a3e02281",
+ "kind": "baseline",
+ "experiment_id": null,
+ "experiment": null,
+ "status": "failed",
+ "started_at": "2026-10-22T02:20:10+00:00",
+ "finished_at": "2026-10-22T02:20:10+00:00",
+ "code": {
+  "commit": "f5de8967716ffa2b90cfa7ca145c618cf46c7f26",
+  "branch": "enhancements",
+  "dirty": false
+ },
+ "software": {
+  "paperbot": "1.0.0",
+  "backtest_engine": "1.0.0",
+  "python": "3.11.4"
+ },
+ "provider": "ibkr",
+ "synthetic_data": false,
+ "timeframe": "1d",
+ "holding": "multi_day",
+ "tape": "5m",
+ "currency": "USD",
+ "starting_capital": 1000000.0,
+ "execution_assumptions": {
+  "half_spread_bps": 2.0,
+  "slippage_bps": 2.0,
+  "participation_rate": 0.1,
+  "buying_power_multiplier": 1.0,
+  "ambiguous_bar_policy": "stop_first",
+  "decision_delay_seconds": 3,
+  "reset_drawdown_breaker_next_day": false
+ },
+ "cost_assumptions": {
+  "commission": "IBKR Fixed: $0.005/share, min $1.00, max 1% of value, per order (core/risk.round_trip_commission / 2)",
+  "half_spread_bps": 2.0,
+  "slippage_bps": 2.0
+ },
+ "timezone": "America/New_York (ET) for every timestamp",
+ "warnings": [],
+ "errors": [
+  "BacktestError: no testable days between 2026-10-21 and 2026-10-20 with provider ibkr"
+ ],
+ "pinned": false
+}

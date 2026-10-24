@@ -1,0 +1,404 @@
+{
+ "strategy_id": "macro_swing_etf",
+ "baseline_run": "20261021T044631Z-ff21e8",
+ "variant_runs": [
+  "20261021T050056Z-757b74",
+  "20261021T050106Z-24931b",
+  "20261021T050116Z-7346b8"
+ ],
+ "labels": [
+  "Baseline",
+  "EXP-macro_swing_etf-hold-longer",
+  "EXP-macro_swing_etf-rsi-deeper",
+  "EXP-macro_swing_etf-stop-wider"
+ ],
+ "dataset_id": "ibkr-5m-20260622-20261020-a510f5b438",
+ "same_dataset": true,
+ "rows": [
+  {
+   "segment": "in_sample",
+   "metric": "net_pnl",
+   "values": [
+    7414.15,
+    7414.15,
+    1116.61,
+    7481.44
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "return_pct",
+   "values": [
+    0.7414,
+    0.7414,
+    0.1117,
+    0.7481
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "trades",
+   "values": [
+    22,
+    22,
+    5,
+    21
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "win_rate_pct",
+   "values": [
+    90.91,
+    90.91,
+    60.0,
+    90.48
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "profit_factor",
+   "values": [
+    9.098,
+    9.098,
+    6.599,
+    13.189
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "expectancy",
+   "values": [
+    373.66,
+    373.66,
+    305.62,
+    394.65
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.1795,
+    0.1795,
+    0.1187,
+    0.1729
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "commission",
+   "values": [
+    97.68,
+    97.68,
+    18.84,
+    95.68
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "net_pnl",
+   "values": [
+    -805.22,
+    -805.22,
+    424.89,
+    -564.16
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "return_pct",
+   "values": [
+    -0.0799,
+    -0.0799,
+    0.0424,
+    -0.056
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "trades",
+   "values": [
+    8,
+    8,
+    6,
+    6
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "win_rate_pct",
+   "values": [
+    37.5,
+    37.5,
+    50.0,
+    33.33
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "profit_factor",
+   "values": [
+    0.298,
+    0.298,
+    0.839,
+    0.359
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "expectancy",
+   "values": [
+    -187.12,
+    -187.12,
+    -20.89,
+    -111.25
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.1588,
+    0.1588,
+    0.1185,
+    0.1434
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "commission",
+   "values": [
+    34.03,
+    34.03,
+    23.24,
+    21.77
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "net_pnl",
+   "values": [
+    -1302.22,
+    -1302.22,
+    -1550.78,
+    -1148.93
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "return_pct",
+   "values": [
+    -0.1294,
+    -0.1294,
+    -0.1548,
+    -0.1141
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "trades",
+   "values": [
+    4,
+    4,
+    3,
+    3
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "win_rate_pct",
+   "values": [
+    25.0,
+    25.0,
+    33.33,
+    33.33
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "profit_factor",
+   "values": [
+    0.034,
+    0.034,
+    0.034,
+    0.056
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "expectancy",
+   "values": [
+    -439.8,
+    -439.8,
+    -584.81,
+    -345.03
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.1872,
+    0.1872,
+    0.1978,
+    0.1705
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "commission",
+   "values": [
+    10.13,
+    10.13,
+    7.74,
+    8.08
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "net_pnl",
+   "values": [
+    5306.68,
+    5306.68,
+    -9.28,
+    5768.34
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.4135,
+    0.4135,
+    0.2904,
+    0.3662
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "completed_trades",
+   "values": [
+    34,
+    34,
+    14,
+    30
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "total_commission",
+   "values": [
+    141.81,
+    141.81,
+    49.83,
+    125.5
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "total_slippage",
+   "values": [
+    826.9,
+    826.9,
+    346.52,
+    731.93
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "profit_factor",
+   "values": [
+    1.999,
+    1.999,
+    0.877,
+    3.337
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "win_rate_pct",
+   "values": [
+    70.59,
+    70.59,
+    50.0,
+    73.33
+   ]
+  }
+ ],
+ "findings": [
+  {
+   "experiment_id": "EXP-macro_swing_etf-hold-longer",
+   "run_id": "20261021T050056Z-757b74",
+   "changes": {
+    "exit.1.days": 15
+   },
+   "hypothesis": "Holding longer before the time stop captures more of the recovery.",
+   "validation_net_pnl_delta": 0.0,
+   "out_of_sample_net_pnl_delta": 0.0,
+   "mean_trade_diff_ci95": [
+    -376.4,
+    380.27
+   ],
+   "verdict": "no clear difference on validation data (bootstrap range includes zero)",
+   "holds_out_of_sample": null,
+   "material": false
+  },
+  {
+   "experiment_id": "EXP-macro_swing_etf-rsi-deeper",
+   "run_id": "20261021T050106Z-24931b",
+   "changes": {
+    "entry.1.max": 5.0
+   },
+   "hypothesis": "Waiting for a deeper pullback (P1) improves the entry price enough to offset fewer signals.",
+   "validation_net_pnl_delta": 1230.11,
+   "out_of_sample_net_pnl_delta": -248.56,
+   "mean_trade_diff_ci95": [
+    -236.59,
+    540.94
+   ],
+   "verdict": "no clear difference on validation data (bootstrap range includes zero)",
+   "holds_out_of_sample": false,
+   "material": false
+  },
+  {
+   "experiment_id": "EXP-macro_swing_etf-stop-wider",
+   "run_id": "20261021T050116Z-7346b8",
+   "changes": {
+    "stop.multiple": 3.0
+   },
+   "hypothesis": "A wider ATR stop lets multi-day pullbacks recover instead of stopping out.",
+   "validation_net_pnl_delta": 241.06,
+   "out_of_sample_net_pnl_delta": 153.29,
+   "mean_trade_diff_ci95": [
+    -282.42,
+    429.54
+   ],
+   "verdict": "no clear difference on validation data (bootstrap range includes zero)",
+   "holds_out_of_sample": true,
+   "material": false
+  }
+ ],
+ "walk_forward": {
+  "steps": [
+   {
+    "fold": 2,
+    "chosen": "Baseline",
+    "chosen_net_pnl": 984.75,
+    "baseline_net_pnl": 984.75
+   },
+   {
+    "fold": 3,
+    "chosen": "EXP-macro_swing_etf-stop-wider",
+    "chosen_net_pnl": -1582.67,
+    "baseline_net_pnl": -1885.41
+   }
+  ],
+  "chosen_total": -597.92,
+  "baseline_total": -900.66
+ },
+ "variants_evaluated_on_dataset": 4,
+ "selection_rule": "Variants are judged on the validation segment. Out-of-sample results are shown only to check that a difference holds on untouched data; they are never used to pick a variant.",
+ "approval": "No rule change is applied automatically. A variant that holds up must be reviewed and copied into config/rules.json by a person.",
+ "created_at": "2026-10-21T05:01:26+00:00"
+}

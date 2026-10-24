@@ -1,0 +1,112 @@
+{
+ "data_quality": {
+  "provider": "ibkr",
+  "synthetic": false,
+  "bar": "5m",
+  "requested_start": "2026-06-22",
+  "requested_end": "2026-10-20",
+  "actual_start": "2026-06-22",
+  "actual_end": "2026-10-20",
+  "symbols_requested": [
+   "XLK",
+   "XLF",
+   "XLE",
+   "XLV",
+   "XLI",
+   "XLY",
+   "XLP",
+   "XLU",
+   "XLB",
+   "XLRE",
+   "XLC"
+  ],
+  "symbols_with_data": [
+   "XLK",
+   "XLF",
+   "XLE",
+   "XLV",
+   "XLI",
+   "XLY",
+   "XLP",
+   "XLU",
+   "XLB",
+   "XLRE",
+   "XLC"
+  ],
+  "symbols_without_data": [],
+  "trading_days": 85,
+  "intraday_days_loaded": 935,
+  "intraday_days_missing": [],
+  "duplicate_bars": 17257,
+  "unordered_series": 0,
+  "invalid_bars": 0,
+  "off_grid_bars": 0,
+  "incomplete_sessions": [],
+  "warnings": [],
+  "limitations": [
+   "IBKR historical volume units are assumed to be shares; if your feed reports lots of 100, only the participation cap (not RVOL, a ratio) is affected."
+  ],
+  "errors": [],
+  "status": "warn",
+  "incomplete_sessions_total": 0,
+  "intraday_days_missing_total": 0
+ },
+ "periods_method": "Chronological split of the trading days: the first 60% in-sample, the next 20% validation, the last 20% out-of-sample. Trades are assigned to the segment in which they exited. Walk-forward folds are consecutive equal blocks used to check whether results are consistent over time.",
+ "checks": [
+  {
+   "key": "equity_reconciles",
+   "label": "Trade ledger reconciles with ending equity",
+   "status": "pass",
+   "detail": "starting capital + sum of trade net P&L = 1,004,894.52; simulated ending equity = 1,004,894.49 USD"
+  },
+  {
+   "key": "fills_match_trades",
+   "label": "Every bought share belongs to a trade",
+   "status": "pass",
+   "detail": "12760 shares bought in fills, 12760 in the trade ledger"
+  },
+  {
+   "key": "no_short",
+   "label": "No trade ever sold more shares than it bought",
+   "status": "pass",
+   "detail": "33 trades checked; 0 oversold"
+  },
+  {
+   "key": "rules_unchanged",
+   "label": "config/rules.json was not modified",
+   "status": "pass",
+   "detail": "SHA-256 compared before and after the run"
+  },
+  {
+   "key": "isolated",
+   "label": "Backtest process is marked as isolated from live trading",
+   "status": "pass",
+   "detail": "PAPERBOT_BACKTEST=1, so paperbot's order functions refuse to run in this process"
+  },
+  {
+   "key": "open_positions",
+   "label": "No positions left open at the end",
+   "status": "warn",
+   "detail": "1 open position(s) marked at their last price"
+  }
+ ],
+ "risk_state": {
+  "orders_today": 0,
+  "halted_last_day": false,
+  "drawdown_breaker_tripped": false,
+  "drawdown_breaker_reason": ""
+ },
+ "dataset_id": "ibkr-5m-20260622-20261020-d13e35fe60",
+ "dataset_usage": {
+  "runs": [
+   "20261021T072244Z-9741de"
+  ],
+  "variants": [
+   "baseline"
+  ],
+  "first_used": "2026-10-21T07:22:55+00:00"
+ },
+ "data_hashes": 947,
+ "strategy_log": [],
+ "watchlists": {}
+}

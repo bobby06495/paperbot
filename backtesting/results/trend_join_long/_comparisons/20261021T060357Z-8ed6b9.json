@@ -1,0 +1,489 @@
+{
+ "strategy_id": "trend_join_long",
+ "baseline_run": "20261021T052500Z-bffe02",
+ "variant_runs": [
+  "20261021T060227Z-9d42d5",
+  "20261021T060246Z-03d6fa",
+  "20261021T060304Z-ce928a",
+  "20261021T060318Z-d4c13a",
+  "20261021T060338Z-e0a6af"
+ ],
+ "labels": [
+  "Baseline",
+  "EXP-trend_join_long-breakeven-later",
+  "EXP-trend_join_long-entry-later",
+  "EXP-trend_join_long-gap-higher",
+  "EXP-trend_join_long-rvol-lower",
+  "EXP-trend_join_long-stop-wider"
+ ],
+ "dataset_id": "ibkr-5m-20260622-20261020-ec433b93d8",
+ "same_dataset": true,
+ "rows": [
+  {
+   "segment": "in_sample",
+   "metric": "net_pnl",
+   "values": [
+    1050.28,
+    1050.28,
+    -182.9,
+    873.87,
+    2156.19,
+    1050.28
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "return_pct",
+   "values": [
+    0.105,
+    0.105,
+    -0.0183,
+    0.0874,
+    0.2156,
+    0.105
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "trades",
+   "values": [
+    11,
+    11,
+    8,
+    9,
+    14,
+    11
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "win_rate_pct",
+   "values": [
+    54.55,
+    54.55,
+    50.0,
+    55.56,
+    64.29,
+    54.55
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "profit_factor",
+   "values": [
+    1.557,
+    1.557,
+    0.811,
+    1.533,
+    2.143,
+    1.557
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "expectancy",
+   "values": [
+    95.48,
+    95.48,
+    -22.86,
+    97.1,
+    154.01,
+    95.48
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.3037,
+    0.3037,
+    0.1551,
+    0.2192,
+    0.2469,
+    0.3037
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "commission",
+   "values": [
+    23.46,
+    23.46,
+    17.32,
+    19.32,
+    29.46,
+    23.46
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "net_pnl",
+   "values": [
+    2186.69,
+    2186.69,
+    950.0,
+    2186.69,
+    1792.24,
+    2186.69
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "return_pct",
+   "values": [
+    0.2184,
+    0.2184,
+    0.095,
+    0.2185,
+    0.1788,
+    0.2184
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "trades",
+   "values": [
+    3,
+    3,
+    3,
+    3,
+    4,
+    3
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "win_rate_pct",
+   "values": [
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    75.0,
+    100.0
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "profit_factor",
+   "values": [
+    null,
+    null,
+    null,
+    null,
+    5.544,
+    null
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "expectancy",
+   "values": [
+    728.9,
+    728.9,
+    316.66,
+    728.9,
+    448.06,
+    728.9
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.07,
+    0.07,
+    0.0964,
+    0.07,
+    0.1092,
+    0.07
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "commission",
+   "values": [
+    6.0,
+    6.0,
+    6.0,
+    6.0,
+    8.0,
+    6.0
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "net_pnl",
+   "values": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "return_pct",
+   "values": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "trades",
+   "values": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "win_rate_pct",
+   "values": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "profit_factor",
+   "values": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "expectancy",
+   "values": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "commission",
+   "values": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "net_pnl",
+   "values": [
+    3236.97,
+    3236.97,
+    767.09,
+    3060.57,
+    3948.43,
+    3236.97
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.3037,
+    0.3037,
+    0.1551,
+    0.2192,
+    0.2469,
+    0.3037
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "completed_trades",
+   "values": [
+    14,
+    14,
+    11,
+    12,
+    18,
+    14
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "total_commission",
+   "values": [
+    29.46,
+    29.46,
+    23.32,
+    25.32,
+    37.46,
+    29.46
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "total_slippage",
+   "values": [
+    334.87,
+    334.87,
+    262.62,
+    287.6,
+    430.35,
+    334.87
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "profit_factor",
+   "values": [
+    2.716,
+    2.716,
+    1.792,
+    2.866,
+    2.731,
+    2.716
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "win_rate_pct",
+   "values": [
+    64.29,
+    64.29,
+    63.64,
+    66.67,
+    66.67,
+    64.29
+   ]
+  }
+ ],
+ "findings": [
+  {
+   "experiment_id": "EXP-trend_join_long-breakeven-later",
+   "run_id": "20261021T060227Z-9d42d5",
+   "changes": {
+    "manage.1.at_R": 1.5
+   },
+   "hypothesis": "Moving the stop to breakeven later lets more winners develop.",
+   "validation_net_pnl_delta": 0.0,
+   "out_of_sample_net_pnl_delta": 0.0,
+   "mean_trade_diff_ci95": null,
+   "verdict": "not enough validation trades to compare (fewer than 5 each)",
+   "holds_out_of_sample": null,
+   "material": false
+  },
+  {
+   "experiment_id": "EXP-trend_join_long-entry-later",
+   "run_id": "20261021T060246Z-03d6fa",
+   "changes": {
+    "time_filter.earliest_entry_et": "10:30"
+   },
+   "hypothesis": "Waiting longer after the open avoids the noisiest part of the session.",
+   "validation_net_pnl_delta": -1236.69,
+   "out_of_sample_net_pnl_delta": 0.0,
+   "mean_trade_diff_ci95": null,
+   "verdict": "not enough validation trades to compare (fewer than 5 each)",
+   "holds_out_of_sample": null,
+   "material": false
+  },
+  {
+   "experiment_id": "EXP-trend_join_long-gap-higher",
+   "run_id": "20261021T060304Z-ce928a",
+   "changes": {
+    "entry.3.min_pct": 4.0
+   },
+   "hypothesis": "A larger opening gap (D3) selects stronger moves and a better average trade, at the cost of fewer trades.",
+   "validation_net_pnl_delta": 0.0,
+   "out_of_sample_net_pnl_delta": 0.0,
+   "mean_trade_diff_ci95": null,
+   "verdict": "not enough validation trades to compare (fewer than 5 each)",
+   "holds_out_of_sample": null,
+   "material": false
+  },
+  {
+   "experiment_id": "EXP-trend_join_long-rvol-lower",
+   "run_id": "20261021T060318Z-d4c13a",
+   "changes": {
+    "entry.7.min": 1.5
+   },
+   "hypothesis": "A lower relative-volume threshold (I3) admits more breakouts without lowering their average result.",
+   "validation_net_pnl_delta": -394.45,
+   "out_of_sample_net_pnl_delta": 0.0,
+   "mean_trade_diff_ci95": null,
+   "verdict": "not enough validation trades to compare (fewer than 5 each)",
+   "holds_out_of_sample": null,
+   "material": false
+  },
+  {
+   "experiment_id": "EXP-trend_join_long-stop-wider",
+   "run_id": "20261021T060338Z-e0a6af",
+   "changes": {
+    "stop.pct": 2.0
+   },
+   "hypothesis": "A wider initial stop reduces premature stop-outs enough to offset the smaller position it implies (risk per trade is fixed).",
+   "validation_net_pnl_delta": 0.0,
+   "out_of_sample_net_pnl_delta": 0.0,
+   "mean_trade_diff_ci95": null,
+   "verdict": "not enough validation trades to compare (fewer than 5 each)",
+   "holds_out_of_sample": null,
+   "material": false
+  }
+ ],
+ "walk_forward": {
+  "steps": [
+   {
+    "fold": 2,
+    "chosen": "EXP-trend_join_long-rvol-lower",
+    "chosen_net_pnl": 2249.54,
+    "baseline_net_pnl": 2249.54
+   },
+   {
+    "fold": 3,
+    "chosen": "EXP-trend_join_long-gap-higher",
+    "chosen_net_pnl": 2186.69,
+    "baseline_net_pnl": 2186.69
+   }
+  ],
+  "chosen_total": 4436.23,
+  "baseline_total": 4436.23
+ },
+ "variants_evaluated_on_dataset": 6,
+ "selection_rule": "Variants are judged on the validation segment. Out-of-sample results are shown only to check that a difference holds on untouched data; they are never used to pick a variant.",
+ "approval": "No rule change is applied automatically. A variant that holds up must be reviewed and copied into config/rules.json by a person.",
+ "created_at": "2026-10-21T06:03:57+00:00"
+}

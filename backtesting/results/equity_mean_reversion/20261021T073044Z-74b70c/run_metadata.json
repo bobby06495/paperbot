@@ -1,0 +1,91 @@
+{
+ "run_id": "20261021T073044Z-74b70c",
+ "strategy_id": "equity_mean_reversion",
+ "strategy_name": "Equities Mean Reversion",
+ "strategy_version": "095b8ad260e2",
+ "kind": "experiment",
+ "experiment_id": "EXP-equity_mean_reversion-hold-longer",
+ "experiment": {
+  "id": "EXP-equity_mean_reversion-hold-longer",
+  "strategy_id": "equity_mean_reversion",
+  "title": "Equities Mean Reversion: hold longer",
+  "status": "proposed",
+  "created": "2026-10-21",
+  "hypothesis": "Allowing more time before the time stop lets more trades reach the target.",
+  "reason": "The time limit is a fixed guess.",
+  "evidence": "No baseline run yet: proposed from the configuration alone.",
+  "changes": {
+   "exit.1.minutes": 60
+  },
+  "baseline_values": {
+   "exit.1.minutes": 30
+  },
+  "data_periods": "Choose on the validation segment only. The out-of-sample segment is reported once as an untouched-data check.",
+  "approval": "Not applied. Changing config/rules.json requires a human review."
+ },
+ "status": "completed",
+ "started_at": "2026-10-21T07:30:44+00:00",
+ "finished_at": "2026-10-21T07:32:59+00:00",
+ "code": {
+  "commit": "f5de8967716ffa2b90cfa7ca145c618cf46c7f26",
+  "branch": "enhancements",
+  "dirty": true
+ },
+ "software": {
+  "paperbot": "1.0.0",
+  "backtest_engine": "1.0.0",
+  "python": "3.11.4"
+ },
+ "provider": "ibkr",
+ "synthetic_data": false,
+ "timeframe": "1m",
+ "holding": "intraday",
+ "tape": "1m",
+ "currency": "USD",
+ "starting_capital": 1000000.0,
+ "execution_assumptions": {
+  "half_spread_bps": 2.0,
+  "slippage_bps": 2.0,
+  "participation_rate": 0.1,
+  "buying_power_multiplier": 1.0,
+  "ambiguous_bar_policy": "stop_first",
+  "decision_delay_seconds": 3,
+  "reset_drawdown_breaker_next_day": false
+ },
+ "cost_assumptions": {
+  "commission": "IBKR Fixed: $0.005/share, min $1.00, max 1% of value, per order (core/risk.round_trip_commission / 2)",
+  "half_spread_bps": 2.0,
+  "slippage_bps": 2.0
+ },
+ "timezone": "America/New_York (ET) for every timestamp",
+ "warnings": [],
+ "errors": [],
+ "pinned": false,
+ "period": {
+  "requested_start": "2026-06-22",
+  "requested_end": "2026-10-20",
+  "actual_start": "2026-06-22",
+  "actual_end": "2026-10-20",
+  "trading_days": 85
+ },
+ "dataset_id": "ibkr-1m-20260622-20261020-057207d8a2",
+ "symbols": [
+  "SPY",
+  "QQQ",
+  "IWM"
+ ],
+ "variants_on_dataset": 3,
+ "headline": {
+  "net_pnl": -5994.12,
+  "total_return_pct": -0.5994,
+  "completed_trades": 175,
+  "win_rate_pct": 23.43,
+  "max_drawdown_pct": 0.6008,
+  "profit_factor": 0.214,
+  "total_commission": 350.0,
+  "total_slippage": 4115.24,
+  "ending_equity": 994005.88
+ },
+ "data_status": "pass",
+ "out_of_sample": true
+}

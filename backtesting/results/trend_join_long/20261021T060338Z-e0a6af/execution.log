@@ -1,0 +1,17 @@
+{"time": "2026-10-21T02:03:38-04:00", "level": "INFO", "message": "run 20261021T060338Z-e0a6af: Trend Join Long (experiment) with ibkr"}
+{"time": "2026-10-21T02:03:38-04:00", "level": "INFO", "message": "daily bars: 25/100 symbols"}
+{"time": "2026-10-21T02:03:38-04:00", "level": "INFO", "message": "daily bars: 50/100 symbols"}
+{"time": "2026-10-21T02:03:38-04:00", "level": "INFO", "message": "daily bars: 75/100 symbols"}
+{"time": "2026-10-21T02:03:38-04:00", "level": "INFO", "message": "daily bars: 100/100 symbols"}
+{"time": "2026-10-21T02:03:40-04:00", "level": "INFO", "message": "intraday 5m bars: 10/54 symbols"}
+{"time": "2026-10-21T02:03:41-04:00", "level": "INFO", "message": "intraday 5m bars: 20/54 symbols"}
+{"time": "2026-10-21T02:03:42-04:00", "level": "INFO", "message": "intraday 5m bars: 30/54 symbols"}
+{"time": "2026-10-21T02:03:43-04:00", "level": "INFO", "message": "intraday 5m bars: 40/54 symbols"}
+{"time": "2026-10-21T02:03:44-04:00", "level": "INFO", "message": "intraday 5m bars: 50/54 symbols"}
+{"time": "2026-10-21T02:03:45-04:00", "level": "INFO", "message": "intraday 5m bars: 54/54 symbols"}
+{"time": "2026-10-21T02:03:48-04:00", "level": "INFO", "message": "simulated 20/85 days"}
+{"time": "2026-10-21T02:03:52-04:00", "level": "INFO", "message": "simulated 40/85 days"}
+{"time": "2026-10-21T02:03:54-04:00", "level": "INFO", "message": "simulated 60/85 days"}
+{"time": "2026-10-21T02:03:56-04:00", "level": "INFO", "message": "simulated 80/85 days"}
+{"time": "2026-10-21T02:03:57-04:00", "level": "INFO", "message": "simulated 85/85 days"}
+{"time": "2026-10-21T02:03:57-04:00", "level": "INFO", "message": "run 20261021T060338Z-e0a6af finished: completed_with_warnings, net P&L 3236.97 USD, 14 trades"}

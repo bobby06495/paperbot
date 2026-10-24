@@ -1,0 +1,606 @@
+{
+ "data_quality": {
+  "provider": "ibkr",
+  "synthetic": false,
+  "bar": "5m",
+  "requested_start": "2026-06-22",
+  "requested_end": "2026-10-20",
+  "actual_start": "2026-06-22",
+  "actual_end": "2026-10-20",
+  "symbols_requested": [
+   "AAPL",
+   "MSFT",
+   "NVDA",
+   "AMZN",
+   "META",
+   "GOOGL",
+   "GOOG",
+   "BRK B",
+   "LLY",
+   "AVGO",
+   "JPM",
+   "TSLA",
+   "WMT",
+   "UNH",
+   "V",
+   "XOM",
+   "MA",
+   "HD",
+   "PG",
+   "ORCL",
+   "COST",
+   "JNJ",
+   "NFLX",
+   "BAC",
+   "AMD",
+   "ABBV",
+   "CRM",
+   "KO",
+   "CVX",
+   "MRK",
+   "PEP",
+   "ADBE",
+   "LIN",
+   "TMO",
+   "WFC",
+   "ACN",
+   "DIS",
+   "CSCO",
+   "PM",
+   "IBM",
+   "INTU",
+   "GE",
+   "MS",
+   "CAT",
+   "AMAT",
+   "AXP",
+   "UBER",
+   "QCOM",
+   "VZ",
+   "TXN",
+   "CMG",
+   "NOW",
+   "BKNG",
+   "SPGI",
+   "ISRG",
+   "HON",
+   "DHR",
+   "LOW",
+   "AMGN",
+   "COP",
+   "PGR",
+   "UNP",
+   "SYK",
+   "C",
+   "T",
+   "RTX",
+   "GS",
+   "NKE",
+   "PLTR",
+   "TJX",
+   "ELV",
+   "ETN",
+   "BSX",
+   "BLK",
+   "MDLZ",
+   "MCD",
+   "REGN",
+   "ADI",
+   "LRCX",
+   "LMT",
+   "ABT",
+   "VRTX",
+   "CB",
+   "PANW",
+   "CI",
+   "GILD",
+   "GEV",
+   "WM",
+   "MU",
+   "BA",
+   "CVS",
+   "MDT",
+   "HCA",
+   "MO",
+   "CRWD",
+   "EOG",
+   "FDX",
+   "MCK",
+   "PH"
+  ],
+  "symbols_with_data": [
+   "AAPL",
+   "MSFT",
+   "NVDA",
+   "AMZN",
+   "META",
+   "GOOGL",
+   "GOOG",
+   "BRK B",
+   "LLY",
+   "AVGO",
+   "JPM",
+   "TSLA",
+   "WMT",
+   "UNH",
+   "V",
+   "XOM",
+   "MA",
+   "HD",
+   "PG",
+   "ORCL",
+   "COST",
+   "JNJ",
+   "NFLX",
+   "BAC",
+   "AMD",
+   "ABBV",
+   "CRM",
+   "KO",
+   "CVX",
+   "MRK",
+   "PEP",
+   "ADBE",
+   "LIN",
+   "TMO",
+   "WFC",
+   "ACN",
+   "DIS",
+   "CSCO",
+   "PM",
+   "IBM",
+   "INTU",
+   "GE",
+   "MS",
+   "CAT",
+   "AMAT",
+   "AXP",
+   "UBER",
+   "QCOM",
+   "VZ",
+   "TXN",
+   "CMG",
+   "NOW",
+   "BKNG",
+   "SPGI",
+   "ISRG",
+   "HON",
+   "DHR",
+   "LOW",
+   "AMGN",
+   "COP",
+   "PGR",
+   "UNP",
+   "SYK",
+   "C",
+   "T",
+   "RTX",
+   "GS",
+   "NKE",
+   "PLTR",
+   "TJX",
+   "ELV",
+   "ETN",
+   "BSX",
+   "BLK",
+   "MDLZ",
+   "MCD",
+   "REGN",
+   "ADI",
+   "LRCX",
+   "LMT",
+   "ABT",
+   "VRTX",
+   "CB",
+   "PANW",
+   "CI",
+   "GILD",
+   "GEV",
+   "WM",
+   "MU",
+   "BA",
+   "CVS",
+   "MDT",
+   "HCA",
+   "MO",
+   "CRWD",
+   "EOG",
+   "FDX",
+   "MCK",
+   "PH"
+  ],
+  "symbols_without_data": [],
+  "trading_days": 85,
+  "intraday_days_loaded": 2206,
+  "intraday_days_missing": [],
+  "duplicate_bars": 97065,
+  "unordered_series": 0,
+  "invalid_bars": 0,
+  "off_grid_bars": 0,
+  "incomplete_sessions": [],
+  "warnings": [],
+  "limitations": [
+   "Watchlist price check: the simulated prefilter applies the $3 minimum price to each day's open; the live prefilter uses the latest price when it runs (~09:30-10:05 ET). 0 gapping symbol-day(s) opened within 10% of $3, where the two could disagree.",
+   "IBKR historical volume units are assumed to be shares; if your feed reports lots of 100, only the participation cap (not RVOL, a ratio) is affected."
+  ],
+  "errors": [],
+  "status": "warn",
+  "incomplete_sessions_total": 0,
+  "intraday_days_missing_total": 0
+ },
+ "periods_method": "Chronological split of the trading days: the first 60% in-sample, the next 20% validation, the last 20% out-of-sample. Trades are assigned to the segment in which they exited. Walk-forward folds are consecutive equal blocks used to check whether results are consistent over time.",
+ "checks": [
+  {
+   "key": "equity_reconciles",
+   "label": "Trade ledger reconciles with ending equity",
+   "status": "pass",
+   "detail": "starting capital + sum of trade net P&L = 1,003,025.43; simulated ending equity = 1,003,025.44 USD"
+  },
+  {
+   "key": "fills_match_trades",
+   "label": "Every bought share belongs to a trade",
+   "status": "pass",
+   "detail": "1723 shares bought in fills, 1723 in the trade ledger"
+  },
+  {
+   "key": "no_short",
+   "label": "No trade ever sold more shares than it bought",
+   "status": "pass",
+   "detail": "13 trades checked; 0 oversold"
+  },
+  {
+   "key": "rules_unchanged",
+   "label": "config/rules.json was not modified",
+   "status": "pass",
+   "detail": "SHA-256 compared before and after the run"
+  },
+  {
+   "key": "isolated",
+   "label": "Backtest process is marked as isolated from live trading",
+   "status": "pass",
+   "detail": "PAPERBOT_BACKTEST=1, so paperbot's order functions refuse to run in this process"
+  },
+  {
+   "key": "open_positions",
+   "label": "No positions left open at the end",
+   "status": "pass",
+   "detail": "0 open position(s) marked at their last price"
+  }
+ ],
+ "risk_state": {
+  "orders_today": 0,
+  "halted_last_day": false,
+  "drawdown_breaker_tripped": false,
+  "drawdown_breaker_reason": ""
+ },
+ "dataset_id": "ibkr-5m-20260622-20261020-448e7362c5",
+ "dataset_usage": {
+  "runs": [
+   "20261021T072021Z-a195c3",
+   "20261021T072104Z-d9db89"
+  ],
+  "variants": [
+   "baseline",
+   "EXP-trend_join_long-breakeven-later"
+  ],
+  "first_used": "2026-10-21T07:20:43+00:00"
+ },
+ "data_hashes": 2306,
+ "strategy_log": [],
+ "watchlists": {
+  "2026-06-22": [
+   "MU"
+  ],
+  "2026-06-23": [
+   "IBM"
+  ],
+  "2026-06-24": [],
+  "2026-06-25": [
+   "MU",
+   "QCOM",
+   "AMAT",
+   "LRCX",
+   "AMD",
+   "TXN",
+   "CAT"
+  ],
+  "2026-06-26": [],
+  "2026-06-29": [
+   "ORCL"
+  ],
+  "2026-06-30": [],
+  "2026-07-01": [
+   "META",
+   "NOW",
+   "INTU",
+   "SPGI",
+   "CRM"
+  ],
+  "2026-07-02": [],
+  "2026-07-06": [
+   "AMAT",
+   "LRCX",
+   "AVGO",
+   "AMD",
+   "MU"
+  ],
+  "2026-07-07": [
+   "NOW",
+   "INTU"
+  ],
+  "2026-07-08": [],
+  "2026-07-09": [
+   "AMAT",
+   "LRCX",
+   "MU",
+   "AMD",
+   "GEV",
+   "AVGO",
+   "QCOM",
+   "ETN"
+  ],
+  "2026-07-10": [
+   "META"
+  ],
+  "2026-07-13": [],
+  "2026-07-14": [
+   "LRCX",
+   "AMAT",
+   "AMD",
+   "MU",
+   "GS",
+   "TXN",
+   "ADI",
+   "AVGO"
+  ],
+  "2026-07-15": [
+   "BLK",
+   "LRCX"
+  ],
+  "2026-07-16": [
+   "UNH",
+   "ABT"
+  ],
+  "2026-07-17": [],
+  "2026-07-20": [
+   "MU",
+   "AMD",
+   "AMAT"
+  ],
+  "2026-07-21": [
+   "AMAT",
+   "LRCX",
+   "MU",
+   "TXN",
+   "AMD",
+   "ADI",
+   "GEV",
+   "QCOM",
+   "AVGO"
+  ],
+  "2026-07-22": [
+   "T"
+  ],
+  "2026-07-23": [
+   "TMO",
+   "LMT",
+   "UNP",
+   "RTX",
+   "NOW",
+   "DHR"
+  ],
+  "2026-07-24": [
+   "NOW"
+  ],
+  "2026-07-27": [
+   "CMG",
+   "NOW"
+  ],
+  "2026-07-28": [
+   "KO"
+  ],
+  "2026-07-29": [
+   "EOG",
+   "COP",
+   "XOM"
+  ],
+  "2026-07-30": [
+   "LRCX",
+   "MSFT",
+   "AMAT",
+   "MU",
+   "AMD",
+   "CMG",
+   "GEV",
+   "ETN",
+   "ORCL",
+   "CAT"
+  ],
+  "2026-07-31": [
+   "AMZN",
+   "ETN",
+   "GEV",
+   "AMAT",
+   "LRCX",
+   "MU",
+   "AMD",
+   "CAT"
+  ],
+  "2026-08-03": [
+   "ADBE",
+   "CMG"
+  ],
+  "2026-08-04": [
+   "PLTR",
+   "CAT",
+   "LRCX",
+   "AMAT",
+   "MU",
+   "AMD",
+   "GEV",
+   "QCOM",
+   "TXN",
+   "CSCO"
+  ],
+  "2026-08-05": [
+   "BKNG",
+   "LLY",
+   "DIS"
+  ],
+  "2026-08-06": [
+   "PH",
+   "COP",
+   "MCK",
+   "BSX"
+  ],
+  "2026-08-07": [
+   "NOW",
+   "CRWD"
+  ],
+  "2026-08-10": [
+   "VRTX"
+  ],
+  "2026-08-11": [
+   "AMAT"
+  ],
+  "2026-08-12": [
+   "MU",
+   "ORCL",
+   "LRCX",
+   "AMAT",
+   "ETN",
+   "GEV",
+   "TXN"
+  ],
+  "2026-08-13": [],
+  "2026-08-14": [
+   "MU"
+  ],
+  "2026-08-17": [],
+  "2026-08-18": [
+   "INTU"
+  ],
+  "2026-08-19": [
+   "MRK"
+  ],
+  "2026-08-20": [],
+  "2026-08-21": [],
+  "2026-08-24": [],
+  "2026-08-25": [
+   "AMD"
+  ],
+  "2026-08-26": [
+   "META"
+  ],
+  "2026-08-27": [
+   "CRM",
+   "CRWD",
+   "NVDA",
+   "PANW",
+   "NOW",
+   "MU"
+  ],
+  "2026-08-28": [],
+  "2026-08-31": [],
+  "2026-09-01": [
+   "MDT"
+  ],
+  "2026-09-02": [],
+  "2026-09-03": [
+   "NOW"
+  ],
+  "2026-09-04": [
+   "AMAT",
+   "LRCX",
+   "ORCL"
+  ],
+  "2026-09-08": [
+   "QCOM",
+   "ORCL",
+   "ETN"
+  ],
+  "2026-09-09": [
+   "META"
+  ],
+  "2026-09-10": [],
+  "2026-09-11": [
+   "ORCL"
+  ],
+  "2026-09-14": [
+   "CRWD",
+   "NOW",
+   "PANW",
+   "ADBE",
+   "ACN",
+   "INTU",
+   "CRM"
+  ],
+  "2026-09-15": [],
+  "2026-09-16": [],
+  "2026-09-17": [
+   "ETN",
+   "LRCX",
+   "AMD",
+   "GEV",
+   "CAT",
+   "MU"
+  ],
+  "2026-09-18": [],
+  "2026-09-21": [
+   "AMD",
+   "ACN"
+  ],
+  "2026-09-22": [
+   "NOW"
+  ],
+  "2026-09-23": [],
+  "2026-09-24": [],
+  "2026-09-25": [],
+  "2026-09-28": [],
+  "2026-09-29": [
+   "AMAT"
+  ],
+  "2026-09-30": [],
+  "2026-10-01": [
+   "ACN",
+   "IBM",
+   "MCK",
+   "NOW",
+   "INTU"
+  ],
+  "2026-10-02": [
+   "AMD",
+   "TXN"
+  ],
+  "2026-10-05": [],
+  "2026-10-06": [],
+  "2026-10-07": [],
+  "2026-10-08": [],
+  "2026-10-09": [],
+  "2026-10-12": [
+   "NOW",
+   "CRM"
+  ],
+  "2026-10-13": [
+   "UNH",
+   "GS"
+  ],
+  "2026-10-14": [],
+  "2026-10-15": [
+   "HD",
+   "WMT",
+   "VRTX",
+   "REGN"
+  ],
+  "2026-10-16": [],
+  "2026-10-19": [
+   "AMD",
+   "LRCX",
+   "PANW",
+   "AMAT",
+   "MU",
+   "AVGO"
+  ],
+  "2026-10-20": []
+ }
+}

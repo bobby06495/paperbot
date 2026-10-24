@@ -1,0 +1,442 @@
+{
+ "strategy_id": "equity_mean_reversion",
+ "baseline_run": "20261021T050126Z-b235a9",
+ "variant_runs": [
+  "20261021T051528Z-900df5",
+  "20261021T051740Z-b5ef87",
+  "20261021T051958Z-625e14",
+  "20261021T052216Z-be3bde"
+ ],
+ "labels": [
+  "Baseline",
+  "EXP-equity_mean_reversion-entry-later",
+  "EXP-equity_mean_reversion-hold-longer",
+  "EXP-equity_mean_reversion-stop-wider",
+  "EXP-equity_mean_reversion-vwap-wider"
+ ],
+ "dataset_id": "ibkr-1m-20260622-20261020-71ab9d9132",
+ "same_dataset": true,
+ "rows": [
+  {
+   "segment": "in_sample",
+   "metric": "net_pnl",
+   "values": [
+    -6000.8,
+    -4401.88,
+    -6036.78,
+    -5369.13,
+    -3100.91
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "return_pct",
+   "values": [
+    -0.6001,
+    -0.4402,
+    -0.6037,
+    -0.5369,
+    -0.3101
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "trades",
+   "values": [
+    154,
+    127,
+    155,
+    159,
+    83
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "win_rate_pct",
+   "values": [
+    13.64,
+    17.32,
+    18.06,
+    23.9,
+    14.46
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "profit_factor",
+   "values": [
+    0.151,
+    0.148,
+    0.177,
+    0.265,
+    0.163
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "expectancy",
+   "values": [
+    -38.97,
+    -34.66,
+    -38.95,
+    -33.77,
+    -37.36
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.6021,
+    0.4561,
+    0.6037,
+    0.5515,
+    0.3177
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "commission",
+   "values": [
+    308.0,
+    254.0,
+    310.0,
+    318.0,
+    166.0
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "net_pnl",
+   "values": [
+    0.0,
+    -1001.59,
+    0.0,
+    -691.65,
+    -926.15
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "return_pct",
+   "values": [
+    0.0,
+    -0.1006,
+    0.0,
+    -0.0695,
+    -0.0929
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "trades",
+   "values": [
+    0,
+    38,
+    0,
+    23,
+    26
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "win_rate_pct",
+   "values": [
+    null,
+    26.32,
+    null,
+    26.09,
+    15.38
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "profit_factor",
+   "values": [
+    null,
+    0.148,
+    null,
+    0.071,
+    0.069
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "expectancy",
+   "values": [
+    null,
+    -26.36,
+    null,
+    -30.07,
+    -35.62
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.0,
+    0.1006,
+    0.0,
+    0.0695,
+    0.0963
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "commission",
+   "values": [
+    0,
+    76.0,
+    0,
+    46.0,
+    52.0
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "net_pnl",
+   "values": [
+    0.0,
+    -663.5,
+    0.0,
+    0.0,
+    -1250.03
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "return_pct",
+   "values": [
+    0.0,
+    -0.0667,
+    0.0,
+    0.0,
+    -0.1255
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "trades",
+   "values": [
+    0,
+    16,
+    0,
+    0,
+    36
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "win_rate_pct",
+   "values": [
+    null,
+    18.75,
+    null,
+    null,
+    11.11
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "profit_factor",
+   "values": [
+    null,
+    0.1,
+    null,
+    null,
+    0.091
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "expectancy",
+   "values": [
+    null,
+    -41.47,
+    null,
+    null,
+    -34.72
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.0,
+    0.0667,
+    0.0,
+    0.0,
+    0.1255
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "commission",
+   "values": [
+    0,
+    32.0,
+    0,
+    0,
+    72.0
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "net_pnl",
+   "values": [
+    -6000.8,
+    -6066.93,
+    -6036.82,
+    -6060.76,
+    -5277.09
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.6021,
+    0.6081,
+    0.6037,
+    0.6061,
+    0.5277
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "completed_trades",
+   "values": [
+    154,
+    181,
+    155,
+    182,
+    145
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "total_commission",
+   "values": [
+    308.0,
+    362.0,
+    310.0,
+    364.0,
+    290.0
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "total_slippage",
+   "values": [
+    3647.89,
+    4288.5,
+    3671.57,
+    4312.27,
+    3432.56
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "profit_factor",
+   "values": [
+    0.151,
+    0.143,
+    0.177,
+    0.247,
+    0.132
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "win_rate_pct",
+   "values": [
+    13.64,
+    19.34,
+    18.06,
+    24.18,
+    13.79
+   ]
+  }
+ ],
+ "findings": [
+  {
+   "experiment_id": "EXP-equity_mean_reversion-entry-later",
+   "run_id": "20261021T051528Z-900df5",
+   "changes": {
+    "time_filter.earliest_entry_et": "10:25"
+   },
+   "hypothesis": "Waiting longer after the open avoids the noisiest part of the session.",
+   "validation_net_pnl_delta": -1001.59,
+   "out_of_sample_net_pnl_delta": -663.5,
+   "mean_trade_diff_ci95": null,
+   "verdict": "not enough validation trades to compare (fewer than 5 each)",
+   "holds_out_of_sample": true,
+   "material": false
+  },
+  {
+   "experiment_id": "EXP-equity_mean_reversion-hold-longer",
+   "run_id": "20261021T051740Z-b5ef87",
+   "changes": {
+    "exit.1.minutes": 60
+   },
+   "hypothesis": "Allowing more time before the time stop lets more trades reach the target.",
+   "validation_net_pnl_delta": 0.0,
+   "out_of_sample_net_pnl_delta": 0.0,
+   "mean_trade_diff_ci95": null,
+   "verdict": "not enough validation trades to compare (fewer than 5 each)",
+   "holds_out_of_sample": null,
+   "material": false
+  },
+  {
+   "experiment_id": "EXP-equity_mean_reversion-stop-wider",
+   "run_id": "20261021T051958Z-625e14",
+   "changes": {
+    "stop.sigma": 1.5
+   },
+   "hypothesis": "A wider stop gives mean-reversion trades room to work.",
+   "validation_net_pnl_delta": -691.65,
+   "out_of_sample_net_pnl_delta": 0.0,
+   "mean_trade_diff_ci95": null,
+   "verdict": "not enough validation trades to compare (fewer than 5 each)",
+   "holds_out_of_sample": null,
+   "material": false
+  },
+  {
+   "experiment_id": "EXP-equity_mean_reversion-vwap-wider",
+   "run_id": "20261021T052216Z-be3bde",
+   "changes": {
+    "entry.0.sigma": 2.5
+   },
+   "hypothesis": "Requiring a larger stretch below VWAP (V1) gives entries with more room to revert.",
+   "validation_net_pnl_delta": -926.15,
+   "out_of_sample_net_pnl_delta": -1250.03,
+   "mean_trade_diff_ci95": null,
+   "verdict": "not enough validation trades to compare (fewer than 5 each)",
+   "holds_out_of_sample": true,
+   "material": false
+  }
+ ],
+ "walk_forward": {
+  "steps": [
+   {
+    "fold": 2,
+    "chosen": "EXP-equity_mean_reversion-vwap-wider",
+    "chosen_net_pnl": -1489.82,
+    "baseline_net_pnl": -2136.63
+   },
+   {
+    "fold": 3,
+    "chosen": "EXP-equity_mean_reversion-vwap-wider",
+    "chosen_net_pnl": -1977.05,
+    "baseline_net_pnl": 0.0
+   }
+  ],
+  "chosen_total": -3466.87,
+  "baseline_total": -2136.63
+ },
+ "variants_evaluated_on_dataset": 5,
+ "selection_rule": "Variants are judged on the validation segment. Out-of-sample results are shown only to check that a difference holds on untouched data; they are never used to pick a variant.",
+ "approval": "No rule change is applied automatically. A variant that holds up must be reviewed and copied into config/rules.json by a person.",
+ "created_at": "2026-10-21T05:24:34+00:00"
+}

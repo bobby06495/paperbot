@@ -1,0 +1,943 @@
+{
+ "currency": "USD",
+ "starting_capital": 1000000.0,
+ "ending_equity": 1005306.68,
+ "net_pnl": 5306.68,
+ "total_return_pct": 0.5307,
+ "unrealized_pnl": 343.39,
+ "realized_pnl": 4963.29,
+ "completed_trades": 34,
+ "open_positions_end": 1,
+ "winning_trades": 24,
+ "losing_trades": 10,
+ "breakeven_trades": 0,
+ "gross_profits": 9933.4,
+ "gross_losses": -4969.08,
+ "win_rate_pct": 70.59,
+ "avg_win": 413.89,
+ "avg_loss": -496.91,
+ "largest_win": 1463.17,
+ "largest_loss": -970.69,
+ "profit_factor": 1.999,
+ "expectancy": 146.01,
+ "avg_r": 0.106,
+ "avg_holding_minutes": 5591.8,
+ "max_drawdown_pct": 0.4135,
+ "max_drawdown_usd": 4172.36,
+ "max_drawdown_peak_time": "2026-08-19T10:45:00-04:00",
+ "max_drawdown_trough_time": "2026-10-20T09:45:00-04:00",
+ "total_commission": 141.81,
+ "total_slippage": 826.9,
+ "cost_share_of_gross_pct": 18.98,
+ "avg_exposure_pct": 3.435,
+ "max_exposure_pct": 9.033,
+ "time_in_market_pct": 70.29,
+ "max_concurrent_positions": 3,
+ "max_consecutive_losses": 5,
+ "top3_share_of_net_pct": 60.5,
+ "daily_volatility_pct": 0.0419,
+ "sharpe_like": 2.36,
+ "benchmark_return_pct": 2.857,
+ "mean_trade_ci95": [
+  -35.28,
+  326.89
+ ],
+ "days": 85,
+ "days_with_trades": 27,
+ "days_without_trades": 58,
+ "na_reasons": {},
+ "periods": {
+  "segments": {
+   "in_sample": {
+    "segment": "in_sample",
+    "days": 51,
+    "start": "2026-06-22",
+    "end": "2026-09-01",
+    "net_pnl": 7414.15,
+    "return_pct": 0.7414,
+    "trades": 22,
+    "win_rate_pct": 90.91,
+    "profit_factor": 9.098,
+    "expectancy": 373.66,
+    "max_drawdown_pct": 0.1795,
+    "commission": 97.68,
+    "status": "ok"
+   },
+   "validation": {
+    "segment": "validation",
+    "days": 17,
+    "start": "2026-09-02",
+    "end": "2026-09-25",
+    "net_pnl": -805.22,
+    "return_pct": -0.0799,
+    "trades": 8,
+    "win_rate_pct": 37.5,
+    "profit_factor": 0.298,
+    "expectancy": -187.12,
+    "max_drawdown_pct": 0.1588,
+    "commission": 34.03,
+    "status": "ok"
+   },
+   "out_of_sample": {
+    "segment": "out_of_sample",
+    "days": 17,
+    "start": "2026-09-28",
+    "end": "2026-10-20",
+    "net_pnl": -1302.22,
+    "return_pct": -0.1294,
+    "trades": 4,
+    "win_rate_pct": 25.0,
+    "profit_factor": 0.034,
+    "expectancy": -439.8,
+    "max_drawdown_pct": 0.1872,
+    "commission": 10.13,
+    "status": "ok"
+   }
+  },
+  "folds": [
+   {
+    "segment": "fold_1",
+    "days": 28,
+    "start": "2026-06-22",
+    "end": "2026-07-30",
+    "net_pnl": 6207.37,
+    "return_pct": 0.6207,
+    "trades": 12,
+    "win_rate_pct": 100.0,
+    "profit_factor": null,
+    "expectancy": 494.7,
+    "max_drawdown_pct": 0.1337,
+    "commission": 54.06,
+    "status": "ok"
+   },
+   {
+    "segment": "fold_2",
+    "days": 28,
+    "start": "2026-07-31",
+    "end": "2026-09-09",
+    "net_pnl": 984.75,
+    "return_pct": 0.0979,
+    "trades": 14,
+    "win_rate_pct": 71.43,
+    "profit_factor": 2.003,
+    "expectancy": 138.09,
+    "max_drawdown_pct": 0.184,
+    "commission": 61.47,
+    "status": "ok"
+   },
+   {
+    "segment": "fold_3",
+    "days": 29,
+    "start": "2026-09-10",
+    "end": "2026-10-20",
+    "net_pnl": -1885.41,
+    "return_pct": -0.1872,
+    "trades": 8,
+    "win_rate_pct": 25.0,
+    "profit_factor": 0.045,
+    "expectancy": -363.16,
+    "max_drawdown_pct": 0.2892,
+    "commission": 26.31,
+    "status": "ok"
+   }
+  ],
+  "method": "Chronological split of the trading days: the first 60% in-sample, the next 20% validation, the last 20% out-of-sample. Trades are assigned to the segment in which they exited. Walk-forward folds are consecutive equal blocks used to check whether results are consistent over time."
+ },
+ "monthly": [
+  {
+   "month": "2026-06",
+   "pnl": 1002.27,
+   "return_pct": 0.1,
+   "trades": 2,
+   "wins": 2,
+   "losses": 0,
+   "commission": 9.5,
+   "trading_days": 7,
+   "days_without_trades": 5,
+   "max_drawdown_pct": 0.0075
+  },
+  {
+   "month": "2026-07",
+   "pnl": 5548.49,
+   "return_pct": 0.554,
+   "trades": 11,
+   "wins": 11,
+   "losses": 0,
+   "commission": 45.56,
+   "trading_days": 22,
+   "days_without_trades": 13,
+   "max_drawdown_pct": 0.0789
+  },
+  {
+   "month": "2026-08",
+   "pnl": 1113.25,
+   "return_pct": 0.111,
+   "trades": 9,
+   "wins": 7,
+   "losses": 2,
+   "commission": 42.62,
+   "trading_days": 21,
+   "days_without_trades": 13,
+   "max_drawdown_pct": 0.0915
+  },
+  {
+   "month": "2026-09",
+   "pnl": -2122.84,
+   "return_pct": -0.211,
+   "trades": 8,
+   "wins": 3,
+   "losses": 5,
+   "commission": 34.03,
+   "trading_days": 21,
+   "days_without_trades": 16,
+   "max_drawdown_pct": 0.231
+  },
+  {
+   "month": "2026-10",
+   "pnl": -234.46,
+   "return_pct": -0.023,
+   "trades": 4,
+   "wins": 1,
+   "losses": 3,
+   "commission": 10.13,
+   "trading_days": 14,
+   "days_without_trades": 11,
+   "max_drawdown_pct": 0.106
+  }
+ ],
+ "by_symbol": [
+  {
+   "key": "XLE",
+   "trades": 5,
+   "net_pnl": 2466.49,
+   "win_rate_pct": 80.0
+  },
+  {
+   "key": "XLF",
+   "trades": 4,
+   "net_pnl": -1143.69,
+   "win_rate_pct": 50.0
+  },
+  {
+   "key": "XLV",
+   "trades": 4,
+   "net_pnl": 969.32,
+   "win_rate_pct": 75.0
+  },
+  {
+   "key": "XLB",
+   "trades": 4,
+   "net_pnl": 784.4,
+   "win_rate_pct": 75.0
+  },
+  {
+   "key": "XLU",
+   "trades": 1,
+   "net_pnl": 658.16,
+   "win_rate_pct": 100.0
+  },
+  {
+   "key": "XLP",
+   "trades": 3,
+   "net_pnl": 641.67,
+   "win_rate_pct": 100.0
+  },
+  {
+   "key": "XLRE",
+   "trades": 4,
+   "net_pnl": 469.65,
+   "win_rate_pct": 75.0
+  },
+  {
+   "key": "XLI",
+   "trades": 5,
+   "net_pnl": 188.3,
+   "win_rate_pct": 60.0
+  },
+  {
+   "key": "XLK",
+   "trades": 4,
+   "net_pnl": -69.98,
+   "win_rate_pct": 50.0
+  }
+ ],
+ "by_exit_reason": [
+  {
+   "key": "exit signal: price above SMA",
+   "trades": 29,
+   "net_pnl": 9126.0,
+   "win_rate_pct": 82.8
+  },
+  {
+   "key": "initial stop",
+   "trades": 5,
+   "net_pnl": -4161.68,
+   "win_rate_pct": 0.0
+  }
+ ],
+ "funnel": {
+  "P1": 1350,
+  "T1": 799,
+  "pass": 35
+ },
+ "stress": {
+  "multiplier": 3,
+  "half_spread_bps": 6.0,
+  "slippage_bps": 6.0,
+  "net_pnl": 3651.43,
+  "total_return_pct": 0.3651,
+  "completed_trades": 34,
+  "max_drawdown_pct": 0.4963,
+  "total_slippage": 2479.84,
+  "profit_factor": 1.613
+ },
+ "definitions": {
+  "starting_capital": "Cash the simulation started with (USD).",
+  "ending_equity": "Cash plus open positions valued at their last price, at the end of the test (USD).",
+  "net_pnl": "Ending equity minus starting capital: the overall result after all costs (USD).",
+  "total_return_pct": "Net P&L as a percentage of starting capital.",
+  "realized_pnl": "Profit or loss locked in by sales during the test, after commissions (USD).",
+  "unrealized_pnl": "Paper profit or loss on positions still open at the end, at their last price (USD).",
+  "gross_profits": "Sum of the net results of all winning completed trades (USD).",
+  "gross_losses": "Sum of the net results of all losing completed trades (USD, shown negative).",
+  "completed_trades": "Round trips that were fully closed during the test. A position sold in pieces counts once.",
+  "open_positions_end": "Positions still held when the test ended.",
+  "winning_trades": "Completed trades with a net result above zero.",
+  "losing_trades": "Completed trades with a net result below zero.",
+  "breakeven_trades": "Completed trades with a net result of exactly zero (to the cent).",
+  "win_rate_pct": "Winning trades as a percentage of completed trades.",
+  "avg_win": "Average net result of the winning trades (USD).",
+  "avg_loss": "Average net result of the losing trades (USD).",
+  "largest_win": "Best single completed trade (USD).",
+  "largest_loss": "Worst single completed trade (USD).",
+  "profit_factor": "Gross profits divided by the absolute value of gross losses. Above 1 means winners outweighed losers.",
+  "expectancy": "Average net result per completed trade (USD).",
+  "avg_r": "Average result per trade in R, where 1R is the money that would have been lost at the initial stop.",
+  "max_drawdown_pct": "Largest percentage fall in equity from a previous peak, measured every 5 minutes.",
+  "max_drawdown_usd": "The same largest fall, in dollars.",
+  "avg_holding_minutes": "Average time between the first entry fill and the final exit (minutes).",
+  "total_commission": "All simulated commissions (IBKR Fixed pricing model, USD).",
+  "total_slippage": "Estimated cost of spread and slippage, already included in the fill prices (USD).",
+  "cost_share_of_gross_pct": "Commissions plus slippage as a percentage of the absolute gross (pre-cost) P&L.",
+  "avg_exposure_pct": "Average value of open positions as a percentage of equity, across all 5-minute marks.",
+  "max_exposure_pct": "Highest value of open positions as a percentage of equity.",
+  "time_in_market_pct": "Share of 5-minute marks with at least one open position.",
+  "max_concurrent_positions": "Most positions held at the same time.",
+  "max_consecutive_losses": "Longest run of losing completed trades in a row.",
+  "top3_share_of_net_pct": "Net P&L of the three best trades as a percentage of total net P&L (shows dependence on a few trades).",
+  "daily_volatility_pct": "Standard deviation of daily returns (percent of the day's starting equity).",
+  "sharpe_like": "Average daily return divided by its standard deviation, times the square root of 252. A rough risk-adjusted figure; not reliable on short samples.",
+  "benchmark_return_pct": "Buy-and-hold return of the benchmark ETF over the same days (first open to last close).",
+  "mean_trade_ci95": "Range that would contain the average trade result in 95% of bootstrap resamples of the trades. If it includes 0, the average could plausibly be zero.",
+  "days_with_trades": "Trading days on which at least one trade was completed.",
+  "days_without_trades": "Trading days with data but no completed trade."
+ },
+ "benchmark_symbol": "SPY",
+ "benchmark_series": [
+  [
+   "2026-06-22",
+   747.69
+  ],
+  [
+   "2026-06-22",
+   744.39
+  ],
+  [
+   "2026-06-23",
+   733.58
+  ],
+  [
+   "2026-06-24",
+   733.24
+  ],
+  [
+   "2026-06-25",
+   734.3
+  ],
+  [
+   "2026-06-26",
+   728.99
+  ],
+  [
+   "2026-06-29",
+   741.0
+  ],
+  [
+   "2026-06-30",
+   746.77
+  ],
+  [
+   "2026-07-01",
+   745.76
+  ],
+  [
+   "2026-07-02",
+   744.78
+  ],
+  [
+   "2026-07-06",
+   751.28
+  ],
+  [
+   "2026-07-07",
+   747.71
+  ],
+  [
+   "2026-07-08",
+   745.4
+  ],
+  [
+   "2026-07-09",
+   751.71
+  ],
+  [
+   "2026-07-10",
+   754.95
+  ],
+  [
+   "2026-07-13",
+   749.17
+  ],
+  [
+   "2026-07-14",
+   751.83
+  ],
+  [
+   "2026-07-15",
+   754.81
+  ],
+  [
+   "2026-07-16",
+   750.72
+  ],
+  [
+   "2026-07-17",
+   743.29
+  ],
+  [
+   "2026-07-20",
+   742.09
+  ],
+  [
+   "2026-07-21",
+   748.28
+  ],
+  [
+   "2026-07-22",
+   747.41
+  ],
+  [
+   "2026-07-23",
+   738.18
+  ],
+  [
+   "2026-07-24",
+   738.93
+  ],
+  [
+   "2026-07-27",
+   739.09
+  ],
+  [
+   "2026-07-28",
+   740.86
+  ],
+  [
+   "2026-07-29",
+   729.46
+  ],
+  [
+   "2026-07-30",
+   741.69
+  ],
+  [
+   "2026-07-31",
+   747.03
+  ],
+  [
+   "2026-08-03",
+   757.67
+  ],
+  [
+   "2026-08-04",
+   771.33
+  ],
+  [
+   "2026-08-05",
+   769.79
+  ],
+  [
+   "2026-08-06",
+   768.56
+  ],
+  [
+   "2026-08-07",
+   773.26
+  ],
+  [
+   "2026-08-10",
+   773.03
+  ],
+  [
+   "2026-08-11",
+   770.56
+  ],
+  [
+   "2026-08-12",
+   772.49
+  ],
+  [
+   "2026-08-13",
+   777.88
+  ],
+  [
+   "2026-08-14",
+   776.34
+  ],
+  [
+   "2026-08-17",
+   772.67
+  ],
+  [
+   "2026-08-18",
+   767.45
+  ],
+  [
+   "2026-08-19",
+   769.06
+  ],
+  [
+   "2026-08-20",
+   762.6
+  ],
+  [
+   "2026-08-21",
+   765.72
+  ],
+  [
+   "2026-08-24",
+   763.47
+  ],
+  [
+   "2026-08-25",
+   765.91
+  ],
+  [
+   "2026-08-26",
+   766.08
+  ],
+  [
+   "2026-08-27",
+   771.1
+  ],
+  [
+   "2026-08-28",
+   769.35
+  ],
+  [
+   "2026-08-31",
+   767.05
+  ],
+  [
+   "2026-09-01",
+   761.78
+  ],
+  [
+   "2026-09-02",
+   765.16
+  ],
+  [
+   "2026-09-03",
+   773.17
+  ],
+  [
+   "2026-09-04",
+   770.19
+  ],
+  [
+   "2026-09-08",
+   765.96
+  ],
+  [
+   "2026-09-09",
+   762.4
+  ],
+  [
+   "2026-09-10",
+   757.83
+  ],
+  [
+   "2026-09-11",
+   764.29
+  ],
+  [
+   "2026-09-14",
+   760.88
+  ],
+  [
+   "2026-09-15",
+   757.39
+  ],
+  [
+   "2026-09-16",
+   754.05
+  ],
+  [
+   "2026-09-17",
+   762.6
+  ],
+  [
+   "2026-09-18",
+   761.69
+  ],
+  [
+   "2026-09-21",
+   773.5
+  ],
+  [
+   "2026-09-22",
+   773.38
+  ],
+  [
+   "2026-09-23",
+   767.81
+  ],
+  [
+   "2026-09-24",
+   767.18
+  ],
+  [
+   "2026-09-25",
+   771.35
+  ],
+  [
+   "2026-09-28",
+   765.61
+  ],
+  [
+   "2026-09-29",
+   764.2
+  ],
+  [
+   "2026-09-30",
+   762.63
+  ],
+  [
+   "2026-10-01",
+   763.99
+  ],
+  [
+   "2026-10-02",
+   769.64
+  ],
+  [
+   "2026-10-05",
+   774.83
+  ],
+  [
+   "2026-10-06",
+   779.09
+  ],
+  [
+   "2026-10-07",
+   777.22
+  ],
+  [
+   "2026-10-08",
+   773.93
+  ],
+  [
+   "2026-10-09",
+   778.57
+  ],
+  [
+   "2026-10-12",
+   778.1
+  ],
+  [
+   "2026-10-13",
+   778.01
+  ],
+  [
+   "2026-10-14",
+   769.6
+  ],
+  [
+   "2026-10-15",
+   771.79
+  ],
+  [
+   "2026-10-16",
+   763.25
+  ],
+  [
+   "2026-10-19",
+   766.48
+  ],
+  [
+   "2026-10-20",
+   769.05
+  ]
+ ],
+ "research_questions": [
+  {
+   "id": "sample_size",
+   "question": "Is the number of trades large enough to judge the strategy?",
+   "status": "ok",
+   "evidence": "34 completed trades; this project's minimum for an assessment is 30.",
+   "next_step": "Keep checking that results hold in each validation segment."
+  },
+  {
+   "id": "coverage",
+   "question": "Does the data cover enough market history and conditions?",
+   "status": "concern",
+   "evidence": "85 trading days (2026-06-22 to 2026-10-20), provider ibkr, data status warn, 0 symbol-days without 5-minute data.",
+   "next_step": "Test at least one full year, including a falling market, before relying on any result."
+  },
+  {
+   "id": "costs",
+   "question": "Are transaction costs a material part of the result?",
+   "status": "ok",
+   "evidence": "Commissions $141.81 and estimated spread/slippage $826.90 = 19.0% of the absolute gross P&L.",
+   "next_step": "Compare with the stress run below and with actual paper-trading fills."
+  },
+  {
+   "id": "concentration",
+   "question": "Are results concentrated in a few trades?",
+   "status": "concern",
+   "evidence": "The three best trades produced 60.5% of the net P&L.",
+   "next_step": "Check whether removing the best few trades changes the conclusion."
+  },
+  {
+   "id": "execution",
+   "question": "Is the result sensitive to the execution assumptions?",
+   "status": "ok",
+   "evidence": "Net P&L $5,306.68 with the default assumptions vs $3,651.43 with 3x spread and slippage.",
+   "next_step": "Measure real spreads and fills on the paper account and update the cost settings."
+  },
+  {
+   "id": "overfitting",
+   "question": "Do in-sample results carry over to unseen (out-of-sample) days?",
+   "status": "concern",
+   "evidence": "In-sample $7,414.15 over 22 trades; out-of-sample -$1,302.22 over 4 trades.",
+   "next_step": "Treat a positive in-sample result that fails out-of-sample as a warning sign."
+  },
+  {
+   "id": "regimes",
+   "question": "Does performance vary a lot between periods (market regimes)?",
+   "status": "ok",
+   "evidence": "2 of 3 consecutive periods were profitable: 2026-06-22..2026-07-30: $6,207.37, 2026-07-31..2026-09-09: $984.75, 2026-09-10..2026-10-20: -$1,885.41.",
+   "next_step": "Look at what the market did in the losing periods (trend, volatility)."
+  },
+  {
+   "id": "selection_bias",
+   "question": "Has this dataset been used to try many rule variants?",
+   "status": "ok",
+   "evidence": "1 rule variant(s) and 1 run(s) have been evaluated on this exact dataset.",
+   "next_step": "The more variants are tried on the same data, the more the best one is flattered by chance; confirm any choice on data not used to choose it."
+  },
+  {
+   "id": "intrabar",
+   "question": "How many trades depend on uncertain intrabar assumptions?",
+   "status": "ok",
+   "evidence": "0 ambiguous bar(s) (stop assumed first), 0 gap(s) through a stop, 0 entr(ies) filled below the stop, 0 partially filled entr(ies).",
+   "next_step": "1-minute data would settle most of these; the conservative choice already lowers results."
+  },
+  {
+   "id": "filters",
+   "question": "Which entry checks block the most candidates?",
+   "status": "info",
+   "evidence": "2184 evaluations of watchlist stocks; 35 passed. Most frequent blocking checks: P1 (1350), T1 (799).",
+   "next_step": "A check that blocks almost everything may deserve an experiment, judged on validation data."
+  },
+  {
+   "id": "exits",
+   "question": "How do trades end?",
+   "status": "info",
+   "evidence": "exit signal: price above SMA: 29, initial stop: 5.",
+   "next_step": "Many initial-stop exits can mean entries are late or stops are tight; test both separately."
+  },
+  {
+   "id": "benchmark",
+   "question": "How does the result compare with simply holding the market?",
+   "status": "info",
+   "evidence": "Strategy 0.53% vs buy-and-hold SPY 2.86% over the same days, while the strategy was invested on average 3.4% of its equity.",
+   "next_step": "Returns are not risk-matched: the strategy is mostly in cash."
+  }
+ ],
+ "summary": [
+  "What it does: Macro Swing ETF (Multi-day sector pullbacks - holds positions overnight) trades 1d signals, holding overnight. Entries between 15:45 and 15:55 New York time need every check to pass (T1, P1); the initial stop is atr_multiple(period=14, multiple=2.0); exits: close_above_sma(period=5, at_et=15:50), time_stop(days=10, at_et=15:50).",
+  "Period tested: 2026-06-22 to 2026-10-20 (85 trading days; requested 2026-06-22 to 2026-10-20).",
+  "Data: ibkr, 11 of 11 symbols had daily data; 935 symbol-days of 5m bars were used; data status: warn.",
+  "Simulated trades: 34 completed, 1 still open at the end.",
+  "Measured result: net P&L $5,306.68 (0.53% of $1,000,000.00 starting capital), win rate 70.6% of completed trades, profit factor 1.999.",
+  "Largest decline: 0.41% ($4,172.36) from a previous equity peak.",
+  "Costs: included. Commissions $141.81; estimated spread and slippage $826.90 are built into the fill prices.",
+  "Unseen data: the last part of the period was kept as an out-of-sample check: 4 trades, -$1,302.22."
+ ],
+ "assessment": {
+  "computed_findings": [
+   "Over this period the simulation produced 34 completed trades and a net result of $5,306.68 after costs.",
+   "The bootstrap range of the average trade (-$35.28 to $326.89) includes zero: the average trade could plausibly be zero or negative."
+  ],
+  "concerns": [
+   "Does the data cover enough market history and conditions? 85 trading days (2026-06-22 to 2026-10-20), provider ibkr, data status warn, 0 symbol-days without 5-minute data.",
+   "Are results concentrated in a few trades? The three best trades produced 60.5% of the net P&L.",
+   "Do in-sample results carry over to unseen (out-of-sample) days? In-sample $7,414.15 over 22 trades; out-of-sample -$1,302.22 over 4 trades."
+  ],
+  "not_established": [
+   "That the strategy will be profitable in the future: historical simulation results do not guarantee future performance.",
+   "That live fills would match the simulated fills (no historical bid/ask; fills are modelled).",
+   "That the result is statistically significant: no significance test is claimed here."
+  ],
+  "assumptions": [
+   "Quote proxy: ask/bid = last close +/- 2.0 bps; extra slippage 2.0 bps on market-like fills.",
+   "Ambiguous bars: when a stop and a profit target could both have been reached in one bar, the stop is assumed first (conservative).",
+   "Timing: orders sent by a pass fill from the next bar; an off-grid force close (15:51 on 5-minute bars) therefore sells from the 15:55 bar.",
+   "Buying power: cash x 1.0 (the paper account's margin may allow more).",
+   "Universe: today's index members from the fallback list, so stocks that left the index are missing (survivorship bias, usually flattering)."
+  ],
+  "data_sufficiency": "85 trading days and 34 trades. This is not enough data for a reliable evaluation; treat every figure as illustrative.",
+  "costs_and_execution": "With 3x spread and slippage the net result would be $3,651.43 instead of $5,306.68 (commissions unchanged).",
+  "further_tests": [
+   "Test at least one full year, including a falling market, before relying on any result.",
+   "Check whether removing the best few trades changes the conclusion.",
+   "Treat a positive in-sample result that fails out-of-sample as a warning sign."
+  ],
+  "label": "Automated interpretation: generated by fixed rules from the metrics and validation results above. It is not investment advice and not a statistical test."
+ },
+ "rules_explained": [
+  {
+   "key": "label",
+   "value": "Macro Swing ETF",
+   "label": "Strategy",
+   "explanation": "Multi-day sector pullbacks - holds positions overnight"
+  },
+  {
+   "key": "timeframe",
+   "value": "1d",
+   "label": "Timeframe",
+   "explanation": "Signals use completed daily bars and today's price near the close."
+  },
+  {
+   "key": "holding",
+   "value": "multi_day",
+   "label": "Holding period",
+   "explanation": "Positions are held overnight on a protective stop until an exit signal."
+  },
+  {
+   "key": "universe.symbols",
+   "value": "XLK, XLF, XLE, XLV, XLI, XLY, XLP, XLU, XLB, XLRE, XLC",
+   "label": "Universe",
+   "explanation": "These symbols are scanned."
+  },
+  {
+   "key": "time_filter.earliest_entry_et",
+   "value": "15:45",
+   "label": "First entry time",
+   "explanation": "No entries before 15:45 New York time."
+  },
+  {
+   "key": "time_filter.latest_entry_et",
+   "value": "15:55",
+   "label": "Last entry time",
+   "explanation": "No new entries after 15:55; unfilled entry orders expire a minute later."
+  },
+  {
+   "key": "time_filter.force_close_et",
+   "value": "none",
+   "label": "Force close",
+   "explanation": "No end-of-day close: positions can be held overnight."
+  },
+  {
+   "key": "entry.0",
+   "value": "close_above_sma(period=200)",
+   "label": "Entry check T1",
+   "explanation": "Today's price (1d: the live price; intraday: the last completed close) is above the simple moving average of daily closes including today's."
+  },
+  {
+   "key": "entry.1",
+   "value": "rsi_below(period=2, max=10.0)",
+   "label": "Entry check P1",
+   "explanation": "Wilder RSI of daily closes including today's is below max (a pullback)."
+  },
+  {
+   "key": "stop",
+   "value": "atr_multiple(period=14, multiple=2.0)",
+   "label": "Initial stop",
+   "explanation": "`multiple` x the Wilder ATR(period) of daily bars below today's price."
+  },
+  {
+   "key": "exit.0",
+   "value": "close_above_sma(period=5, at_et=15:50)",
+   "label": "Exit",
+   "explanation": "Exit when today's live price is above the SMA(period) of daily closes including today's (from at_et on, e.g. 15:50 for a close-based rule)."
+  },
+  {
+   "key": "exit.1",
+   "value": "time_stop(days=10, at_et=15:50)",
+   "label": "Exit",
+   "explanation": "Exit after `days` trading days held (multi-day) or `minutes` (intraday), from at_et on if given. Exactly one of days / minutes."
+  },
+  {
+   "key": "risk.max_risk_per_trade_pct",
+   "value": 1.0,
+   "label": "Risk per trade",
+   "explanation": "At most 1.0% of the account can be lost if the initial stop is hit."
+  },
+  {
+   "key": "risk.max_position_size_pct_of_portfolio",
+   "value": 10,
+   "label": "Position size",
+   "explanation": "One position is at most 10% of the account."
+  },
+  {
+   "key": "risk.max_concurrent_positions",
+   "value": 3,
+   "label": "Concurrent positions",
+   "explanation": "At most 3 positions (including unfilled entries) at once."
+  },
+  {
+   "key": "risk.max_commission_pct_of_risk",
+   "value": 1.0,
+   "label": "Commission check",
+   "explanation": "A trade is skipped if its estimated commissions exceed 1.0% of the money at risk."
+  },
+  {
+   "key": "risk.max_drawdown_usd",
+   "value": 6000,
+   "label": "Drawdown breaker",
+   "explanation": "After a $6,000 fall in cumulative P&L, entries stop until someone re-arms the breaker by hand."
+  },
+  {
+   "key": "risk.max_quantity_per_order",
+   "value": 1000,
+   "label": "Share cap",
+   "explanation": "One entry order is at most 1000 shares."
+  },
+  {
+   "key": "risk.max_order_value",
+   "value": 30000.0,
+   "label": "Order value cap",
+   "explanation": "One entry order is at most $30,000."
+  },
+  {
+   "key": "risk.max_orders_per_day",
+   "value": 5,
+   "label": "Entries per day",
+   "explanation": "At most 5 entry orders per day."
+  },
+  {
+   "key": "risk.max_open_orders",
+   "value": 3,
+   "label": "Working orders",
+   "explanation": "At most 3 unfilled entry/exit orders at once (stops not counted)."
+  },
+  {
+   "key": "risk.max_daily_loss",
+   "value": 2000.0,
+   "label": "Daily loss halt",
+   "explanation": "After losing $2,000 in a day, no new entries that day."
+  }
+ ]
+}

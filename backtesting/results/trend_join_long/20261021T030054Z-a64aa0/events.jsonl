@@ -1,0 +1,2 @@
+{"time": "2026-09-21T11:00:03-04:00", "event": "entry_sent", "symbol": "AMD", "qty": 48, "limit": 615.65, "stop": 576.45}
+{"time": "2026-09-21T15:50:00-04:00", "event": "trade_closed", "symbol": "AMD", "trade_id": 1}

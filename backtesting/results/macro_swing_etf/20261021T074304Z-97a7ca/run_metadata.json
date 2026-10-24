@@ -1,0 +1,82 @@
+{
+ "run_id": "20261021T074304Z-97a7ca",
+ "strategy_id": "macro_swing_etf",
+ "strategy_name": "Macro Swing ETF",
+ "strategy_version": "6a93a3e02281",
+ "kind": "baseline",
+ "experiment_id": null,
+ "experiment": null,
+ "status": "completed_with_warnings",
+ "started_at": "2026-10-21T07:43:04+00:00",
+ "finished_at": "2026-10-21T08:49:18+00:00",
+ "code": {
+  "commit": "f5de8967716ffa2b90cfa7ca145c618cf46c7f26",
+  "branch": "enhancements",
+  "dirty": true
+ },
+ "software": {
+  "paperbot": "1.0.0",
+  "backtest_engine": "1.0.0",
+  "python": "3.11.4"
+ },
+ "provider": "ibkr",
+ "synthetic_data": false,
+ "timeframe": "1d",
+ "holding": "multi_day",
+ "tape": "5m",
+ "currency": "USD",
+ "starting_capital": 1000000.0,
+ "execution_assumptions": {
+  "half_spread_bps": 2.0,
+  "slippage_bps": 2.0,
+  "participation_rate": 0.1,
+  "buying_power_multiplier": 1.0,
+  "ambiguous_bar_policy": "stop_first",
+  "decision_delay_seconds": 3,
+  "reset_drawdown_breaker_next_day": false
+ },
+ "cost_assumptions": {
+  "commission": "IBKR Fixed: $0.005/share, min $1.00, max 1% of value, per order (core/risk.round_trip_commission / 2)",
+  "half_spread_bps": 2.0,
+  "slippage_bps": 2.0
+ },
+ "timezone": "America/New_York (ET) for every timestamp",
+ "warnings": [],
+ "errors": [],
+ "pinned": false,
+ "period": {
+  "requested_start": "2025-01-02",
+  "requested_end": "2026-10-01",
+  "actual_start": "2025-01-02",
+  "actual_end": "2026-10-01",
+  "trading_days": 438
+ },
+ "dataset_id": "ibkr-5m-20250102-20261001-7a9b17ff46",
+ "symbols": [
+  "XLK",
+  "XLF",
+  "XLE",
+  "XLV",
+  "XLI",
+  "XLY",
+  "XLP",
+  "XLU",
+  "XLB",
+  "XLRE",
+  "XLC"
+ ],
+ "variants_on_dataset": 1,
+ "headline": {
+  "net_pnl": 13225.08,
+  "total_return_pct": 1.3225,
+  "completed_trades": 145,
+  "win_rate_pct": 72.41,
+  "max_drawdown_pct": 0.5513,
+  "profit_factor": 1.528,
+  "total_commission": 593.79,
+  "total_slippage": 3447.26,
+  "ending_equity": 1013225.08
+ },
+ "data_status": "warn",
+ "out_of_sample": true
+}

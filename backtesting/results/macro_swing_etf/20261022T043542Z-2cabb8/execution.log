@@ -1,0 +1,7 @@
+{"time": "2026-10-22T00:35:42-04:00", "level": "INFO", "message": "run 20261022T043542Z-2cabb8: Macro Swing ETF (baseline) with ibkr"}
+{"time": "2026-10-22T00:36:16-04:00", "level": "INFO", "message": "intraday 5m bars: 10/11 symbols"}
+{"time": "2026-10-22T00:36:17-04:00", "level": "INFO", "message": "intraday 5m bars: 11/11 symbols"}
+{"time": "2026-10-22T00:36:17-04:00", "level": "INFO", "message": "simulated 1/1 days"}
+{"time": "2026-10-22T00:36:18-04:00", "level": "INFO", "message": "intraday 5m bars: 10/11 symbols"}
+{"time": "2026-10-22T00:36:18-04:00", "level": "INFO", "message": "intraday 5m bars: 11/11 symbols"}
+{"time": "2026-10-22T00:36:18-04:00", "level": "INFO", "message": "run 20261022T043542Z-2cabb8 finished: completed_with_warnings, net P&L 0.00 USD, 0 trades"}

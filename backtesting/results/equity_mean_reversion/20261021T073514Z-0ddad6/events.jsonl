@@ -1,0 +1,293 @@
+{"time": "2026-06-22T10:28:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 40, "limit": 748.44, "stop": 746.1}
+{"time": "2026-06-22T10:30:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 1}
+{"time": "2026-06-22T10:31:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 40, "limit": 747.38, "stop": 744.82}
+{"time": "2026-06-22T10:31:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 40, "limit": 740.79, "stop": 737.83}
+{"time": "2026-06-22T10:43:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 3}
+{"time": "2026-06-22T10:43:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 2}
+{"time": "2026-06-24T13:17:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 42, "limit": 711.78, "stop": 708.29}
+{"time": "2026-06-24T13:28:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 4}
+{"time": "2026-06-24T13:29:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 40, "limit": 733.72, "stop": 730.43}
+{"time": "2026-06-24T13:29:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 42, "limit": 709.47, "stop": 705.51}
+{"time": "2026-06-24T14:00:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 6}
+{"time": "2026-06-24T14:00:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 5}
+{"time": "2026-06-29T10:05:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 100, "limit": 297.11, "stop": 295.86}
+{"time": "2026-06-29T10:10:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 7}
+{"time": "2026-06-29T10:11:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 101, "limit": 296.59, "stop": 295.21}
+{"time": "2026-06-29T10:13:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 8}
+{"time": "2026-06-29T10:14:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 101, "limit": 295.75, "stop": 294.22}
+{"time": "2026-06-29T10:15:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 40, "limit": 734.32, "stop": 730.97}
+{"time": "2026-06-29T10:30:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 9}
+{"time": "2026-06-29T10:32:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 10}
+{"time": "2026-07-02T10:28:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 41, "limit": 724.07, "stop": 720.68}
+{"time": "2026-07-02T10:28:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 99, "limit": 300.03, "stop": 298.77}
+{"time": "2026-07-02T10:41:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 12}
+{"time": "2026-07-02T10:41:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 11}
+{"time": "2026-07-02T11:08:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 40, "limit": 746.03, "stop": 742.77}
+{"time": "2026-07-02T11:39:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 13}
+{"time": "2026-07-08T10:16:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 101, "limit": 294.18, "stop": 293.21}
+{"time": "2026-07-08T10:17:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 14}
+{"time": "2026-07-08T10:19:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 102, "limit": 293.98, "stop": 292.96}
+{"time": "2026-07-08T10:37:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 40, "limit": 744.12, "stop": 741.98}
+{"time": "2026-07-08T10:39:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 15}
+{"time": "2026-07-08T10:43:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 16}
+{"time": "2026-07-08T10:46:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 40, "limit": 743.67, "stop": 741.4}
+{"time": "2026-07-08T10:47:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 42, "limit": 706.62, "stop": 704.04}
+{"time": "2026-07-08T10:49:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 17}
+{"time": "2026-07-08T10:50:03-04:00", "event": "rejected", "symbol": "SPY", "role": "entry", "problems": ["already sent 5 entries today (max 5)"]}
+{"time": "2026-07-08T10:50:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 18}
+{"time": "2026-07-08T10:51:03-04:00", "event": "rejected", "symbol": "QQQ", "role": "entry", "problems": ["already sent 5 entries today (max 5)"]}
+{"time": "2026-07-10T10:33:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 751.23, "stop": 748.88}
+{"time": "2026-07-10T10:33:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 41, "limit": 720.72, "stop": 718.12}
+{"time": "2026-07-10T10:40:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 20}
+{"time": "2026-07-10T10:40:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 19}
+{"time": "2026-07-13T12:31:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 751.45, "stop": 748.96}
+{"time": "2026-07-13T12:36:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 21}
+{"time": "2026-07-13T12:37:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 750.86, "stop": 748.22}
+{"time": "2026-07-13T13:08:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 22}
+{"time": "2026-07-14T10:05:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 41, "limit": 718.92, "stop": 716.77}
+{"time": "2026-07-14T10:05:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 101, "limit": 294.93, "stop": 293.89}
+{"time": "2026-07-14T10:06:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 23}
+{"time": "2026-07-14T10:11:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 41, "limit": 717.78, "stop": 715.32}
+{"time": "2026-07-14T10:15:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 24}
+{"time": "2026-07-14T10:15:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 25}
+{"time": "2026-07-14T10:16:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 41, "limit": 717.07, "stop": 714.47}
+{"time": "2026-07-14T10:34:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 26}
+{"time": "2026-07-15T10:43:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 754.59, "stop": 752.35}
+{"time": "2026-07-15T11:14:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 27}
+{"time": "2026-07-15T12:04:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 753.51, "stop": 751.03}
+{"time": "2026-07-15T12:16:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 28}
+{"time": "2026-07-15T12:17:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 752.72, "stop": 750.07}
+{"time": "2026-07-15T12:48:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 29}
+{"time": "2026-07-20T10:06:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 101, "limit": 294.89, "stop": 293.9}
+{"time": "2026-07-20T10:11:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 30}
+{"time": "2026-07-20T10:12:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 101, "limit": 294.58, "stop": 293.51}
+{"time": "2026-07-20T10:21:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 31}
+{"time": "2026-07-22T10:42:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 101, "limit": 295.15, "stop": 294.06}
+{"time": "2026-07-22T10:52:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 32}
+{"time": "2026-07-23T10:52:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 43, "limit": 693.18, "stop": 690.26}
+{"time": "2026-07-23T11:06:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 33}
+{"time": "2026-07-23T11:07:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 40, "limit": 738.64, "stop": 735.89}
+{"time": "2026-07-23T11:07:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 43, "limit": 691.78, "stop": 688.48}
+{"time": "2026-07-23T11:22:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 35}
+{"time": "2026-07-23T11:23:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 103, "limit": 291.05, "stop": 289.88}
+{"time": "2026-07-23T11:28:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 34}
+{"time": "2026-07-23T11:54:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 36}
+{"time": "2026-07-27T10:00:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 40, "limit": 743.24, "stop": 740.66}
+{"time": "2026-07-27T10:11:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 37}
+{"time": "2026-07-27T10:34:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 102, "limit": 292.53, "stop": 290.97}
+{"time": "2026-07-27T11:05:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 38}
+{"time": "2026-07-29T10:13:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 102, "limit": 291.57, "stop": 290.36}
+{"time": "2026-07-29T10:14:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 39}
+{"time": "2026-08-05T10:31:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 41, "limit": 725.83, "stop": 723.33}
+{"time": "2026-08-05T10:32:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 40}
+{"time": "2026-08-05T10:32:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 775.98, "stop": 773.78}
+{"time": "2026-08-05T10:32:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 41, "limit": 724.99, "stop": 722.44}
+{"time": "2026-08-05T10:40:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 41}
+{"time": "2026-08-05T10:41:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 775.49, "stop": 773.11}
+{"time": "2026-08-05T10:52:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 42}
+{"time": "2026-08-05T10:53:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 43}
+{"time": "2026-08-05T10:54:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 774.61, "stop": 772.04}
+{"time": "2026-08-05T11:18:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 44}
+{"time": "2026-08-06T11:20:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 770.66, "stop": 768.36}
+{"time": "2026-08-06T11:37:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 45}
+{"time": "2026-08-07T10:05:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 41, "limit": 719.39, "stop": 716.82}
+{"time": "2026-08-07T10:12:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 771.79, "stop": 769.68}
+{"time": "2026-08-07T10:12:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 46}
+{"time": "2026-08-07T10:15:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 47}
+{"time": "2026-08-10T10:53:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 99, "limit": 300.98, "stop": 300.13}
+{"time": "2026-08-10T10:59:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 48}
+{"time": "2026-08-10T11:00:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 99, "limit": 300.71, "stop": 299.84}
+{"time": "2026-08-10T11:31:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 49}
+{"time": "2026-08-10T11:37:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 99, "limit": 300.62, "stop": 299.67}
+{"time": "2026-08-10T12:08:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 50}
+{"time": "2026-08-10T12:32:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 774.02, "stop": 771.76}
+{"time": "2026-08-10T13:03:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 51}
+{"time": "2026-08-11T11:19:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 773.92, "stop": 771.79}
+{"time": "2026-08-11T11:39:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 52}
+{"time": "2026-08-11T13:15:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 772.03, "stop": 769.4}
+{"time": "2026-08-11T13:46:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 53}
+{"time": "2026-08-13T10:57:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 98, "limit": 304.32, "stop": 303.35}
+{"time": "2026-08-13T11:22:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 54}
+{"time": "2026-08-13T11:23:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 98, "limit": 304.07, "stop": 303.03}
+{"time": "2026-08-13T11:28:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 55}
+{"time": "2026-08-13T11:29:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 98, "limit": 303.69, "stop": 302.61}
+{"time": "2026-08-13T12:00:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 56}
+{"time": "2026-08-14T10:20:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 40, "limit": 733.41, "stop": 731.24}
+{"time": "2026-08-14T10:24:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 57}
+{"time": "2026-08-14T10:31:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 778.66, "stop": 776.56}
+{"time": "2026-08-14T11:02:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 58}
+{"time": "2026-08-17T10:01:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 98, "limit": 303.98, "stop": 303.16}
+{"time": "2026-08-17T10:05:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 59}
+{"time": "2026-08-17T13:15:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 776.02, "stop": 773.9}
+{"time": "2026-08-17T13:15:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 40, "limit": 732.43, "stop": 730.04}
+{"time": "2026-08-17T13:23:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 60}
+{"time": "2026-08-17T13:24:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 775.54, "stop": 773.35}
+{"time": "2026-08-17T13:24:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 61}
+{"time": "2026-08-17T13:25:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 40, "limit": 731.94, "stop": 729.39}
+{"time": "2026-08-17T13:35:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 62}
+{"time": "2026-08-17T13:36:03-04:00", "event": "rejected", "symbol": "SPY", "role": "entry", "problems": ["already sent 5 entries today (max 5)"]}
+{"time": "2026-08-17T13:56:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 63}
+{"time": "2026-08-18T10:12:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 769.55, "stop": 767.56}
+{"time": "2026-08-18T10:20:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 64}
+{"time": "2026-08-18T10:55:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 99, "limit": 301.97, "stop": 300.94}
+{"time": "2026-08-18T11:01:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 769.36, "stop": 767.3}
+{"time": "2026-08-18T11:01:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 65}
+{"time": "2026-08-18T11:02:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 99, "limit": 301.63, "stop": 300.52}
+{"time": "2026-08-18T11:32:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 66}
+{"time": "2026-08-18T11:33:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 67}
+{"time": "2026-08-19T10:12:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 99, "limit": 302.31, "stop": 301.36}
+{"time": "2026-08-19T10:32:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 68}
+{"time": "2026-08-20T10:05:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 100, "limit": 299.18, "stop": 298.19}
+{"time": "2026-08-20T10:15:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 69}
+{"time": "2026-08-20T13:38:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 766.12, "stop": 763.7}
+{"time": "2026-08-20T14:07:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 42, "limit": 711.0, "stop": 708.36}
+{"time": "2026-08-20T14:07:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 70}
+{"time": "2026-08-20T14:08:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 765.38, "stop": 762.8}
+{"time": "2026-08-20T14:38:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 71}
+{"time": "2026-08-20T14:39:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 72}
+{"time": "2026-08-21T10:14:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 100, "limit": 299.59, "stop": 298.73}
+{"time": "2026-08-21T10:16:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 73}
+{"time": "2026-08-21T10:18:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 100, "limit": 299.36, "stop": 298.4}
+{"time": "2026-08-21T10:21:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 74}
+{"time": "2026-08-24T13:35:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 100, "limit": 298.31, "stop": 297.29}
+{"time": "2026-08-24T14:06:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 75}
+{"time": "2026-08-26T12:40:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 765.85, "stop": 763.57}
+{"time": "2026-08-26T13:11:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 76}
+{"time": "2026-08-27T10:07:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 100, "limit": 298.86, "stop": 297.91}
+{"time": "2026-08-27T10:22:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 77}
+{"time": "2026-08-28T10:06:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 772.78, "stop": 770.74}
+{"time": "2026-08-28T10:07:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 78}
+{"time": "2026-08-28T10:14:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 771.71, "stop": 769.36}
+{"time": "2026-08-28T10:22:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 79}
+{"time": "2026-09-01T12:27:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 102, "limit": 291.4, "stop": 290.35}
+{"time": "2026-09-01T12:58:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 80}
+{"time": "2026-09-01T14:45:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 761.42, "stop": 758.63}
+{"time": "2026-09-01T15:16:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 81}
+{"time": "2026-09-04T10:09:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 773.47, "stop": 771.56}
+{"time": "2026-09-04T10:10:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 82}
+{"time": "2026-09-04T10:10:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 773.23, "stop": 771.29}
+{"time": "2026-09-04T10:11:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 83}
+{"time": "2026-09-04T10:11:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 772.96, "stop": 770.99}
+{"time": "2026-09-04T10:12:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 84}
+{"time": "2026-09-09T10:17:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 764.95, "stop": 763.11}
+{"time": "2026-09-09T10:18:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 85}
+{"time": "2026-09-09T10:19:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 764.73, "stop": 762.82}
+{"time": "2026-09-09T10:21:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 86}
+{"time": "2026-09-09T10:22:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 764.56, "stop": 762.58}
+{"time": "2026-09-09T10:24:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 87}
+{"time": "2026-09-09T11:12:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 41, "limit": 716.51, "stop": 713.99}
+{"time": "2026-09-09T11:43:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 88}
+{"time": "2026-09-11T10:44:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 765.61, "stop": 763.43}
+{"time": "2026-09-11T11:08:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 89}
+{"time": "2026-09-15T10:11:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 759.96, "stop": 757.85}
+{"time": "2026-09-15T10:11:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 42, "limit": 708.96, "stop": 706.98}
+{"time": "2026-09-15T10:13:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 91}
+{"time": "2026-09-15T10:14:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 42, "limit": 708.42, "stop": 706.31}
+{"time": "2026-09-15T10:21:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 90}
+{"time": "2026-09-15T10:22:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 92}
+{"time": "2026-09-15T10:23:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 42, "limit": 707.8, "stop": 705.5}
+{"time": "2026-09-15T10:24:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 758.86, "stop": 756.46}
+{"time": "2026-09-15T10:40:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 93}
+{"time": "2026-09-15T10:51:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 94}
+{"time": "2026-09-16T14:02:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 104, "limit": 286.2, "stop": 285.27}
+{"time": "2026-09-16T14:07:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 95}
+{"time": "2026-09-16T14:28:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 104, "limit": 286.05, "stop": 285.1}
+{"time": "2026-09-16T14:33:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 759.77, "stop": 757.51}
+{"time": "2026-09-16T14:34:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 96}
+{"time": "2026-09-16T14:35:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 104, "limit": 285.78, "stop": 284.79}
+{"time": "2026-09-16T14:35:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 97}
+{"time": "2026-09-16T14:36:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 758.62, "stop": 756.18}
+{"time": "2026-09-16T14:36:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 98}
+{"time": "2026-09-16T14:37:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 99}
+{"time": "2026-09-16T14:37:03-04:00", "event": "rejected", "symbol": "SPY", "role": "entry", "problems": ["already sent 5 entries today (max 5)"]}
+{"time": "2026-09-16T14:37:03-04:00", "event": "rejected", "symbol": "QQQ", "role": "entry", "problems": ["already sent 5 entries today (max 5)"]}
+{"time": "2026-09-18T10:02:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 41, "limit": 718.88, "stop": 716.81}
+{"time": "2026-09-18T10:03:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 760.77, "stop": 758.47}
+{"time": "2026-09-18T10:03:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 100}
+{"time": "2026-09-18T10:04:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 41, "limit": 718.33, "stop": 716.11}
+{"time": "2026-09-18T10:16:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 102}
+{"time": "2026-09-18T10:34:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 101}
+{"time": "2026-09-25T10:02:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 106, "limit": 282.09, "stop": 281.27}
+{"time": "2026-09-25T10:03:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 103}
+{"time": "2026-09-25T10:03:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 106, "limit": 281.87, "stop": 281.03}
+{"time": "2026-09-25T10:04:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 104}
+{"time": "2026-09-25T10:05:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 769.3, "stop": 766.97}
+{"time": "2026-09-25T10:05:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 106, "limit": 281.42, "stop": 280.51}
+{"time": "2026-09-25T10:06:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 106}
+{"time": "2026-09-25T10:06:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 105}
+{"time": "2026-09-25T10:06:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 768.28, "stop": 765.78}
+{"time": "2026-09-25T10:37:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 107}
+{"time": "2026-09-28T10:38:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 768.47, "stop": 766.43}
+{"time": "2026-09-28T10:39:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 108}
+{"time": "2026-09-28T10:40:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 768.13, "stop": 766.05}
+{"time": "2026-09-28T10:43:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 109}
+{"time": "2026-09-28T10:44:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 767.2, "stop": 764.96}
+{"time": "2026-09-28T10:45:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 110}
+{"time": "2026-09-29T11:05:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 765.93, "stop": 763.82}
+{"time": "2026-09-29T11:12:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 111}
+{"time": "2026-09-29T11:13:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 765.39, "stop": 763.2}
+{"time": "2026-09-29T11:20:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 112}
+{"time": "2026-09-29T11:21:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 764.81, "stop": 762.53}
+{"time": "2026-09-29T11:52:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 113}
+{"time": "2026-09-30T13:24:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 107, "limit": 279.41, "stop": 278.46}
+{"time": "2026-09-30T13:55:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 114}
+{"time": "2026-10-01T10:01:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 762.94, "stop": 760.4}
+{"time": "2026-10-01T10:01:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 40, "limit": 741.35, "stop": 738.96}
+{"time": "2026-10-01T10:02:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 116}
+{"time": "2026-10-01T10:02:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 40, "limit": 740.39, "stop": 737.81}
+{"time": "2026-10-01T10:02:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 115}
+{"time": "2026-10-01T10:03:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 39, "limit": 762.03, "stop": 759.14}
+{"time": "2026-10-01T10:05:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 117}
+{"time": "2026-10-01T10:34:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 118}
+{"time": "2026-10-02T11:11:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 770.5, "stop": 767.92}
+{"time": "2026-10-02T11:11:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 106, "limit": 282.06, "stop": 281.0}
+{"time": "2026-10-02T11:20:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 120}
+{"time": "2026-10-02T11:20:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 119}
+{"time": "2026-10-02T11:21:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 769.48, "stop": 766.67}
+{"time": "2026-10-02T11:21:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 106, "limit": 281.68, "stop": 280.53}
+{"time": "2026-10-02T11:52:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 122}
+{"time": "2026-10-02T11:52:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 121}
+{"time": "2026-10-07T10:13:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 107, "limit": 278.34, "stop": 277.47}
+{"time": "2026-10-07T10:44:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 123}
+{"time": "2026-10-07T11:03:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 107, "limit": 277.87, "stop": 276.88}
+{"time": "2026-10-07T11:34:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 124}
+{"time": "2026-10-08T10:50:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 108, "limit": 276.17, "stop": 275.3}
+{"time": "2026-10-08T10:58:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 125}
+{"time": "2026-10-08T11:00:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 108, "limit": 275.86, "stop": 274.92}
+{"time": "2026-10-08T11:14:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 126}
+{"time": "2026-10-08T12:49:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 39, "limit": 752.39, "stop": 749.58}
+{"time": "2026-10-08T12:50:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 774.96, "stop": 772.55}
+{"time": "2026-10-08T12:50:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 127}
+{"time": "2026-10-08T12:51:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 39, "limit": 751.09, "stop": 748.02}
+{"time": "2026-10-08T12:53:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 128}
+{"time": "2026-10-08T12:56:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 129}
+{"time": "2026-10-08T13:01:03-04:00", "event": "rejected", "symbol": "SPY", "role": "entry", "problems": ["already sent 5 entries today (max 5)"]}
+{"time": "2026-10-12T10:04:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 107, "limit": 278.78, "stop": 277.99}
+{"time": "2026-10-12T10:05:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 130}
+{"time": "2026-10-12T10:06:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 107, "limit": 278.69, "stop": 277.88}
+{"time": "2026-10-12T10:08:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 779.69, "stop": 777.66}
+{"time": "2026-10-12T10:10:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 132}
+{"time": "2026-10-12T10:12:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 779.39, "stop": 777.26}
+{"time": "2026-10-12T10:15:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 131}
+{"time": "2026-10-12T10:43:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 133}
+{"time": "2026-10-13T11:29:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 777.95, "stop": 775.7}
+{"time": "2026-10-13T12:00:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 134}
+{"time": "2026-10-14T10:00:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 109, "limit": 273.7, "stop": 272.81}
+{"time": "2026-10-14T10:04:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 135}
+{"time": "2026-10-14T10:06:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 109, "limit": 273.32, "stop": 272.3}
+{"time": "2026-10-14T10:37:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 136}
+{"time": "2026-10-16T10:00:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 108, "limit": 275.49, "stop": 274.7}
+{"time": "2026-10-16T10:03:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 137}
+{"time": "2026-10-16T10:09:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 108, "limit": 275.31, "stop": 274.49}
+{"time": "2026-10-16T10:10:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 138}
+{"time": "2026-10-16T10:11:03-04:00", "event": "entry_sent", "symbol": "IWM", "qty": 109, "limit": 275.06, "stop": 274.2}
+{"time": "2026-10-16T10:42:00-04:00", "event": "trade_closed", "symbol": "IWM", "trade_id": 139}
+{"time": "2026-10-16T11:09:03-04:00", "event": "entry_sent", "symbol": "SPY", "qty": 38, "limit": 771.58, "stop": 769.22}
+{"time": "2026-10-16T11:09:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 41, "limit": 719.75, "stop": 716.64}
+{"time": "2026-10-16T11:21:00-04:00", "event": "trade_closed", "symbol": "SPY", "trade_id": 140}
+{"time": "2026-10-16T11:22:03-04:00", "event": "rejected", "symbol": "SPY", "role": "entry", "problems": ["already sent 5 entries today (max 5)"]}
+{"time": "2026-10-16T11:22:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 141}
+{"time": "2026-10-19T10:00:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 41, "limit": 719.46, "stop": 717.4}
+{"time": "2026-10-19T10:01:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 142}
+{"time": "2026-10-19T10:03:03-04:00", "event": "entry_sent", "symbol": "QQQ", "qty": 41, "limit": 718.83, "stop": 716.65}
+{"time": "2026-10-19T10:04:00-04:00", "event": "trade_closed", "symbol": "QQQ", "trade_id": 143}

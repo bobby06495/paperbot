@@ -1,0 +1,2569 @@
+{
+ "currency": "USD",
+ "starting_capital": 1000000.0,
+ "ending_equity": 1013225.08,
+ "net_pnl": 13225.08,
+ "total_return_pct": 1.3225,
+ "unrealized_pnl": -60.25,
+ "realized_pnl": 13285.33,
+ "completed_trades": 145,
+ "open_positions_end": 1,
+ "winning_trades": 105,
+ "losing_trades": 40,
+ "breakeven_trades": 0,
+ "gross_profits": 38460.89,
+ "gross_losses": -25174.55,
+ "win_rate_pct": 72.41,
+ "avg_win": 366.29,
+ "avg_loss": -629.36,
+ "largest_win": 1442.29,
+ "largest_loss": -1264.61,
+ "profit_factor": 1.528,
+ "expectancy": 91.63,
+ "avg_r": 0.093,
+ "avg_holding_minutes": 6292.8,
+ "max_drawdown_pct": 0.5513,
+ "max_drawdown_usd": 5535.3,
+ "max_drawdown_peak_time": "2025-01-31T11:15:00-05:00",
+ "max_drawdown_trough_time": "2025-03-13T14:00:00-04:00",
+ "total_commission": 593.79,
+ "total_slippage": 3447.26,
+ "cost_share_of_gross_pct": 29.12,
+ "avg_exposure_pct": 2.851,
+ "max_exposure_pct": 9.097,
+ "time_in_market_pct": 54.31,
+ "max_concurrent_positions": 3,
+ "max_consecutive_losses": 4,
+ "top3_share_of_net_pct": 24.0,
+ "daily_volatility_pct": 0.0431,
+ "sharpe_like": 1.109,
+ "benchmark_return_pct": 29.624,
+ "mean_trade_ci95": [
+  -2.77,
+  182.01
+ ],
+ "days": 438,
+ "days_with_trades": 107,
+ "days_without_trades": 331,
+ "na_reasons": {},
+ "periods": {
+  "segments": {
+   "in_sample": {
+    "segment": "in_sample",
+    "days": 263,
+    "start": "2025-01-02",
+    "end": "2026-01-21",
+    "net_pnl": 6196.67,
+    "return_pct": 0.6197,
+    "trades": 76,
+    "win_rate_pct": 73.68,
+    "profit_factor": 1.393,
+    "expectancy": 74.15,
+    "max_drawdown_pct": 0.5513,
+    "commission": 314.97,
+    "status": "ok"
+   },
+   "validation": {
+    "segment": "validation",
+    "days": 88,
+    "start": "2026-01-22",
+    "end": "2026-05-28",
+    "net_pnl": 2131.68,
+    "return_pct": 0.2119,
+    "trades": 32,
+    "win_rate_pct": 65.62,
+    "profit_factor": 1.501,
+    "expectancy": 84.28,
+    "max_drawdown_pct": 0.5279,
+    "commission": 126.81,
+    "status": "ok"
+   },
+   "out_of_sample": {
+    "segment": "out_of_sample",
+    "days": 87,
+    "start": "2026-05-29",
+    "end": "2026-10-01",
+    "net_pnl": 4896.73,
+    "return_pct": 0.4856,
+    "trades": 37,
+    "win_rate_pct": 75.68,
+    "profit_factor": 1.91,
+    "expectancy": 133.89,
+    "max_drawdown_pct": 0.3452,
+    "commission": 151.92,
+    "status": "ok"
+   }
+  },
+  "folds": [
+   {
+    "segment": "fold_1",
+    "days": 146,
+    "start": "2025-01-02",
+    "end": "2025-08-04",
+    "net_pnl": 4458.74,
+    "return_pct": 0.4459,
+    "trades": 33,
+    "win_rate_pct": 78.79,
+    "profit_factor": 1.594,
+    "expectancy": 105.43,
+    "max_drawdown_pct": 0.5513,
+    "commission": 144.05,
+    "status": "ok"
+   },
+   {
+    "segment": "fold_2",
+    "days": 146,
+    "start": "2025-08-05",
+    "end": "2026-03-04",
+    "net_pnl": 5405.3,
+    "return_pct": 0.5381,
+    "trades": 55,
+    "win_rate_pct": 74.55,
+    "profit_factor": 1.721,
+    "expectancy": 117.3,
+    "max_drawdown_pct": 0.4401,
+    "commission": 213.42,
+    "status": "ok"
+   },
+   {
+    "segment": "fold_3",
+    "days": 146,
+    "start": "2026-03-05",
+    "end": "2026-10-01",
+    "net_pnl": 3361.04,
+    "return_pct": 0.3328,
+    "trades": 57,
+    "win_rate_pct": 66.67,
+    "profit_factor": 1.324,
+    "expectancy": 58.87,
+    "max_drawdown_pct": 0.5085,
+    "commission": 236.23,
+    "status": "ok"
+   }
+  ],
+  "method": "Chronological split of the trading days: the first 60% in-sample, the next 20% validation, the last 20% out-of-sample. Trades are assigned to the segment in which they exited. Walk-forward folds are consecutive equal blocks used to check whether results are consistent over time."
+ },
+ "monthly": [
+  {
+   "month": "2025-01",
+   "pnl": 3341.52,
+   "return_pct": 0.334,
+   "trades": 7,
+   "wins": 7,
+   "losses": 0,
+   "commission": 23.07,
+   "trading_days": 20,
+   "days_without_trades": 16,
+   "max_drawdown_pct": 0.0291
+  },
+  {
+   "month": "2025-02",
+   "pnl": -2608.33,
+   "return_pct": -0.26,
+   "trades": 6,
+   "wins": 3,
+   "losses": 3,
+   "commission": 17.24,
+   "trading_days": 19,
+   "days_without_trades": 14,
+   "max_drawdown_pct": 0.2643
+  },
+  {
+   "month": "2025-03",
+   "pnl": 66.82,
+   "return_pct": 0.007,
+   "trades": 4,
+   "wins": 2,
+   "losses": 2,
+   "commission": 27.82,
+   "trading_days": 21,
+   "days_without_trades": 18,
+   "max_drawdown_pct": 0.2125
+  },
+  {
+   "month": "2025-04",
+   "pnl": 348.75,
+   "return_pct": 0.035,
+   "trades": 2,
+   "wins": 2,
+   "losses": 0,
+   "commission": 4.6,
+   "trading_days": 21,
+   "days_without_trades": 20,
+   "max_drawdown_pct": 0.0036
+  },
+  {
+   "month": "2025-05",
+   "pnl": 1769.22,
+   "return_pct": 0.177,
+   "trades": 5,
+   "wins": 5,
+   "losses": 0,
+   "commission": 22.57,
+   "trading_days": 21,
+   "days_without_trades": 19,
+   "max_drawdown_pct": 0.0792
+  },
+  {
+   "month": "2025-06",
+   "pnl": 1140.88,
+   "return_pct": 0.114,
+   "trades": 4,
+   "wins": 4,
+   "losses": 0,
+   "commission": 14.62,
+   "trading_days": 20,
+   "days_without_trades": 16,
+   "max_drawdown_pct": 0.0486
+  },
+  {
+   "month": "2025-07",
+   "pnl": 522.02,
+   "return_pct": 0.052,
+   "trades": 3,
+   "wins": 3,
+   "losses": 0,
+   "commission": 22.84,
+   "trading_days": 22,
+   "days_without_trades": 19,
+   "max_drawdown_pct": 0.0239
+  },
+  {
+   "month": "2025-08",
+   "pnl": 1331.87,
+   "return_pct": 0.133,
+   "trades": 10,
+   "wins": 7,
+   "losses": 3,
+   "commission": 38.25,
+   "trading_days": 21,
+   "days_without_trades": 16,
+   "max_drawdown_pct": 0.1279
+  },
+  {
+   "month": "2025-09",
+   "pnl": 1255.03,
+   "return_pct": 0.125,
+   "trades": 10,
+   "wins": 8,
+   "losses": 2,
+   "commission": 46.15,
+   "trading_days": 21,
+   "days_without_trades": 15,
+   "max_drawdown_pct": 0.0968
+  },
+  {
+   "month": "2025-10",
+   "pnl": -130.11,
+   "return_pct": -0.013,
+   "trades": 7,
+   "wins": 4,
+   "losses": 3,
+   "commission": 37.5,
+   "trading_days": 23,
+   "days_without_trades": 17,
+   "max_drawdown_pct": 0.1799
+  },
+  {
+   "month": "2025-11",
+   "pnl": -1201.53,
+   "return_pct": -0.119,
+   "trades": 9,
+   "wins": 6,
+   "losses": 3,
+   "commission": 22.98,
+   "trading_days": 19,
+   "days_without_trades": 12,
+   "max_drawdown_pct": 0.2706
+  },
+  {
+   "month": "2025-12",
+   "pnl": -967.35,
+   "return_pct": -0.096,
+   "trades": 5,
+   "wins": 3,
+   "losses": 2,
+   "commission": 24.71,
+   "trading_days": 22,
+   "days_without_trades": 18,
+   "max_drawdown_pct": 0.1127
+  },
+  {
+   "month": "2026-01",
+   "pnl": 2119.45,
+   "return_pct": 0.211,
+   "trades": 8,
+   "wins": 5,
+   "losses": 3,
+   "commission": 28.77,
+   "trading_days": 20,
+   "days_without_trades": 15,
+   "max_drawdown_pct": 0.1289
+  },
+  {
+   "month": "2026-02",
+   "pnl": 2942.38,
+   "return_pct": 0.292,
+   "trades": 8,
+   "wins": 8,
+   "losses": 0,
+   "commission": 23.47,
+   "trading_days": 19,
+   "days_without_trades": 11,
+   "max_drawdown_pct": 0.0485
+  },
+  {
+   "month": "2026-03",
+   "pnl": -3787.27,
+   "return_pct": -0.375,
+   "trades": 8,
+   "wins": 1,
+   "losses": 7,
+   "commission": 27.06,
+   "trading_days": 22,
+   "days_without_trades": 15,
+   "max_drawdown_pct": 0.4845
+  },
+  {
+   "month": "2026-04",
+   "pnl": 1839.06,
+   "return_pct": 0.183,
+   "trades": 6,
+   "wins": 5,
+   "losses": 1,
+   "commission": 27.35,
+   "trading_days": 21,
+   "days_without_trades": 17,
+   "max_drawdown_pct": 0.0819
+  },
+  {
+   "month": "2026-05",
+   "pnl": -43.26,
+   "return_pct": -0.004,
+   "trades": 6,
+   "wins": 4,
+   "losses": 2,
+   "commission": 36.17,
+   "trading_days": 20,
+   "days_without_trades": 15,
+   "max_drawdown_pct": 0.1
+  },
+  {
+   "month": "2026-06",
+   "pnl": 1086.91,
+   "return_pct": 0.108,
+   "trades": 9,
+   "wins": 7,
+   "losses": 2,
+   "commission": 31.19,
+   "trading_days": 21,
+   "days_without_trades": 15,
+   "max_drawdown_pct": 0.1959
+  },
+  {
+   "month": "2026-07",
+   "pnl": 5031.01,
+   "return_pct": 0.499,
+   "trades": 10,
+   "wins": 10,
+   "losses": 0,
+   "commission": 40.36,
+   "trading_days": 22,
+   "days_without_trades": 13,
+   "max_drawdown_pct": 0.132
+  },
+  {
+   "month": "2026-08",
+   "pnl": 820.68,
+   "return_pct": 0.081,
+   "trades": 8,
+   "wins": 6,
+   "losses": 2,
+   "commission": 36.84,
+   "trading_days": 21,
+   "days_without_trades": 14,
+   "max_drawdown_pct": 0.1204
+  },
+  {
+   "month": "2026-09",
+   "pnl": -1980.73,
+   "return_pct": -0.195,
+   "trades": 8,
+   "wins": 4,
+   "losses": 4,
+   "commission": 34.01,
+   "trading_days": 21,
+   "days_without_trades": 16,
+   "max_drawdown_pct": 0.2218
+  },
+  {
+   "month": "2026-10",
+   "pnl": 328.06,
+   "return_pct": 0.032,
+   "trades": 2,
+   "wins": 1,
+   "losses": 1,
+   "commission": 6.13,
+   "trading_days": 1,
+   "days_without_trades": 0,
+   "max_drawdown_pct": 0.0
+  }
+ ],
+ "by_symbol": [
+  {
+   "key": "XLU",
+   "trades": 13,
+   "net_pnl": 2999.03,
+   "win_rate_pct": 84.6
+  },
+  {
+   "key": "XLI",
+   "trades": 20,
+   "net_pnl": 2685.95,
+   "win_rate_pct": 80.0
+  },
+  {
+   "key": "XLY",
+   "trades": 13,
+   "net_pnl": 2371.36,
+   "win_rate_pct": 69.2
+  },
+  {
+   "key": "XLK",
+   "trades": 18,
+   "net_pnl": 1821.65,
+   "win_rate_pct": 72.2
+  },
+  {
+   "key": "XLE",
+   "trades": 13,
+   "net_pnl": 1572.46,
+   "win_rate_pct": 76.9
+  },
+  {
+   "key": "XLB",
+   "trades": 11,
+   "net_pnl": -1270.59,
+   "win_rate_pct": 45.5
+  },
+  {
+   "key": "XLRE",
+   "trades": 8,
+   "net_pnl": 1232.2,
+   "win_rate_pct": 75.0
+  },
+  {
+   "key": "XLV",
+   "trades": 10,
+   "net_pnl": 570.11,
+   "win_rate_pct": 70.0
+  },
+  {
+   "key": "XLF",
+   "trades": 18,
+   "net_pnl": 494.46,
+   "win_rate_pct": 72.2
+  },
+  {
+   "key": "XLC",
+   "trades": 11,
+   "net_pnl": 436.39,
+   "win_rate_pct": 72.7
+  },
+  {
+   "key": "XLP",
+   "trades": 10,
+   "net_pnl": 373.32,
+   "win_rate_pct": 70.0
+  }
+ ],
+ "by_exit_reason": [
+  {
+   "key": "exit signal: price above SMA",
+   "trades": 122,
+   "net_pnl": 34192.62,
+   "win_rate_pct": 86.1
+  },
+  {
+   "key": "initial stop",
+   "trades": 23,
+   "net_pnl": -20906.28,
+   "win_rate_pct": 0.0
+  }
+ ],
+ "funnel": {
+  "pass": 161,
+  "P1": 7680,
+  "T1": 3435
+ },
+ "stress": {
+  "multiplier": 3,
+  "half_spread_bps": 6.0,
+  "slippage_bps": 6.0,
+  "net_pnl": 6404.22,
+  "total_return_pct": 0.6404,
+  "completed_trades": 145,
+  "max_drawdown_pct": 0.5859,
+  "total_slippage": 10267.0,
+  "profit_factor": 1.24
+ },
+ "definitions": {
+  "starting_capital": "Cash the simulation started with (USD).",
+  "ending_equity": "Cash plus open positions valued at their last price, at the end of the test (USD).",
+  "net_pnl": "Ending equity minus starting capital: the overall result after all costs (USD).",
+  "total_return_pct": "Net P&L as a percentage of starting capital.",
+  "realized_pnl": "Profit or loss locked in by sales during the test, after commissions (USD).",
+  "unrealized_pnl": "Paper profit or loss on positions still open at the end, at their last price (USD).",
+  "gross_profits": "Sum of the net results of all winning completed trades (USD).",
+  "gross_losses": "Sum of the net results of all losing completed trades (USD, shown negative).",
+  "completed_trades": "Round trips that were fully closed during the test. A position sold in pieces counts once.",
+  "open_positions_end": "Positions still held when the test ended.",
+  "winning_trades": "Completed trades with a net result above zero.",
+  "losing_trades": "Completed trades with a net result below zero.",
+  "breakeven_trades": "Completed trades with a net result of exactly zero (to the cent).",
+  "win_rate_pct": "Winning trades as a percentage of completed trades.",
+  "avg_win": "Average net result of the winning trades (USD).",
+  "avg_loss": "Average net result of the losing trades (USD).",
+  "largest_win": "Best single completed trade (USD).",
+  "largest_loss": "Worst single completed trade (USD).",
+  "profit_factor": "Gross profits divided by the absolute value of gross losses. Above 1 means winners outweighed losers.",
+  "expectancy": "Average net result per completed trade (USD).",
+  "avg_r": "Average result per trade in R, where 1R is the money that would have been lost at the initial stop.",
+  "max_drawdown_pct": "Largest percentage fall in equity from a previous peak, measured every 5 minutes.",
+  "max_drawdown_usd": "The same largest fall, in dollars.",
+  "avg_holding_minutes": "Average time between the first entry fill and the final exit (minutes).",
+  "total_commission": "All simulated commissions (IBKR Fixed pricing model, USD).",
+  "total_slippage": "Estimated cost of spread and slippage, already included in the fill prices (USD).",
+  "cost_share_of_gross_pct": "Commissions plus slippage as a percentage of the absolute gross (pre-cost) P&L.",
+  "avg_exposure_pct": "Average value of open positions as a percentage of equity, across all 5-minute marks.",
+  "max_exposure_pct": "Highest value of open positions as a percentage of equity.",
+  "time_in_market_pct": "Share of 5-minute marks with at least one open position.",
+  "max_concurrent_positions": "Most positions held at the same time.",
+  "max_consecutive_losses": "Longest run of losing completed trades in a row.",
+  "top3_share_of_net_pct": "Net P&L of the three best trades as a percentage of total net P&L (shows dependence on a few trades).",
+  "daily_volatility_pct": "Standard deviation of daily returns (percent of the day's starting equity).",
+  "sharpe_like": "Average daily return divided by its standard deviation, times the square root of 252. A rough risk-adjusted figure; not reliable on short samples.",
+  "benchmark_return_pct": "Buy-and-hold return of the benchmark ETF over the same days (first open to last close).",
+  "mean_trade_ci95": "Range that would contain the average trade result in 95% of bootstrap resamples of the trades. If it includes 0, the average could plausibly be zero.",
+  "days_with_trades": "Trading days on which at least one trade was completed.",
+  "days_without_trades": "Trading days with data but no completed trade."
+ },
+ "benchmark_symbol": "SPY",
+ "benchmark_series": [
+  [
+   "2025-01-02",
+   589.39
+  ],
+  [
+   "2025-01-02",
+   584.64
+  ],
+  [
+   "2025-01-03",
+   591.95
+  ],
+  [
+   "2025-01-06",
+   595.36
+  ],
+  [
+   "2025-01-07",
+   588.63
+  ],
+  [
+   "2025-01-08",
+   589.49
+  ],
+  [
+   "2025-01-10",
+   580.49
+  ],
+  [
+   "2025-01-13",
+   581.39
+  ],
+  [
+   "2025-01-14",
+   582.19
+  ],
+  [
+   "2025-01-15",
+   592.78
+  ],
+  [
+   "2025-01-16",
+   591.64
+  ],
+  [
+   "2025-01-17",
+   597.58
+  ],
+  [
+   "2025-01-21",
+   603.05
+  ],
+  [
+   "2025-01-22",
+   606.44
+  ],
+  [
+   "2025-01-23",
+   609.75
+  ],
+  [
+   "2025-01-24",
+   607.97
+  ],
+  [
+   "2025-01-27",
+   599.37
+  ],
+  [
+   "2025-01-28",
+   604.52
+  ],
+  [
+   "2025-01-29",
+   601.81
+  ],
+  [
+   "2025-01-30",
+   605.04
+  ],
+  [
+   "2025-01-31",
+   601.82
+  ],
+  [
+   "2025-02-03",
+   597.77
+  ],
+  [
+   "2025-02-04",
+   601.78
+  ],
+  [
+   "2025-02-05",
+   604.22
+  ],
+  [
+   "2025-02-06",
+   606.32
+  ],
+  [
+   "2025-02-07",
+   600.77
+  ],
+  [
+   "2025-02-10",
+   604.85
+  ],
+  [
+   "2025-02-11",
+   605.31
+  ],
+  [
+   "2025-02-12",
+   603.36
+  ],
+  [
+   "2025-02-13",
+   609.73
+  ],
+  [
+   "2025-02-14",
+   609.7
+  ],
+  [
+   "2025-02-18",
+   611.49
+  ],
+  [
+   "2025-02-19",
+   612.93
+  ],
+  [
+   "2025-02-20",
+   610.38
+  ],
+  [
+   "2025-02-21",
+   599.94
+  ],
+  [
+   "2025-02-24",
+   597.21
+  ],
+  [
+   "2025-02-25",
+   594.24
+  ],
+  [
+   "2025-02-26",
+   594.54
+  ],
+  [
+   "2025-02-27",
+   585.05
+  ],
+  [
+   "2025-02-28",
+   594.18
+  ],
+  [
+   "2025-03-03",
+   583.77
+  ],
+  [
+   "2025-03-04",
+   576.86
+  ],
+  [
+   "2025-03-05",
+   583.06
+  ],
+  [
+   "2025-03-06",
+   572.71
+  ],
+  [
+   "2025-03-07",
+   575.92
+  ],
+  [
+   "2025-03-10",
+   560.58
+  ],
+  [
+   "2025-03-11",
+   555.92
+  ],
+  [
+   "2025-03-12",
+   558.87
+  ],
+  [
+   "2025-03-13",
+   551.42
+  ],
+  [
+   "2025-03-14",
+   562.81
+  ],
+  [
+   "2025-03-17",
+   567.15
+  ],
+  [
+   "2025-03-18",
+   561.02
+  ],
+  [
+   "2025-03-19",
+   567.13
+  ],
+  [
+   "2025-03-20",
+   565.49
+  ],
+  [
+   "2025-03-21",
+   563.98
+  ],
+  [
+   "2025-03-24",
+   574.08
+  ],
+  [
+   "2025-03-25",
+   575.46
+  ],
+  [
+   "2025-03-26",
+   568.59
+  ],
+  [
+   "2025-03-27",
+   567.08
+  ],
+  [
+   "2025-03-28",
+   555.66
+  ],
+  [
+   "2025-03-31",
+   559.39
+  ],
+  [
+   "2025-04-01",
+   560.97
+  ],
+  [
+   "2025-04-02",
+   564.52
+  ],
+  [
+   "2025-04-03",
+   536.7
+  ],
+  [
+   "2025-04-04",
+   505.28
+  ],
+  [
+   "2025-04-07",
+   504.38
+  ],
+  [
+   "2025-04-08",
+   496.48
+  ],
+  [
+   "2025-04-09",
+   548.62
+  ],
+  [
+   "2025-04-10",
+   524.58
+  ],
+  [
+   "2025-04-11",
+   533.94
+  ],
+  [
+   "2025-04-14",
+   539.12
+  ],
+  [
+   "2025-04-15",
+   537.61
+  ],
+  [
+   "2025-04-16",
+   525.66
+  ],
+  [
+   "2025-04-17",
+   526.41
+  ],
+  [
+   "2025-04-21",
+   513.88
+  ],
+  [
+   "2025-04-22",
+   527.25
+  ],
+  [
+   "2025-04-23",
+   535.42
+  ],
+  [
+   "2025-04-24",
+   546.69
+  ],
+  [
+   "2025-04-25",
+   550.64
+  ],
+  [
+   "2025-04-28",
+   550.85
+  ],
+  [
+   "2025-04-29",
+   554.32
+  ],
+  [
+   "2025-04-30",
+   554.54
+  ],
+  [
+   "2025-05-01",
+   558.47
+  ],
+  [
+   "2025-05-02",
+   566.76
+  ],
+  [
+   "2025-05-05",
+   563.51
+  ],
+  [
+   "2025-05-06",
+   558.8
+  ],
+  [
+   "2025-05-07",
+   561.15
+  ],
+  [
+   "2025-05-08",
+   565.06
+  ],
+  [
+   "2025-05-09",
+   564.34
+  ],
+  [
+   "2025-05-12",
+   582.99
+  ],
+  [
+   "2025-05-13",
+   586.84
+  ],
+  [
+   "2025-05-14",
+   587.59
+  ],
+  [
+   "2025-05-15",
+   590.46
+  ],
+  [
+   "2025-05-16",
+   594.2
+  ],
+  [
+   "2025-05-19",
+   594.85
+  ],
+  [
+   "2025-05-20",
+   592.85
+  ],
+  [
+   "2025-05-21",
+   582.86
+  ],
+  [
+   "2025-05-22",
+   583.09
+  ],
+  [
+   "2025-05-23",
+   579.11
+  ],
+  [
+   "2025-05-27",
+   591.15
+  ],
+  [
+   "2025-05-28",
+   587.73
+  ],
+  [
+   "2025-05-29",
+   590.05
+  ],
+  [
+   "2025-05-30",
+   589.39
+  ],
+  [
+   "2025-06-02",
+   592.71
+  ],
+  [
+   "2025-06-03",
+   596.09
+  ],
+  [
+   "2025-06-04",
+   595.93
+  ],
+  [
+   "2025-06-05",
+   593.05
+  ],
+  [
+   "2025-06-06",
+   599.14
+  ],
+  [
+   "2025-06-09",
+   599.68
+  ],
+  [
+   "2025-06-10",
+   603.08
+  ],
+  [
+   "2025-06-11",
+   601.36
+  ],
+  [
+   "2025-06-12",
+   603.75
+  ],
+  [
+   "2025-06-13",
+   597.0
+  ],
+  [
+   "2025-06-16",
+   602.68
+  ],
+  [
+   "2025-06-17",
+   597.53
+  ],
+  [
+   "2025-06-18",
+   597.44
+  ],
+  [
+   "2025-06-20",
+   594.28
+  ],
+  [
+   "2025-06-23",
+   600.15
+  ],
+  [
+   "2025-06-24",
+   606.78
+  ],
+  [
+   "2025-06-25",
+   607.12
+  ],
+  [
+   "2025-06-26",
+   611.87
+  ],
+  [
+   "2025-06-27",
+   614.91
+  ],
+  [
+   "2025-06-30",
+   617.85
+  ],
+  [
+   "2025-07-01",
+   617.65
+  ],
+  [
+   "2025-07-02",
+   620.45
+  ],
+  [
+   "2025-07-03",
+   625.34
+  ],
+  [
+   "2025-07-07",
+   620.68
+  ],
+  [
+   "2025-07-08",
+   620.34
+  ],
+  [
+   "2025-07-09",
+   624.06
+  ],
+  [
+   "2025-07-10",
+   625.82
+  ],
+  [
+   "2025-07-11",
+   623.62
+  ],
+  [
+   "2025-07-14",
+   624.81
+  ],
+  [
+   "2025-07-15",
+   622.14
+  ],
+  [
+   "2025-07-16",
+   624.22
+  ],
+  [
+   "2025-07-17",
+   628.04
+  ],
+  [
+   "2025-07-18",
+   627.58
+  ],
+  [
+   "2025-07-21",
+   628.77
+  ],
+  [
+   "2025-07-22",
+   628.86
+  ],
+  [
+   "2025-07-23",
+   634.21
+  ],
+  [
+   "2025-07-24",
+   634.42
+  ],
+  [
+   "2025-07-25",
+   637.1
+  ],
+  [
+   "2025-07-28",
+   636.94
+  ],
+  [
+   "2025-07-29",
+   635.26
+  ],
+  [
+   "2025-07-30",
+   634.46
+  ],
+  [
+   "2025-07-31",
+   632.08
+  ],
+  [
+   "2025-08-01",
+   621.72
+  ],
+  [
+   "2025-08-04",
+   631.17
+  ],
+  [
+   "2025-08-05",
+   627.97
+  ],
+  [
+   "2025-08-06",
+   632.78
+  ],
+  [
+   "2025-08-07",
+   632.25
+  ],
+  [
+   "2025-08-08",
+   637.18
+  ],
+  [
+   "2025-08-11",
+   635.92
+  ],
+  [
+   "2025-08-12",
+   642.69
+  ],
+  [
+   "2025-08-13",
+   644.89
+  ],
+  [
+   "2025-08-14",
+   644.95
+  ],
+  [
+   "2025-08-15",
+   643.44
+  ],
+  [
+   "2025-08-18",
+   643.3
+  ],
+  [
+   "2025-08-19",
+   639.81
+  ],
+  [
+   "2025-08-20",
+   638.11
+  ],
+  [
+   "2025-08-21",
+   635.55
+  ],
+  [
+   "2025-08-22",
+   645.31
+  ],
+  [
+   "2025-08-25",
+   642.47
+  ],
+  [
+   "2025-08-26",
+   645.16
+  ],
+  [
+   "2025-08-27",
+   646.63
+  ],
+  [
+   "2025-08-28",
+   648.92
+  ],
+  [
+   "2025-08-29",
+   645.05
+  ],
+  [
+   "2025-09-02",
+   640.27
+  ],
+  [
+   "2025-09-03",
+   643.74
+  ],
+  [
+   "2025-09-04",
+   649.12
+  ],
+  [
+   "2025-09-05",
+   647.24
+  ],
+  [
+   "2025-09-08",
+   648.83
+  ],
+  [
+   "2025-09-09",
+   650.33
+  ],
+  [
+   "2025-09-10",
+   652.21
+  ],
+  [
+   "2025-09-11",
+   657.63
+  ],
+  [
+   "2025-09-12",
+   657.41
+  ],
+  [
+   "2025-09-15",
+   660.91
+  ],
+  [
+   "2025-09-16",
+   660.0
+  ],
+  [
+   "2025-09-17",
+   659.18
+  ],
+  [
+   "2025-09-18",
+   662.26
+  ],
+  [
+   "2025-09-19",
+   663.7
+  ],
+  [
+   "2025-09-22",
+   666.84
+  ],
+  [
+   "2025-09-23",
+   663.21
+  ],
+  [
+   "2025-09-24",
+   661.1
+  ],
+  [
+   "2025-09-25",
+   658.05
+  ],
+  [
+   "2025-09-26",
+   661.82
+  ],
+  [
+   "2025-09-29",
+   663.68
+  ],
+  [
+   "2025-09-30",
+   666.18
+  ],
+  [
+   "2025-10-01",
+   668.45
+  ],
+  [
+   "2025-10-02",
+   669.22
+  ],
+  [
+   "2025-10-03",
+   669.21
+  ],
+  [
+   "2025-10-06",
+   671.61
+  ],
+  [
+   "2025-10-07",
+   669.12
+  ],
+  [
+   "2025-10-08",
+   673.11
+  ],
+  [
+   "2025-10-09",
+   671.16
+  ],
+  [
+   "2025-10-10",
+   653.02
+  ],
+  [
+   "2025-10-13",
+   663.04
+  ],
+  [
+   "2025-10-14",
+   662.23
+  ],
+  [
+   "2025-10-15",
+   665.17
+  ],
+  [
+   "2025-10-16",
+   660.64
+  ],
+  [
+   "2025-10-17",
+   664.39
+  ],
+  [
+   "2025-10-20",
+   671.3
+  ],
+  [
+   "2025-10-21",
+   671.29
+  ],
+  [
+   "2025-10-22",
+   667.8
+  ],
+  [
+   "2025-10-23",
+   671.76
+  ],
+  [
+   "2025-10-24",
+   677.25
+  ],
+  [
+   "2025-10-27",
+   685.24
+  ],
+  [
+   "2025-10-28",
+   687.06
+  ],
+  [
+   "2025-10-29",
+   687.39
+  ],
+  [
+   "2025-10-30",
+   679.83
+  ],
+  [
+   "2025-10-31",
+   682.06
+  ],
+  [
+   "2025-11-03",
+   683.34
+  ],
+  [
+   "2025-11-04",
+   675.24
+  ],
+  [
+   "2025-11-05",
+   677.58
+  ],
+  [
+   "2025-11-06",
+   670.31
+  ],
+  [
+   "2025-11-07",
+   670.97
+  ],
+  [
+   "2025-11-10",
+   681.44
+  ],
+  [
+   "2025-11-11",
+   683.0
+  ],
+  [
+   "2025-11-12",
+   683.38
+  ],
+  [
+   "2025-11-13",
+   672.04
+  ],
+  [
+   "2025-11-14",
+   671.93
+  ],
+  [
+   "2025-11-17",
+   665.67
+  ],
+  [
+   "2025-11-18",
+   660.08
+  ],
+  [
+   "2025-11-19",
+   662.63
+  ],
+  [
+   "2025-11-20",
+   652.53
+  ],
+  [
+   "2025-11-21",
+   659.03
+  ],
+  [
+   "2025-11-24",
+   668.73
+  ],
+  [
+   "2025-11-25",
+   675.02
+  ],
+  [
+   "2025-11-26",
+   679.68
+  ],
+  [
+   "2025-11-28",
+   683.39
+  ],
+  [
+   "2025-12-01",
+   680.27
+  ],
+  [
+   "2025-12-02",
+   681.53
+  ],
+  [
+   "2025-12-03",
+   683.89
+  ],
+  [
+   "2025-12-04",
+   684.39
+  ],
+  [
+   "2025-12-05",
+   685.69
+  ],
+  [
+   "2025-12-08",
+   683.63
+  ],
+  [
+   "2025-12-09",
+   683.04
+  ],
+  [
+   "2025-12-10",
+   687.57
+  ],
+  [
+   "2025-12-11",
+   689.17
+  ],
+  [
+   "2025-12-12",
+   681.76
+  ],
+  [
+   "2025-12-15",
+   680.73
+  ],
+  [
+   "2025-12-16",
+   678.87
+  ],
+  [
+   "2025-12-17",
+   671.4
+  ],
+  [
+   "2025-12-18",
+   676.47
+  ],
+  [
+   "2025-12-19",
+   680.59
+  ],
+  [
+   "2025-12-22",
+   684.83
+  ],
+  [
+   "2025-12-23",
+   687.96
+  ],
+  [
+   "2025-12-24",
+   690.38
+  ],
+  [
+   "2025-12-26",
+   690.31
+  ],
+  [
+   "2025-12-29",
+   687.85
+  ],
+  [
+   "2025-12-30",
+   687.01
+  ],
+  [
+   "2025-12-31",
+   681.92
+  ],
+  [
+   "2026-01-02",
+   683.17
+  ],
+  [
+   "2026-01-05",
+   687.72
+  ],
+  [
+   "2026-01-06",
+   691.81
+  ],
+  [
+   "2026-01-07",
+   689.58
+  ],
+  [
+   "2026-01-08",
+   689.51
+  ],
+  [
+   "2026-01-09",
+   694.07
+  ],
+  [
+   "2026-01-12",
+   695.16
+  ],
+  [
+   "2026-01-13",
+   693.77
+  ],
+  [
+   "2026-01-14",
+   690.36
+  ],
+  [
+   "2026-01-15",
+   692.24
+  ],
+  [
+   "2026-01-16",
+   691.66
+  ],
+  [
+   "2026-01-20",
+   677.58
+  ],
+  [
+   "2026-01-21",
+   685.4
+  ],
+  [
+   "2026-01-22",
+   688.98
+  ],
+  [
+   "2026-01-23",
+   689.23
+  ],
+  [
+   "2026-01-26",
+   692.73
+  ],
+  [
+   "2026-01-27",
+   695.49
+  ],
+  [
+   "2026-01-28",
+   695.42
+  ],
+  [
+   "2026-01-29",
+   694.04
+  ],
+  [
+   "2026-01-30",
+   691.97
+  ],
+  [
+   "2026-02-02",
+   695.41
+  ],
+  [
+   "2026-02-03",
+   689.53
+  ],
+  [
+   "2026-02-04",
+   686.19
+  ],
+  [
+   "2026-02-05",
+   677.62
+  ],
+  [
+   "2026-02-06",
+   690.62
+  ],
+  [
+   "2026-02-09",
+   693.95
+  ],
+  [
+   "2026-02-10",
+   692.12
+  ],
+  [
+   "2026-02-11",
+   691.96
+  ],
+  [
+   "2026-02-12",
+   681.27
+  ],
+  [
+   "2026-02-13",
+   681.75
+  ],
+  [
+   "2026-02-17",
+   682.85
+  ],
+  [
+   "2026-02-18",
+   686.29
+  ],
+  [
+   "2026-02-19",
+   684.48
+  ],
+  [
+   "2026-02-20",
+   689.43
+  ],
+  [
+   "2026-02-23",
+   682.39
+  ],
+  [
+   "2026-02-24",
+   687.35
+  ],
+  [
+   "2026-02-25",
+   693.15
+  ],
+  [
+   "2026-02-26",
+   689.3
+  ],
+  [
+   "2026-02-27",
+   685.99
+  ],
+  [
+   "2026-03-02",
+   686.38
+  ],
+  [
+   "2026-03-03",
+   680.33
+  ],
+  [
+   "2026-03-04",
+   685.13
+  ],
+  [
+   "2026-03-05",
+   681.31
+  ],
+  [
+   "2026-03-06",
+   672.38
+  ],
+  [
+   "2026-03-09",
+   678.27
+  ],
+  [
+   "2026-03-10",
+   677.18
+  ],
+  [
+   "2026-03-11",
+   676.33
+  ],
+  [
+   "2026-03-12",
+   666.06
+  ],
+  [
+   "2026-03-13",
+   662.29
+  ],
+  [
+   "2026-03-16",
+   669.03
+  ],
+  [
+   "2026-03-17",
+   670.79
+  ],
+  [
+   "2026-03-18",
+   661.43
+  ],
+  [
+   "2026-03-19",
+   659.8
+  ],
+  [
+   "2026-03-20",
+   648.57
+  ],
+  [
+   "2026-03-23",
+   655.38
+  ],
+  [
+   "2026-03-24",
+   653.18
+  ],
+  [
+   "2026-03-25",
+   656.82
+  ],
+  [
+   "2026-03-26",
+   645.09
+  ],
+  [
+   "2026-03-27",
+   634.09
+  ],
+  [
+   "2026-03-30",
+   631.97
+  ],
+  [
+   "2026-03-31",
+   650.34
+  ],
+  [
+   "2026-04-01",
+   655.24
+  ],
+  [
+   "2026-04-02",
+   655.83
+  ],
+  [
+   "2026-04-06",
+   658.93
+  ],
+  [
+   "2026-04-07",
+   659.22
+  ],
+  [
+   "2026-04-08",
+   676.01
+  ],
+  [
+   "2026-04-09",
+   679.91
+  ],
+  [
+   "2026-04-10",
+   679.46
+  ],
+  [
+   "2026-04-13",
+   686.1
+  ],
+  [
+   "2026-04-14",
+   694.46
+  ],
+  [
+   "2026-04-15",
+   699.94
+  ],
+  [
+   "2026-04-16",
+   701.66
+  ],
+  [
+   "2026-04-17",
+   710.14
+  ],
+  [
+   "2026-04-20",
+   708.72
+  ],
+  [
+   "2026-04-21",
+   704.08
+  ],
+  [
+   "2026-04-22",
+   711.21
+  ],
+  [
+   "2026-04-23",
+   708.45
+  ],
+  [
+   "2026-04-24",
+   713.94
+  ],
+  [
+   "2026-04-27",
+   715.17
+  ],
+  [
+   "2026-04-28",
+   711.69
+  ],
+  [
+   "2026-04-29",
+   711.58
+  ],
+  [
+   "2026-04-30",
+   718.66
+  ],
+  [
+   "2026-05-01",
+   720.65
+  ],
+  [
+   "2026-05-04",
+   718.01
+  ],
+  [
+   "2026-05-05",
+   723.77
+  ],
+  [
+   "2026-05-06",
+   733.83
+  ],
+  [
+   "2026-05-07",
+   731.58
+  ],
+  [
+   "2026-05-08",
+   737.62
+  ],
+  [
+   "2026-05-11",
+   739.3
+  ],
+  [
+   "2026-05-12",
+   738.18
+  ],
+  [
+   "2026-05-13",
+   742.31
+  ],
+  [
+   "2026-05-14",
+   748.17
+  ],
+  [
+   "2026-05-15",
+   739.17
+  ],
+  [
+   "2026-05-18",
+   738.65
+  ],
+  [
+   "2026-05-19",
+   733.73
+  ],
+  [
+   "2026-05-20",
+   741.25
+  ],
+  [
+   "2026-05-21",
+   742.72
+  ],
+  [
+   "2026-05-22",
+   745.64
+  ],
+  [
+   "2026-05-26",
+   750.59
+  ],
+  [
+   "2026-05-27",
+   750.46
+  ],
+  [
+   "2026-05-28",
+   754.6
+  ],
+  [
+   "2026-05-29",
+   756.48
+  ],
+  [
+   "2026-06-01",
+   758.54
+  ],
+  [
+   "2026-06-02",
+   759.57
+  ],
+  [
+   "2026-06-03",
+   754.24
+  ],
+  [
+   "2026-06-04",
+   757.09
+  ],
+  [
+   "2026-06-05",
+   737.55
+  ],
+  [
+   "2026-06-08",
+   739.22
+  ],
+  [
+   "2026-06-09",
+   737.05
+  ],
+  [
+   "2026-06-10",
+   725.43
+  ],
+  [
+   "2026-06-11",
+   737.76
+  ],
+  [
+   "2026-06-12",
+   741.75
+  ],
+  [
+   "2026-06-15",
+   754.83
+  ],
+  [
+   "2026-06-16",
+   750.33
+  ],
+  [
+   "2026-06-17",
+   740.96
+  ],
+  [
+   "2026-06-18",
+   746.74
+  ],
+  [
+   "2026-06-22",
+   744.39
+  ],
+  [
+   "2026-06-23",
+   733.58
+  ],
+  [
+   "2026-06-24",
+   733.24
+  ],
+  [
+   "2026-06-25",
+   734.3
+  ],
+  [
+   "2026-06-26",
+   728.99
+  ],
+  [
+   "2026-06-29",
+   741.0
+  ],
+  [
+   "2026-06-30",
+   746.77
+  ],
+  [
+   "2026-07-01",
+   745.76
+  ],
+  [
+   "2026-07-02",
+   744.78
+  ],
+  [
+   "2026-07-06",
+   751.28
+  ],
+  [
+   "2026-07-07",
+   747.71
+  ],
+  [
+   "2026-07-08",
+   745.4
+  ],
+  [
+   "2026-07-09",
+   751.71
+  ],
+  [
+   "2026-07-10",
+   754.95
+  ],
+  [
+   "2026-07-13",
+   749.17
+  ],
+  [
+   "2026-07-14",
+   751.83
+  ],
+  [
+   "2026-07-15",
+   754.81
+  ],
+  [
+   "2026-07-16",
+   750.72
+  ],
+  [
+   "2026-07-17",
+   743.29
+  ],
+  [
+   "2026-07-20",
+   742.09
+  ],
+  [
+   "2026-07-21",
+   748.28
+  ],
+  [
+   "2026-07-22",
+   747.41
+  ],
+  [
+   "2026-07-23",
+   738.18
+  ],
+  [
+   "2026-07-24",
+   738.93
+  ],
+  [
+   "2026-07-27",
+   739.09
+  ],
+  [
+   "2026-07-28",
+   740.86
+  ],
+  [
+   "2026-07-29",
+   729.46
+  ],
+  [
+   "2026-07-30",
+   741.69
+  ],
+  [
+   "2026-07-31",
+   747.03
+  ],
+  [
+   "2026-08-03",
+   757.67
+  ],
+  [
+   "2026-08-04",
+   771.33
+  ],
+  [
+   "2026-08-05",
+   769.79
+  ],
+  [
+   "2026-08-06",
+   768.56
+  ],
+  [
+   "2026-08-07",
+   773.26
+  ],
+  [
+   "2026-08-10",
+   773.03
+  ],
+  [
+   "2026-08-11",
+   770.56
+  ],
+  [
+   "2026-08-12",
+   772.49
+  ],
+  [
+   "2026-08-13",
+   777.88
+  ],
+  [
+   "2026-08-14",
+   776.34
+  ],
+  [
+   "2026-08-17",
+   772.67
+  ],
+  [
+   "2026-08-18",
+   767.45
+  ],
+  [
+   "2026-08-19",
+   769.06
+  ],
+  [
+   "2026-08-20",
+   762.6
+  ],
+  [
+   "2026-08-21",
+   765.72
+  ],
+  [
+   "2026-08-24",
+   763.47
+  ],
+  [
+   "2026-08-25",
+   765.91
+  ],
+  [
+   "2026-08-26",
+   766.08
+  ],
+  [
+   "2026-08-27",
+   771.1
+  ],
+  [
+   "2026-08-28",
+   769.35
+  ],
+  [
+   "2026-08-31",
+   767.05
+  ],
+  [
+   "2026-09-01",
+   761.78
+  ],
+  [
+   "2026-09-02",
+   765.16
+  ],
+  [
+   "2026-09-03",
+   773.17
+  ],
+  [
+   "2026-09-04",
+   770.19
+  ],
+  [
+   "2026-09-08",
+   765.96
+  ],
+  [
+   "2026-09-09",
+   762.4
+  ],
+  [
+   "2026-09-10",
+   757.83
+  ],
+  [
+   "2026-09-11",
+   764.29
+  ],
+  [
+   "2026-09-14",
+   760.88
+  ],
+  [
+   "2026-09-15",
+   757.39
+  ],
+  [
+   "2026-09-16",
+   754.05
+  ],
+  [
+   "2026-09-17",
+   762.6
+  ],
+  [
+   "2026-09-18",
+   761.69
+  ],
+  [
+   "2026-09-21",
+   773.5
+  ],
+  [
+   "2026-09-22",
+   773.38
+  ],
+  [
+   "2026-09-23",
+   767.81
+  ],
+  [
+   "2026-09-24",
+   767.18
+  ],
+  [
+   "2026-09-25",
+   771.35
+  ],
+  [
+   "2026-09-28",
+   765.61
+  ],
+  [
+   "2026-09-29",
+   764.2
+  ],
+  [
+   "2026-09-30",
+   762.63
+  ],
+  [
+   "2026-10-01",
+   763.99
+  ]
+ ],
+ "research_questions": [
+  {
+   "id": "sample_size",
+   "question": "Is the number of trades large enough to judge the strategy?",
+   "status": "ok",
+   "evidence": "145 completed trades; this project's minimum for an assessment is 30.",
+   "next_step": "Keep checking that results hold in each validation segment."
+  },
+  {
+   "id": "coverage",
+   "question": "Does the data cover enough market history and conditions?",
+   "status": "ok",
+   "evidence": "438 trading days (2025-01-02 to 2026-10-01), provider ibkr, data status warn, 0 symbol-days without 5-minute data.",
+   "next_step": "Test at least one full year, including a falling market, before relying on any result."
+  },
+  {
+   "id": "costs",
+   "question": "Are transaction costs a material part of the result?",
+   "status": "concern",
+   "evidence": "Commissions $593.79 and estimated spread/slippage $3,447.26 = 29.1% of the absolute gross P&L.",
+   "next_step": "Compare with the stress run below and with actual paper-trading fills."
+  },
+  {
+   "id": "concentration",
+   "question": "Are results concentrated in a few trades?",
+   "status": "ok",
+   "evidence": "The three best trades produced 24.0% of the net P&L.",
+   "next_step": "Check whether removing the best few trades changes the conclusion."
+  },
+  {
+   "id": "execution",
+   "question": "Is the result sensitive to the execution assumptions?",
+   "status": "concern",
+   "evidence": "Net P&L $13,225.08 with the default assumptions vs $6,404.22 with 3x spread and slippage.",
+   "next_step": "Measure real spreads and fills on the paper account and update the cost settings."
+  },
+  {
+   "id": "overfitting",
+   "question": "Do in-sample results carry over to unseen (out-of-sample) days?",
+   "status": "ok",
+   "evidence": "In-sample $6,196.67 over 76 trades; out-of-sample $4,896.73 over 37 trades.",
+   "next_step": "Treat a positive in-sample result that fails out-of-sample as a warning sign."
+  },
+  {
+   "id": "regimes",
+   "question": "Does performance vary a lot between periods (market regimes)?",
+   "status": "ok",
+   "evidence": "3 of 3 consecutive periods were profitable: 2025-01-02..2025-08-04: $4,458.74, 2025-08-05..2026-03-04: $5,405.30, 2026-03-05..2026-10-01: $3,361.04.",
+   "next_step": "Look at what the market did in the losing periods (trend, volatility)."
+  },
+  {
+   "id": "selection_bias",
+   "question": "Has this dataset been used to try many rule variants?",
+   "status": "ok",
+   "evidence": "1 rule variant(s) and 1 run(s) have been evaluated on this exact dataset.",
+   "next_step": "The more variants are tried on the same data, the more the best one is flattered by chance; confirm any choice on data not used to choose it."
+  },
+  {
+   "id": "intrabar",
+   "question": "How many trades depend on uncertain intrabar assumptions?",
+   "status": "ok",
+   "evidence": "0 ambiguous bar(s) (stop assumed first), 2 gap(s) through a stop, 0 entr(ies) filled below the stop, 0 partially filled entr(ies).",
+   "next_step": "1-minute data would settle most of these; the conservative choice already lowers results."
+  },
+  {
+   "id": "filters",
+   "question": "Which entry checks block the most candidates?",
+   "status": "info",
+   "evidence": "11276 evaluations of watchlist stocks; 161 passed. Most frequent blocking checks: P1 (7680), T1 (3435).",
+   "next_step": "A check that blocks almost everything may deserve an experiment, judged on validation data."
+  },
+  {
+   "id": "exits",
+   "question": "How do trades end?",
+   "status": "info",
+   "evidence": "exit signal: price above SMA: 122, initial stop: 23.",
+   "next_step": "Many initial-stop exits can mean entries are late or stops are tight; test both separately."
+  },
+  {
+   "id": "benchmark",
+   "question": "How does the result compare with simply holding the market?",
+   "status": "info",
+   "evidence": "Strategy 1.32% vs buy-and-hold SPY 29.62% over the same days, while the strategy was invested on average 2.9% of its equity.",
+   "next_step": "Returns are not risk-matched: the strategy is mostly in cash."
+  }
+ ],
+ "summary": [
+  "What it does: Macro Swing ETF (Multi-day sector pullbacks - holds positions overnight) trades 1d signals, holding overnight. Entries between 15:45 and 15:55 New York time need every check to pass (T1, P1); the initial stop is atr_multiple(period=14, multiple=2.0); exits: close_above_sma(period=5, at_et=15:50), time_stop(days=10, at_et=15:50).",
+  "Period tested: 2025-01-02 to 2026-10-01 (438 trading days; requested 2025-01-02 to 2026-10-01).",
+  "Data: ibkr, 11 of 11 symbols had daily data; 4818 symbol-days of 5m bars were used; data status: warn.",
+  "Simulated trades: 145 completed, 1 still open at the end.",
+  "Measured result: net P&L $13,225.08 (1.32% of $1,000,000.00 starting capital), win rate 72.4% of completed trades, profit factor 1.528.",
+  "Largest decline: 0.55% ($5,535.30) from a previous equity peak.",
+  "Costs: included. Commissions $593.79; estimated spread and slippage $3,447.26 are built into the fill prices.",
+  "Unseen data: the last part of the period was kept as an out-of-sample check: 37 trades, $4,896.73."
+ ],
+ "assessment": {
+  "computed_findings": [
+   "Over this period the simulation produced 145 completed trades and a net result of $13,225.08 after costs.",
+   "The bootstrap range of the average trade (-$2.77 to $182.01) includes zero: the average trade could plausibly be zero or negative."
+  ],
+  "concerns": [
+   "Are transaction costs a material part of the result? Commissions $593.79 and estimated spread/slippage $3,447.26 = 29.1% of the absolute gross P&L.",
+   "Is the result sensitive to the execution assumptions? Net P&L $13,225.08 with the default assumptions vs $6,404.22 with 3x spread and slippage."
+  ],
+  "not_established": [
+   "That the strategy will be profitable in the future: historical simulation results do not guarantee future performance.",
+   "That live fills would match the simulated fills (no historical bid/ask; fills are modelled).",
+   "That the result is statistically significant: no significance test is claimed here."
+  ],
+  "assumptions": [
+   "Quote proxy: ask/bid = last close +/- 2.0 bps; extra slippage 2.0 bps on market-like fills.",
+   "Ambiguous bars: when a stop and a profit target could both have been reached in one bar, the stop is assumed first (conservative).",
+   "Timing: an order can fill only in bars that start after it was sent (a pass at 10:05:03 fills from the 10:10 bar; a force close sent at 15:51 on 5-minute bars sells at the 15:55 open). A stop raised during a bar applies from the next bar. The bot replaces an unfilled exit at the next pass, so an exit in practice fills at the next bar's open or not at all (pessimistic for exits a live order would have filled within its first minutes).",
+   "Buying power: cash x 1.0 (the paper account's margin may allow more).",
+   "Universe: today's index members from the fallback list, so stocks that left the index are missing (survivorship bias, usually flattering)."
+  ],
+  "data_sufficiency": "438 trading days and 145 trades. This is a reasonable length for a first look, but not proof.",
+  "costs_and_execution": "With 3x spread and slippage the net result would be $6,404.22 instead of $13,225.08 (commissions unchanged).",
+  "further_tests": [
+   "Compare with the stress run below and with actual paper-trading fills.",
+   "Measure real spreads and fills on the paper account and update the cost settings."
+  ],
+  "label": "Automated interpretation: generated by fixed rules from the metrics and validation results above. It is not investment advice and not a statistical test."
+ },
+ "rules_explained": [
+  {
+   "key": "label",
+   "value": "Macro Swing ETF",
+   "label": "Strategy",
+   "explanation": "Multi-day sector pullbacks - holds positions overnight"
+  },
+  {
+   "key": "timeframe",
+   "value": "1d",
+   "label": "Timeframe",
+   "explanation": "Signals use completed daily bars and today's price near the close."
+  },
+  {
+   "key": "holding",
+   "value": "multi_day",
+   "label": "Holding period",
+   "explanation": "Positions are held overnight on a protective stop until an exit signal."
+  },
+  {
+   "key": "universe.symbols",
+   "value": "XLK, XLF, XLE, XLV, XLI, XLY, XLP, XLU, XLB, XLRE, XLC",
+   "label": "Universe",
+   "explanation": "These symbols are scanned."
+  },
+  {
+   "key": "time_filter.earliest_entry_et",
+   "value": "15:45",
+   "label": "First entry time",
+   "explanation": "No entries before 15:45 New York time."
+  },
+  {
+   "key": "time_filter.latest_entry_et",
+   "value": "15:55",
+   "label": "Last entry time",
+   "explanation": "No new entries after 15:55; unfilled entry orders expire a minute later."
+  },
+  {
+   "key": "time_filter.force_close_et",
+   "value": "none",
+   "label": "Force close",
+   "explanation": "No end-of-day close: positions can be held overnight."
+  },
+  {
+   "key": "entry.0",
+   "value": "close_above_sma(period=200)",
+   "label": "Entry check T1",
+   "explanation": "Today's price (1d: the live price; intraday: the last completed close) is above the simple moving average of daily closes including today's."
+  },
+  {
+   "key": "entry.1",
+   "value": "rsi_below(period=2, max=10.0)",
+   "label": "Entry check P1",
+   "explanation": "Wilder RSI of daily closes including today's is below max (a pullback)."
+  },
+  {
+   "key": "stop",
+   "value": "atr_multiple(period=14, multiple=2.0)",
+   "label": "Initial stop",
+   "explanation": "`multiple` x the Wilder ATR(period) of daily bars below today's price."
+  },
+  {
+   "key": "exit.0",
+   "value": "close_above_sma(period=5, at_et=15:50)",
+   "label": "Exit",
+   "explanation": "Exit when today's live price is above the SMA(period) of daily closes including today's (from at_et on, e.g. 15:50 for a close-based rule)."
+  },
+  {
+   "key": "exit.1",
+   "value": "time_stop(days=10, at_et=15:50)",
+   "label": "Exit",
+   "explanation": "Exit after `days` trading days held (multi-day) or `minutes` (intraday), from at_et on if given. Exactly one of days / minutes."
+  },
+  {
+   "key": "risk.max_risk_per_trade_pct",
+   "value": 1.0,
+   "label": "Risk per trade",
+   "explanation": "At most 1.0% of the account can be lost if the initial stop is hit."
+  },
+  {
+   "key": "risk.max_position_size_pct_of_portfolio",
+   "value": 10,
+   "label": "Position size",
+   "explanation": "One position is at most 10% of the account."
+  },
+  {
+   "key": "risk.max_concurrent_positions",
+   "value": 3,
+   "label": "Concurrent positions",
+   "explanation": "At most 3 positions (including unfilled entries) at once."
+  },
+  {
+   "key": "risk.max_commission_pct_of_risk",
+   "value": 1.0,
+   "label": "Commission check",
+   "explanation": "A trade is skipped if its estimated commissions exceed 1.0% of the money at risk."
+  },
+  {
+   "key": "risk.max_drawdown_usd",
+   "value": 6000,
+   "label": "Drawdown breaker",
+   "explanation": "After a $6,000 fall in cumulative P&L, entries stop until someone re-arms the breaker by hand."
+  },
+  {
+   "key": "risk.max_quantity_per_order",
+   "value": 1000,
+   "label": "Share cap",
+   "explanation": "One entry order is at most 1000 shares."
+  },
+  {
+   "key": "risk.max_order_value",
+   "value": 30000.0,
+   "label": "Order value cap",
+   "explanation": "One entry order is at most $30,000."
+  },
+  {
+   "key": "risk.max_orders_per_day",
+   "value": 5,
+   "label": "Entries per day",
+   "explanation": "At most 5 entry orders per day."
+  },
+  {
+   "key": "risk.max_open_orders",
+   "value": 3,
+   "label": "Working orders",
+   "explanation": "At most 3 unfilled entry/exit orders at once (stops not counted)."
+  },
+  {
+   "key": "risk.max_daily_loss",
+   "value": 2000.0,
+   "label": "Daily loss halt",
+   "explanation": "After losing $2,000 in a day, no new entries that day."
+  }
+ ]
+}

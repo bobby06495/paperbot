@@ -1,0 +1,8 @@
+{"time": "2026-10-21T03:32:59-04:00", "level": "INFO", "message": "run 20261021T073259Z-b43bf3: Equities Mean Reversion (experiment) with ibkr"}
+{"time": "2026-10-21T03:33:02-04:00", "level": "INFO", "message": "intraday 1m bars: 3/3 symbols"}
+{"time": "2026-10-21T03:33:31-04:00", "level": "INFO", "message": "simulated 20/85 days"}
+{"time": "2026-10-21T03:34:01-04:00", "level": "INFO", "message": "simulated 40/85 days"}
+{"time": "2026-10-21T03:34:31-04:00", "level": "INFO", "message": "simulated 60/85 days"}
+{"time": "2026-10-21T03:35:03-04:00", "level": "INFO", "message": "simulated 80/85 days"}
+{"time": "2026-10-21T03:35:12-04:00", "level": "INFO", "message": "simulated 85/85 days"}
+{"time": "2026-10-21T03:35:14-04:00", "level": "INFO", "message": "run 20261021T073259Z-b43bf3 finished: completed, net P&L -5986.33 USD, 213 trades"}

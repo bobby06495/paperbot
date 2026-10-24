@@ -1,0 +1,9 @@
+{"time": "2026-10-21T03:23:31-04:00", "level": "INFO", "message": "run 20261021T072331Z-3233eb: Macro Swing ETF (experiment) with ibkr"}
+{"time": "2026-10-21T03:23:34-04:00", "level": "INFO", "message": "intraday 5m bars: 10/11 symbols"}
+{"time": "2026-10-21T03:23:34-04:00", "level": "INFO", "message": "intraday 5m bars: 11/11 symbols"}
+{"time": "2026-10-21T03:23:36-04:00", "level": "INFO", "message": "simulated 20/85 days"}
+{"time": "2026-10-21T03:23:38-04:00", "level": "INFO", "message": "simulated 40/85 days"}
+{"time": "2026-10-21T03:23:40-04:00", "level": "INFO", "message": "simulated 60/85 days"}
+{"time": "2026-10-21T03:23:42-04:00", "level": "INFO", "message": "simulated 80/85 days"}
+{"time": "2026-10-21T03:23:43-04:00", "level": "INFO", "message": "simulated 85/85 days"}
+{"time": "2026-10-21T03:23:43-04:00", "level": "INFO", "message": "run 20261021T072331Z-3233eb finished: completed_with_warnings, net P&L 5335.51 USD, 28 trades"}

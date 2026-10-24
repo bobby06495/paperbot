@@ -1,0 +1,15 @@
+{"time": "2026-10-20T23:00:18-04:00", "level": "INFO", "message": "run 20261021T030018Z-67646d: Trend Join Long (baseline) with yfinance"}
+{"time": "2026-10-20T23:00:24-04:00", "level": "INFO", "message": "daily bars: 25/101 symbols"}
+{"time": "2026-10-20T23:00:29-04:00", "level": "INFO", "message": "daily bars: 50/101 symbols"}
+{"time": "2026-10-20T23:00:32-04:00", "level": "INFO", "message": "daily bars: 75/101 symbols"}
+{"time": "2026-10-20T23:00:36-04:00", "level": "INFO", "message": "daily bars: 100/101 symbols"}
+{"time": "2026-10-20T23:00:42-04:00", "level": "INFO", "message": "intraday bars: 10/20 symbols"}
+{"time": "2026-10-20T23:00:46-04:00", "level": "INFO", "message": "intraday bars: 20/20 symbols"}
+{"time": "2026-10-20T23:00:47-04:00", "level": "INFO", "message": "simulated 20/21 days"}
+{"time": "2026-10-20T23:00:48-04:00", "level": "INFO", "message": "simulated 21/21 days"}
+{"time": "2026-10-20T23:00:48-04:00", "level": "INFO", "message": "daily bars: 25/99 symbols"}
+{"time": "2026-10-20T23:00:48-04:00", "level": "INFO", "message": "daily bars: 50/99 symbols"}
+{"time": "2026-10-20T23:00:48-04:00", "level": "INFO", "message": "daily bars: 75/99 symbols"}
+{"time": "2026-10-20T23:00:49-04:00", "level": "INFO", "message": "intraday bars: 10/20 symbols"}
+{"time": "2026-10-20T23:00:49-04:00", "level": "INFO", "message": "intraday bars: 20/20 symbols"}
+{"time": "2026-10-20T23:00:50-04:00", "level": "INFO", "message": "run 20261021T030018Z-67646d finished: completed_with_warnings, net P&L 295.69 USD, 1 trades"}

@@ -1,0 +1,488 @@
+{
+ "baseline_run": "20261021T030018Z-67646d",
+ "variant_runs": [
+  "20261021T030051Z-fed63c",
+  "20261021T030054Z-a64aa0",
+  "20261021T030057Z-621c99",
+  "20261021T030059Z-065d74",
+  "20261021T030103Z-f3e05e"
+ ],
+ "labels": [
+  "Baseline",
+  "EXP-breakeven-later",
+  "EXP-entry-later",
+  "EXP-gap-higher",
+  "EXP-rvol-lower",
+  "EXP-stop-wider"
+ ],
+ "dataset_id": "yfinance-20260921-20261019-986f8224de",
+ "same_dataset": false,
+ "rows": [
+  {
+   "segment": "in_sample",
+   "metric": "net_pnl",
+   "values": [
+    295.69,
+    295.69,
+    20.47,
+    295.69,
+    295.69,
+    295.69
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "return_pct",
+   "values": [
+    0.0296,
+    0.0296,
+    0.002,
+    0.0296,
+    0.0296,
+    0.0296
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "trades",
+   "values": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "win_rate_pct",
+   "values": [
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "profit_factor",
+   "values": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "expectancy",
+   "values": [
+    295.69,
+    295.69,
+    20.47,
+    295.69,
+    295.69,
+    295.69
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.041,
+    0.041,
+    0.0402,
+    0.041,
+    0.041,
+    0.041
+   ]
+  },
+  {
+   "segment": "in_sample",
+   "metric": "commission",
+   "values": [
+    2.0,
+    2.0,
+    2.0,
+    2.0,
+    2.0,
+    2.0
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "net_pnl",
+   "values": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "return_pct",
+   "values": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "trades",
+   "values": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "win_rate_pct",
+   "values": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "profit_factor",
+   "values": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "expectancy",
+   "values": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "segment": "validation",
+   "metric": "commission",
+   "values": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "net_pnl",
+   "values": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "return_pct",
+   "values": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "trades",
+   "values": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "win_rate_pct",
+   "values": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "profit_factor",
+   "values": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "expectancy",
+   "values": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "segment": "out_of_sample",
+   "metric": "commission",
+   "values": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "net_pnl",
+   "values": [
+    295.69,
+    295.69,
+    20.47,
+    295.69,
+    295.69,
+    295.69
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "max_drawdown_pct",
+   "values": [
+    0.041,
+    0.041,
+    0.0402,
+    0.041,
+    0.041,
+    0.041
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "completed_trades",
+   "values": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "total_commission",
+   "values": [
+    2.0,
+    2.0,
+    2.0,
+    2.0,
+    2.0,
+    2.0
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "total_slippage",
+   "values": [
+    23.99,
+    23.99,
+    23.61,
+    23.99,
+    23.99,
+    23.99
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "profit_factor",
+   "values": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+   ]
+  },
+  {
+   "segment": "full",
+   "metric": "win_rate_pct",
+   "values": [
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0,
+    100.0
+   ]
+  }
+ ],
+ "findings": [
+  {
+   "experiment_id": "EXP-breakeven-later",
+   "run_id": "20261021T030051Z-fed63c",
+   "changes": {
+    "exit.breakeven_trigger_R": 1.5
+   },
+   "hypothesis": "Moving the stop to breakeven later lets more winners develop instead of being stopped at the entry price.",
+   "validation_net_pnl_delta": 0.0,
+   "out_of_sample_net_pnl_delta": 0.0,
+   "mean_trade_diff_ci95": null,
+   "verdict": "not enough validation trades to compare (fewer than 5 each)",
+   "holds_out_of_sample": null,
+   "material": false
+  },
+  {
+   "experiment_id": "EXP-entry-later",
+   "run_id": "20261021T030054Z-a64aa0",
+   "changes": {
+    "time_filter.earliest_entry_et": "10:30"
+   },
+   "hypothesis": "Waiting longer after the open avoids the noisiest part of the session and improves the win rate.",
+   "validation_net_pnl_delta": 0.0,
+   "out_of_sample_net_pnl_delta": 0.0,
+   "mean_trade_diff_ci95": null,
+   "verdict": "not enough validation trades to compare (fewer than 5 each)",
+   "holds_out_of_sample": null,
+   "material": false
+  },
+  {
+   "experiment_id": "EXP-gap-higher",
+   "run_id": "20261021T030057Z-621c99",
+   "changes": {
+    "daily_filters.D3_min_gap_pct_from_prior_close": 4.0
+   },
+   "hypothesis": "Requiring a larger opening gap selects stronger moves and improves the average trade, at the cost of fewer trades.",
+   "validation_net_pnl_delta": 0.0,
+   "out_of_sample_net_pnl_delta": 0.0,
+   "mean_trade_diff_ci95": null,
+   "verdict": "not enough validation trades to compare (fewer than 5 each)",
+   "holds_out_of_sample": null,
+   "material": false
+  },
+  {
+   "experiment_id": "EXP-rvol-lower",
+   "run_id": "20261021T030059Z-065d74",
+   "changes": {
+    "intraday_filters.I3_rvol_min": 1.5
+   },
+   "hypothesis": "Lowering the relative-volume threshold admits more breakouts without lowering their average result.",
+   "validation_net_pnl_delta": 0.0,
+   "out_of_sample_net_pnl_delta": 0.0,
+   "mean_trade_diff_ci95": null,
+   "verdict": "not enough validation trades to compare (fewer than 5 each)",
+   "holds_out_of_sample": null,
+   "material": false
+  },
+  {
+   "experiment_id": "EXP-stop-wider",
+   "run_id": "20261021T030103Z-f3e05e",
+   "changes": {
+    "exit.initial_stop_rule": "lod_minus_2pct"
+   },
+   "hypothesis": "A wider initial stop reduces premature stop-outs enough to offset the smaller position size it implies (risk per trade is fixed).",
+   "validation_net_pnl_delta": 0.0,
+   "out_of_sample_net_pnl_delta": 0.0,
+   "mean_trade_diff_ci95": null,
+   "verdict": "not enough validation trades to compare (fewer than 5 each)",
+   "holds_out_of_sample": null,
+   "material": false
+  }
+ ],
+ "walk_forward": {
+  "steps": [
+   {
+    "fold": 2,
+    "chosen": "Baseline",
+    "chosen_net_pnl": 0.0,
+    "baseline_net_pnl": 0.0
+   },
+   {
+    "fold": 3,
+    "chosen": "Baseline",
+    "chosen_net_pnl": 0.0,
+    "baseline_net_pnl": 0.0
+   }
+  ],
+  "chosen_total": 0.0,
+  "baseline_total": 0.0
+ },
+ "variants_evaluated_on_dataset": 1,
+ "selection_rule": "Variants are judged on the validation segment. Out-of-sample results are shown only to check that a difference holds on untouched data; they are never used to pick a variant.",
+ "approval": "No rule change is applied automatically. A variant that holds up must be reviewed and copied into config/rules.json by a person.",
+ "created_at": "2026-10-21T03:01:07+00:00"
+}

@@ -1,0 +1,19 @@
+{"time": "2026-10-21T03:22:23-04:00", "level": "INFO", "message": "run 20261021T072223Z-431c7d: Trend Join Long (experiment) with ibkr"}
+{"time": "2026-10-21T03:22:24-04:00", "level": "INFO", "message": "daily bars: 25/100 symbols"}
+{"time": "2026-10-21T03:22:24-04:00", "level": "INFO", "message": "daily bars: 50/100 symbols"}
+{"time": "2026-10-21T03:22:24-04:00", "level": "INFO", "message": "daily bars: 75/100 symbols"}
+{"time": "2026-10-21T03:22:24-04:00", "level": "INFO", "message": "daily bars: 100/100 symbols"}
+{"time": "2026-10-21T03:22:26-04:00", "level": "INFO", "message": "intraday 5m bars: 10/54 symbols"}
+{"time": "2026-10-21T03:22:27-04:00", "level": "INFO", "message": "intraday 5m bars: 20/54 symbols"}
+{"time": "2026-10-21T03:22:28-04:00", "level": "INFO", "message": "intraday 5m bars: 30/54 symbols"}
+{"time": "2026-10-21T03:22:29-04:00", "level": "INFO", "message": "intraday 5m bars: 40/54 symbols"}
+{"time": "2026-10-21T03:22:30-04:00", "level": "INFO", "message": "intraday 5m bars: 50/54 symbols"}
+{"time": "2026-10-21T03:22:30-04:00", "level": "INFO", "message": "intraday 5m bars: 54/54 symbols"}
+{"time": "2026-10-21T03:22:33-04:00", "level": "INFO", "message": "simulated 20/85 days"}
+{"time": "2026-10-21T03:22:38-04:00", "level": "INFO", "message": "simulated 40/85 days"}
+{"time": "2026-10-21T03:22:39-04:00", "level": "WARNING", "message": "2026-08-27: position(s) held overnight by an intraday strategy (no data to close)"}
+{"time": "2026-10-21T03:22:41-04:00", "level": "WARNING", "message": "2026-09-14: position(s) held overnight by an intraday strategy (no data to close)"}
+{"time": "2026-10-21T03:22:41-04:00", "level": "INFO", "message": "simulated 60/85 days"}
+{"time": "2026-10-21T03:22:43-04:00", "level": "INFO", "message": "simulated 80/85 days"}
+{"time": "2026-10-21T03:22:44-04:00", "level": "INFO", "message": "simulated 85/85 days"}
+{"time": "2026-10-21T03:22:44-04:00", "level": "INFO", "message": "run 20261021T072223Z-431c7d finished: completed_with_warnings, net P&L 2968.42 USD, 13 trades"}

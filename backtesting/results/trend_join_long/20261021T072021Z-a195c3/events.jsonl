@@ -1,0 +1,28 @@
+{"time": "2026-07-14T10:05:03-04:00", "event": "entry_sent", "symbol": "GS", "qty": 26, "limit": 1125.36, "stop": 1071.18}
+{"time": "2026-07-14T15:55:00-04:00", "event": "trade_closed", "symbol": "GS", "trade_id": 1}
+{"time": "2026-07-23T10:05:03-04:00", "event": "entry_sent", "symbol": "RTX", "qty": 140, "limit": 213.28, "stop": 200.48}
+{"time": "2026-07-23T15:55:00-04:00", "event": "trade_closed", "symbol": "RTX", "trade_id": 2}
+{"time": "2026-07-28T10:15:03-04:00", "event": "entry_sent", "symbol": "KO", "qty": 332, "limit": 90.18, "stop": 85.38}
+{"time": "2026-07-28T15:55:00-04:00", "event": "trade_closed", "symbol": "KO", "trade_id": 3}
+{"time": "2026-07-30T10:30:03-04:00", "event": "entry_sent", "symbol": "AMAT", "qty": 59, "limit": 507.59, "stop": 471.35}
+{"time": "2026-07-30T15:55:00-04:00", "event": "trade_closed", "symbol": "AMAT", "trade_id": 4}
+{"time": "2026-07-31T10:35:03-04:00", "event": "entry_sent", "symbol": "AMZN", "qty": 110, "limit": 272.25, "stop": 259.38}
+{"time": "2026-07-31T15:55:00-04:00", "event": "trade_closed", "symbol": "AMZN", "trade_id": 5}
+{"time": "2026-08-19T10:10:03-04:00", "event": "entry_sent", "symbol": "MRK", "qty": 198, "limit": 151.4, "stop": 143.45}
+{"time": "2026-08-19T15:55:00-04:00", "event": "trade_closed", "symbol": "MRK", "trade_id": 6}
+{"time": "2026-08-27T10:05:03-04:00", "event": "entry_sent", "symbol": "PANW", "qty": 79, "limit": 377.72, "stop": 353.09}
+{"time": "2026-08-27T10:10:03-04:00", "event": "entry_sent", "symbol": "CRM", "qty": 121, "limit": 246.62, "stop": 227.74}
+{"time": "2026-08-27T10:10:03-04:00", "event": "entry_sent", "symbol": "CRWD", "qty": 134, "limit": 223.19, "stop": 204.03}
+{"time": "2026-08-27T10:25:03-04:00", "event": "entry_sent", "symbol": "NOW", "qty": 214, "limit": 139.59, "stop": 128.94}
+{"time": "2026-08-27T11:00:03-04:00", "event": "entry_sent", "symbol": "NVDA", "qty": 131, "limit": 227.45, "stop": 218.69}
+{"time": "2026-08-27T15:55:00-04:00", "event": "trade_closed", "symbol": "CRM", "trade_id": 8}
+{"time": "2026-08-27T15:55:00-04:00", "event": "trade_closed", "symbol": "CRWD", "trade_id": 9}
+{"time": "2026-08-27T15:55:00-04:00", "event": "trade_closed", "symbol": "NOW", "trade_id": 10}
+{"time": "2026-08-27T15:55:00-04:00", "event": "trade_closed", "symbol": "NVDA", "trade_id": 11}
+{"time": "2026-08-28T10:10:03-04:00", "event": "halt", "reason": "daily loss -2111.67 reached limit -2000.00"}
+{"time": "2026-08-28T15:55:00-04:00", "event": "trade_closed", "symbol": "PANW", "trade_id": 7}
+{"time": "2026-09-14T10:05:03-04:00", "event": "entry_sent", "symbol": "CRWD", "qty": 130, "limit": 230.5, "stop": 213.88}
+{"time": "2026-09-14T10:05:03-04:00", "event": "entry_sent", "symbol": "PANW", "qty": 82, "limit": 362.05, "stop": 336.84}
+{"time": "2026-09-15T15:55:00-04:00", "event": "trade_closed", "symbol": "CRWD", "trade_id": 12}
+{"time": "2026-09-21T10:05:03-04:00", "event": "entry_sent", "symbol": "AMD", "qty": 49, "limit": 609.99, "stop": 576.44}
+{"time": "2026-09-21T15:55:00-04:00", "event": "trade_closed", "symbol": "AMD", "trade_id": 14}

@@ -1,0 +1,10 @@
+{"time": "2026-10-20T23:02:37-04:00", "level": "INFO", "message": "run 20261021T030237Z-67716a: Trend Join Long (experiment) with yfinance"}
+{"time": "2026-10-20T23:02:37-04:00", "level": "INFO", "message": "daily bars: 25/100 symbols"}
+{"time": "2026-10-20T23:02:37-04:00", "level": "INFO", "message": "daily bars: 50/100 symbols"}
+{"time": "2026-10-20T23:02:37-04:00", "level": "INFO", "message": "daily bars: 75/100 symbols"}
+{"time": "2026-10-20T23:02:37-04:00", "level": "INFO", "message": "daily bars: 100/100 symbols"}
+{"time": "2026-10-20T23:02:38-04:00", "level": "INFO", "message": "intraday bars: 10/20 symbols"}
+{"time": "2026-10-20T23:02:38-04:00", "level": "INFO", "message": "intraday bars: 20/20 symbols"}
+{"time": "2026-10-20T23:02:39-04:00", "level": "INFO", "message": "simulated 20/21 days"}
+{"time": "2026-10-20T23:02:39-04:00", "level": "INFO", "message": "simulated 21/21 days"}
+{"time": "2026-10-20T23:02:39-04:00", "level": "INFO", "message": "run 20261021T030237Z-67716a finished: completed_with_warnings, net P&L 295.69 USD, 1 trades"}

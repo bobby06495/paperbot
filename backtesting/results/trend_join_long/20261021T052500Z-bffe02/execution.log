@@ -1,0 +1,26 @@
+{"time": "2026-10-21T01:25:00-04:00", "level": "INFO", "message": "run 20261021T052500Z-bffe02: Trend Join Long (baseline) with ibkr"}
+{"time": "2026-10-21T01:25:00-04:00", "level": "INFO", "message": "daily bars: 25/101 symbols"}
+{"time": "2026-10-21T01:25:00-04:00", "level": "INFO", "message": "daily bars: 50/101 symbols"}
+{"time": "2026-10-21T01:25:01-04:00", "level": "INFO", "message": "daily bars: 75/101 symbols"}
+{"time": "2026-10-21T01:25:33-04:00", "level": "INFO", "message": "daily bars: 100/101 symbols"}
+{"time": "2026-10-21T01:32:39-04:00", "level": "INFO", "message": "intraday 5m bars: 10/54 symbols"}
+{"time": "2026-10-21T01:38:35-04:00", "level": "INFO", "message": "intraday 5m bars: 20/54 symbols"}
+{"time": "2026-10-21T01:46:23-04:00", "level": "INFO", "message": "intraday 5m bars: 30/54 symbols"}
+{"time": "2026-10-21T01:54:41-04:00", "level": "INFO", "message": "intraday 5m bars: 40/54 symbols"}
+{"time": "2026-10-21T02:00:22-04:00", "level": "INFO", "message": "intraday 5m bars: 50/54 symbols"}
+{"time": "2026-10-21T02:01:54-04:00", "level": "INFO", "message": "intraday 5m bars: 54/54 symbols"}
+{"time": "2026-10-21T02:01:57-04:00", "level": "INFO", "message": "simulated 20/85 days"}
+{"time": "2026-10-21T02:02:01-04:00", "level": "INFO", "message": "simulated 40/85 days"}
+{"time": "2026-10-21T02:02:03-04:00", "level": "INFO", "message": "simulated 60/85 days"}
+{"time": "2026-10-21T02:02:05-04:00", "level": "INFO", "message": "simulated 80/85 days"}
+{"time": "2026-10-21T02:02:06-04:00", "level": "INFO", "message": "simulated 85/85 days"}
+{"time": "2026-10-21T02:02:06-04:00", "level": "INFO", "message": "daily bars: 25/99 symbols"}
+{"time": "2026-10-21T02:02:06-04:00", "level": "INFO", "message": "daily bars: 50/99 symbols"}
+{"time": "2026-10-21T02:02:07-04:00", "level": "INFO", "message": "daily bars: 75/99 symbols"}
+{"time": "2026-10-21T02:02:08-04:00", "level": "INFO", "message": "intraday 5m bars: 10/54 symbols"}
+{"time": "2026-10-21T02:02:09-04:00", "level": "INFO", "message": "intraday 5m bars: 20/54 symbols"}
+{"time": "2026-10-21T02:02:10-04:00", "level": "INFO", "message": "intraday 5m bars: 30/54 symbols"}
+{"time": "2026-10-21T02:02:12-04:00", "level": "INFO", "message": "intraday 5m bars: 40/54 symbols"}
+{"time": "2026-10-21T02:02:13-04:00", "level": "INFO", "message": "intraday 5m bars: 50/54 symbols"}
+{"time": "2026-10-21T02:02:13-04:00", "level": "INFO", "message": "intraday 5m bars: 54/54 symbols"}
+{"time": "2026-10-21T02:02:27-04:00", "level": "INFO", "message": "run 20261021T052500Z-bffe02 finished: completed_with_warnings, net P&L 3236.97 USD, 14 trades"}

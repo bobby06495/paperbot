@@ -1,0 +1,128 @@
+{
+ "strategy_id": "macro_swing_etf",
+ "rules": {
+  "label": "Macro Swing ETF",
+  "summary": "Multi-day sector pullbacks - holds positions overnight",
+  "modes": [
+   "continuous",
+   "scheduled"
+  ],
+  "timeframe": "1d",
+  "holding": "multi_day",
+  "universe": {
+   "symbols": [
+    "XLK",
+    "XLF",
+    "XLE",
+    "XLV",
+    "XLI",
+    "XLY",
+    "XLP",
+    "XLU",
+    "XLB",
+    "XLRE",
+    "XLC"
+   ]
+  },
+  "time_filter": {
+   "earliest_entry_et": "15:45",
+   "latest_entry_et": "15:55",
+   "force_close_et": null
+  },
+  "entry": [
+   {
+    "type": "close_above_sma",
+    "label": "T1",
+    "period": 200
+   },
+   {
+    "type": "rsi_below",
+    "label": "P1",
+    "period": 2,
+    "max": 10.0
+   }
+  ],
+  "stop": {
+   "type": "atr_multiple",
+   "period": 14,
+   "multiple": 2.0
+  },
+  "manage": [],
+  "exit": [
+   {
+    "type": "close_above_sma",
+    "period": 5,
+    "at_et": "15:50"
+   },
+   {
+    "type": "time_stop",
+    "days": 15,
+    "at_et": "15:50"
+   }
+  ],
+  "entry_reason": "macro swing: RSI(2) pullback above SMA200, stop {stop:.2f}",
+  "risk": {
+   "max_risk_per_trade_pct": 1.0,
+   "max_position_size_pct_of_portfolio": 10,
+   "max_concurrent_positions": 3,
+   "max_commission_pct_of_risk": 1.0,
+   "max_drawdown_usd": 6000,
+   "max_quantity_per_order": 1000,
+   "max_order_value": 30000.0,
+   "max_orders_per_day": 5,
+   "max_open_orders": 3,
+   "max_daily_loss": 2000.0
+  }
+ },
+ "production_rules_sha256": "a5a6792937c6f08e6797740c5211b443c30c853c59bf8a85f39aa71d26f703c6",
+ "backtest": {
+  "currency": "USD",
+  "starting_capital": 1000000.0,
+  "provider": "ibkr",
+  "fallback_provider": "yfinance",
+  "lookback_calendar_days": 120,
+  "daily_warmup_calendar_days": 420,
+  "symbols": [],
+  "max_watchlist": 20,
+  "benchmark_symbol": "SPY",
+  "execution": {
+   "half_spread_bps": 2.0,
+   "slippage_bps": 2.0,
+   "participation_rate": 0.1,
+   "buying_power_multiplier": 1.0,
+   "ambiguous_bar_policy": "stop_first",
+   "decision_delay_seconds": 3,
+   "reset_drawdown_breaker_next_day": false
+  },
+  "validation": {
+   "in_sample": 0.6,
+   "validation": 0.2,
+   "out_of_sample": 0.2,
+   "walk_forward_folds": 3,
+   "min_trades_for_assessment": 30,
+   "bootstrap_samples": 2000,
+   "bootstrap_seed": 7
+  },
+  "ibkr": {
+   "client_id_offset": 3,
+   "request_pause_seconds": 0.5,
+   "timeout_seconds": 60
+  },
+  "retention": {
+   "keep_last_runs_per_strategy": 50
+  },
+  "schedule": {
+   "enabled": false,
+   "note": "Manual only. Run `paperbot-backtest all` yourself; no scheduled task is registered."
+  }
+ },
+ "limits": {
+  "allowed_symbols": [
+   "*"
+  ],
+  "limit_orders_only": true
+ },
+ "experiment_changes": {
+  "exit.1.days": 15
+ }
+}

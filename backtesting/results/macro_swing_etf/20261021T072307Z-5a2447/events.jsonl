@@ -1,0 +1,69 @@
+{"time": "2026-06-22T15:45:03-04:00", "event": "entry_sent", "symbol": "XLP", "qty": 363, "limit": 82.54, "stop": 79.88}
+{"time": "2026-06-23T15:45:03-04:00", "event": "entry_sent", "symbol": "XLB", "qty": 588, "limit": 51.01, "stop": 49.01}
+{"time": "2026-06-23T15:55:00-04:00", "event": "trade_closed", "symbol": "XLP", "trade_id": 1}
+{"time": "2026-06-25T15:55:00-04:00", "event": "trade_closed", "symbol": "XLB", "trade_id": 2}
+{"time": "2026-07-01T15:45:03-04:00", "event": "entry_sent", "symbol": "XLE", "qty": 566, "limit": 52.96, "stop": 50.42}
+{"time": "2026-07-01T15:45:03-04:00", "event": "entry_sent", "symbol": "XLU", "qty": 669, "limit": 44.8, "stop": 43.36}
+{"time": "2026-07-02T15:55:00-04:00", "event": "trade_closed", "symbol": "XLU", "trade_id": 4}
+{"time": "2026-07-06T15:55:00-04:00", "event": "trade_closed", "symbol": "XLE", "trade_id": 3}
+{"time": "2026-07-08T15:45:03-04:00", "event": "entry_sent", "symbol": "XLB", "qty": 595, "limit": 50.42, "stop": 48.51}
+{"time": "2026-07-10T15:55:00-04:00", "event": "trade_closed", "symbol": "XLB", "trade_id": 5}
+{"time": "2026-07-14T15:45:03-04:00", "event": "entry_sent", "symbol": "XLV", "qty": 189, "limit": 158.63, "stop": 153.11}
+{"time": "2026-07-16T15:55:00-04:00", "event": "trade_closed", "symbol": "XLV", "trade_id": 6}
+{"time": "2026-07-17T15:45:03-04:00", "event": "entry_sent", "symbol": "XLK", "qty": 170, "limit": 176.25, "stop": 164.78}
+{"time": "2026-07-17T15:55:03-04:00", "event": "entry_sent", "symbol": "XLI", "qty": 166, "limit": 179.81, "stop": 173.34}
+{"time": "2026-07-20T15:45:03-04:00", "event": "entry_sent", "symbol": "XLI", "qty": 168, "limit": 178.44, "stop": 171.85}
+{"time": "2026-07-21T15:55:00-04:00", "event": "trade_closed", "symbol": "XLK", "trade_id": 7}
+{"time": "2026-07-23T15:45:03-04:00", "event": "entry_sent", "symbol": "XLF", "qty": 536, "limit": 55.9, "stop": 54.36}
+{"time": "2026-07-23T15:50:03-04:00", "event": "entry_sent", "symbol": "XLRE", "qty": 667, "limit": 44.92, "stop": 43.6}
+{"time": "2026-07-23T15:55:00-04:00", "event": "trade_closed", "symbol": "XLI", "trade_id": 9}
+{"time": "2026-07-24T15:55:00-04:00", "event": "trade_closed", "symbol": "XLF", "trade_id": 10}
+{"time": "2026-07-24T15:55:00-04:00", "event": "trade_closed", "symbol": "XLRE", "trade_id": 11}
+{"time": "2026-07-27T15:45:03-04:00", "event": "entry_sent", "symbol": "XLK", "qty": 171, "limit": 174.52, "stop": 164.04}
+{"time": "2026-07-28T15:55:03-04:00", "event": "entry_sent", "symbol": "XLE", "qty": 520, "limit": 57.68, "stop": 55.3}
+{"time": "2026-07-29T15:45:03-04:00", "event": "entry_sent", "symbol": "XLI", "qty": 169, "limit": 177.08, "stop": 170.81}
+{"time": "2026-07-30T15:55:00-04:00", "event": "trade_closed", "symbol": "XLK", "trade_id": 12}
+{"time": "2026-07-31T15:55:00-04:00", "event": "trade_closed", "symbol": "XLI", "trade_id": 14}
+{"time": "2026-08-05T15:45:03-04:00", "event": "entry_sent", "symbol": "XLE", "qty": 522, "limit": 57.43, "stop": 54.81}
+{"time": "2026-08-06T15:45:03-04:00", "event": "entry_sent", "symbol": "XLRE", "qty": 669, "limit": 44.81, "stop": 43.4}
+{"time": "2026-08-10T15:45:03-04:00", "event": "entry_sent", "symbol": "XLP", "qty": 353, "limit": 84.96, "stop": 81.76}
+{"time": "2026-08-10T15:55:00-04:00", "event": "trade_closed", "symbol": "XLE", "trade_id": 15}
+{"time": "2026-08-12T15:55:00-04:00", "event": "trade_closed", "symbol": "XLP", "trade_id": 17}
+{"time": "2026-08-13T15:55:00-04:00", "event": "trade_closed", "symbol": "XLRE", "trade_id": 16}
+{"time": "2026-08-18T15:45:03-04:00", "event": "entry_sent", "symbol": "XLI", "qty": 162, "limit": 184.15, "stop": 178.56}
+{"time": "2026-08-18T15:55:03-04:00", "event": "entry_sent", "symbol": "XLB", "qty": 578, "limit": 51.89, "stop": 50.15}
+{"time": "2026-08-19T15:45:03-04:00", "event": "entry_sent", "symbol": "XLK", "qty": 162, "limit": 184.12, "stop": 174.6}
+{"time": "2026-08-20T15:45:03-04:00", "event": "entry_sent", "symbol": "XLF", "qty": 524, "limit": 57.16, "stop": 55.79}
+{"time": "2026-08-21T15:55:00-04:00", "event": "trade_closed", "symbol": "XLF", "trade_id": 21}
+{"time": "2026-08-24T11:15:00-04:00", "event": "trade_closed", "symbol": "XLI", "trade_id": 18}
+{"time": "2026-08-24T15:45:03-04:00", "event": "entry_sent", "symbol": "XLI", "qty": 167, "limit": 179.27, "stop": 173.8}
+{"time": "2026-08-25T15:45:03-04:00", "event": "entry_sent", "symbol": "XLE", "qty": 480, "limit": 62.48, "stop": 59.98}
+{"time": "2026-08-26T15:55:00-04:00", "event": "trade_closed", "symbol": "XLI", "trade_id": 22}
+{"time": "2026-08-26T15:55:00-04:00", "event": "trade_closed", "symbol": "XLK", "trade_id": 20}
+{"time": "2026-08-27T15:45:03-04:00", "event": "entry_sent", "symbol": "XLRE", "qty": 669, "limit": 44.84, "stop": 43.67}
+{"time": "2026-08-28T15:45:03-04:00", "event": "entry_sent", "symbol": "XLV", "qty": 174, "limit": 171.43, "stop": 165.49}
+{"time": "2026-08-28T15:55:00-04:00", "event": "trade_closed", "symbol": "XLE", "trade_id": 23}
+{"time": "2026-08-31T15:45:03-04:00", "event": "entry_sent", "symbol": "XLI", "qty": 170, "limit": 175.55, "stop": 170.1}
+{"time": "2026-09-02T09:30:00-04:00", "event": "trade_closed", "symbol": "XLRE", "trade_id": 24}
+{"time": "2026-09-02T15:45:03-04:00", "event": "entry_sent", "symbol": "XLRE", "qty": 683, "limit": 43.87, "stop": 42.7}
+{"time": "2026-09-02T15:55:00-04:00", "event": "trade_closed", "symbol": "XLV", "trade_id": 25}
+{"time": "2026-09-03T15:55:00-04:00", "event": "trade_closed", "symbol": "XLI", "trade_id": 26}
+{"time": "2026-09-03T15:55:00-04:00", "event": "trade_closed", "symbol": "XLRE", "trade_id": 27}
+{"time": "2026-09-08T15:45:03-04:00", "event": "entry_sent", "symbol": "XLV", "qty": 178, "limit": 167.95, "stop": 162.35}
+{"time": "2026-09-08T15:45:03-04:00", "event": "entry_sent", "symbol": "XLP", "qty": 355, "limit": 84.36, "stop": 81.96}
+{"time": "2026-09-09T15:45:03-04:00", "event": "entry_sent", "symbol": "XLB", "qty": 581, "limit": 51.62, "stop": 49.83}
+{"time": "2026-09-14T15:55:00-04:00", "event": "trade_closed", "symbol": "XLP", "trade_id": 29}
+{"time": "2026-09-14T15:55:00-04:00", "event": "trade_closed", "symbol": "XLV", "trade_id": 28}
+{"time": "2026-09-16T15:45:03-04:00", "event": "entry_sent", "symbol": "XLF", "qty": 537, "limit": 55.78, "stop": 54.32}
+{"time": "2026-09-17T15:45:03-04:00", "event": "entry_sent", "symbol": "XLF", "qty": 535, "limit": 56.02, "stop": 54.45}
+{"time": "2026-09-17T15:55:00-04:00", "event": "trade_closed", "symbol": "XLB", "trade_id": 30}
+{"time": "2026-09-21T15:45:03-04:00", "event": "entry_sent", "symbol": "XLE", "qty": 478, "limit": 62.69, "stop": 59.99}
+{"time": "2026-09-24T09:35:00-04:00", "event": "trade_closed", "symbol": "XLF", "trade_id": 32}
+{"time": "2026-09-24T15:45:03-04:00", "event": "entry_sent", "symbol": "XLF", "qty": 548, "limit": 54.68, "stop": 53.06}
+{"time": "2026-10-01T10:00:00-04:00", "event": "trade_closed", "symbol": "XLF", "trade_id": 34}
+{"time": "2026-10-01T15:45:03-04:00", "event": "entry_sent", "symbol": "XLV", "qty": 179, "limit": 166.8, "stop": 161.57}
+{"time": "2026-10-01T15:55:00-04:00", "event": "trade_closed", "symbol": "XLE", "trade_id": 33}
+{"time": "2026-10-07T09:35:00-04:00", "event": "trade_closed", "symbol": "XLV", "trade_id": 35}
+{"time": "2026-10-14T15:45:03-04:00", "event": "entry_sent", "symbol": "XLK", "qty": 157, "limit": 191.0, "stop": 184.59}
+{"time": "2026-10-16T13:00:00-04:00", "event": "trade_closed", "symbol": "XLK", "trade_id": 36}
+{"time": "2026-10-16T15:45:03-04:00", "event": "entry_sent", "symbol": "XLK", "qty": 163, "limit": 183.72, "stop": 176.48}

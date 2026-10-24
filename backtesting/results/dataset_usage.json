@@ -1,0 +1,176 @@
+{
+ "yfinance-20260921-20261019-986f8224de": {
+  "runs": [
+   "20261021T030018Z-67646d"
+  ],
+  "variants": [
+   "baseline"
+  ],
+  "first_used": "2026-10-21T03:00:48+00:00"
+ },
+ "yfinance-20260921-20261019-83b275825f": {
+  "runs": [
+   "20261021T030051Z-fed63c",
+   "20261021T030054Z-a64aa0",
+   "20261021T030057Z-621c99",
+   "20261021T030059Z-065d74",
+   "20261021T030103Z-f3e05e"
+  ],
+  "variants": [
+   "EXP-breakeven-later",
+   "EXP-entry-later",
+   "EXP-gap-higher",
+   "EXP-rvol-lower",
+   "EXP-stop-wider"
+  ],
+  "first_used": "2026-10-21T03:00:54+00:00"
+ },
+ "yfinance-20260921-20261019-7ac60a1852": {
+  "runs": [
+   "20261021T030231Z-72dcd5",
+   "20261021T030237Z-67716a",
+   "20261021T030240Z-45ad6d",
+   "20261021T030244Z-b72f4b",
+   "20261021T030246Z-fe065d",
+   "20261021T030250Z-4a0229"
+  ],
+  "variants": [
+   "baseline",
+   "EXP-breakeven-later",
+   "EXP-entry-later",
+   "EXP-gap-higher",
+   "EXP-rvol-lower",
+   "EXP-stop-wider"
+  ],
+  "first_used": "2026-10-21T03:02:33+00:00"
+ },
+ "ibkr-5m-20260622-20261020-a510f5b438": {
+  "runs": [
+   "20261021T044631Z-ff21e8",
+   "20261021T050056Z-757b74",
+   "20261021T050106Z-24931b",
+   "20261021T050116Z-7346b8"
+  ],
+  "variants": [
+   "baseline",
+   "EXP-macro_swing_etf-hold-longer",
+   "EXP-macro_swing_etf-rsi-deeper",
+   "EXP-macro_swing_etf-stop-wider"
+  ],
+  "first_used": "2026-10-21T05:00:46+00:00"
+ },
+ "ibkr-1m-20260622-20261020-71ab9d9132": {
+  "runs": [
+   "20261021T050126Z-b235a9",
+   "20261021T051528Z-900df5",
+   "20261021T051740Z-b5ef87",
+   "20261021T051958Z-625e14",
+   "20261021T052216Z-be3bde"
+  ],
+  "variants": [
+   "baseline",
+   "EXP-equity_mean_reversion-entry-later",
+   "EXP-equity_mean_reversion-hold-longer",
+   "EXP-equity_mean_reversion-stop-wider",
+   "EXP-equity_mean_reversion-vwap-wider"
+  ],
+  "first_used": "2026-10-21T05:13:08+00:00"
+ },
+ "ibkr-5m-20260622-20261020-ec433b93d8": {
+  "runs": [
+   "20261021T052500Z-bffe02",
+   "20261021T060227Z-9d42d5",
+   "20261021T060246Z-03d6fa",
+   "20261021T060304Z-ce928a",
+   "20261021T060318Z-d4c13a",
+   "20261021T060338Z-e0a6af"
+  ],
+  "variants": [
+   "baseline",
+   "EXP-trend_join_long-breakeven-later",
+   "EXP-trend_join_long-entry-later",
+   "EXP-trend_join_long-gap-higher",
+   "EXP-trend_join_long-rvol-lower",
+   "EXP-trend_join_long-stop-wider"
+  ],
+  "first_used": "2026-10-21T06:02:06+00:00"
+ },
+ "ibkr-5m-20260622-20261020-448e7362c5": {
+  "runs": [
+   "20261021T072021Z-a195c3",
+   "20261021T072104Z-d9db89",
+   "20261021T072124Z-886462",
+   "20261021T072144Z-ab616c",
+   "20261021T072158Z-c59ec1",
+   "20261021T072223Z-431c7d"
+  ],
+  "variants": [
+   "baseline",
+   "EXP-trend_join_long-breakeven-later",
+   "EXP-trend_join_long-entry-later",
+   "EXP-trend_join_long-gap-higher",
+   "EXP-trend_join_long-rvol-lower",
+   "EXP-trend_join_long-stop-wider"
+  ],
+  "first_used": "2026-10-21T07:20:43+00:00"
+ },
+ "ibkr-5m-20260622-20261020-d13e35fe60": {
+  "runs": [
+   "20261021T072244Z-9741de",
+   "20261021T072307Z-5a2447",
+   "20261021T072319Z-5d516e",
+   "20261021T072331Z-3233eb"
+  ],
+  "variants": [
+   "baseline",
+   "EXP-macro_swing_etf-hold-longer",
+   "EXP-macro_swing_etf-rsi-deeper",
+   "EXP-macro_swing_etf-stop-wider"
+  ],
+  "first_used": "2026-10-21T07:22:55+00:00"
+ },
+ "ibkr-1m-20260622-20261020-057207d8a2": {
+  "runs": [
+   "20261021T072343Z-34cab6",
+   "20261021T072832Z-9c872a",
+   "20261021T073044Z-74b70c",
+   "20261021T073259Z-b43bf3",
+   "20261021T073514Z-0ddad6"
+  ],
+  "variants": [
+   "baseline",
+   "EXP-equity_mean_reversion-entry-later",
+   "EXP-equity_mean_reversion-hold-longer",
+   "EXP-equity_mean_reversion-stop-wider",
+   "EXP-equity_mean_reversion-vwap-wider"
+  ],
+  "first_used": "2026-10-21T07:26:04+00:00"
+ },
+ "ibkr-5m-20250102-20261001-7a9b17ff46": {
+  "runs": [
+   "20261021T074304Z-97a7ca"
+  ],
+  "variants": [
+   "baseline"
+  ],
+  "first_used": "2026-10-21T08:48:23+00:00"
+ },
+ "ibkr-5m-20261020-20261020-b7a44c5743": {
+  "runs": [
+   "20261022T022037Z-dac239"
+  ],
+  "variants": [
+   "baseline"
+  ],
+  "first_used": "2026-10-22T02:20:38+00:00"
+ },
+ "ibkr-5m-20261021-20261021-a22c24faae": {
+  "runs": [
+   "20261022T043542Z-2cabb8"
+  ],
+  "variants": [
+   "baseline"
+  ],
+  "first_used": "2026-10-22T04:36:17+00:00"
+ }
+}

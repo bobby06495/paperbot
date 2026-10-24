@@ -1,0 +1,30 @@
+{"time": "2026-10-21T03:20:21-04:00", "level": "INFO", "message": "run 20261021T072021Z-a195c3: Trend Join Long (baseline) with ibkr"}
+{"time": "2026-10-21T03:20:21-04:00", "level": "INFO", "message": "daily bars: 25/101 symbols"}
+{"time": "2026-10-21T03:20:21-04:00", "level": "INFO", "message": "daily bars: 50/101 symbols"}
+{"time": "2026-10-21T03:20:21-04:00", "level": "INFO", "message": "daily bars: 75/101 symbols"}
+{"time": "2026-10-21T03:20:22-04:00", "level": "INFO", "message": "daily bars: 100/101 symbols"}
+{"time": "2026-10-21T03:20:23-04:00", "level": "INFO", "message": "intraday 5m bars: 10/54 symbols"}
+{"time": "2026-10-21T03:20:24-04:00", "level": "INFO", "message": "intraday 5m bars: 20/54 symbols"}
+{"time": "2026-10-21T03:20:25-04:00", "level": "INFO", "message": "intraday 5m bars: 30/54 symbols"}
+{"time": "2026-10-21T03:20:27-04:00", "level": "INFO", "message": "intraday 5m bars: 40/54 symbols"}
+{"time": "2026-10-21T03:20:28-04:00", "level": "INFO", "message": "intraday 5m bars: 50/54 symbols"}
+{"time": "2026-10-21T03:20:28-04:00", "level": "INFO", "message": "intraday 5m bars: 54/54 symbols"}
+{"time": "2026-10-21T03:20:31-04:00", "level": "INFO", "message": "simulated 20/85 days"}
+{"time": "2026-10-21T03:20:36-04:00", "level": "INFO", "message": "simulated 40/85 days"}
+{"time": "2026-10-21T03:20:37-04:00", "level": "WARNING", "message": "2026-08-27: position(s) held overnight by an intraday strategy (no data to close)"}
+{"time": "2026-10-21T03:20:38-04:00", "level": "WARNING", "message": "2026-09-14: position(s) held overnight by an intraday strategy (no data to close)"}
+{"time": "2026-10-21T03:20:40-04:00", "level": "INFO", "message": "simulated 60/85 days"}
+{"time": "2026-10-21T03:20:42-04:00", "level": "INFO", "message": "simulated 80/85 days"}
+{"time": "2026-10-21T03:20:43-04:00", "level": "INFO", "message": "simulated 85/85 days"}
+{"time": "2026-10-21T03:20:43-04:00", "level": "INFO", "message": "daily bars: 25/99 symbols"}
+{"time": "2026-10-21T03:20:43-04:00", "level": "INFO", "message": "daily bars: 50/99 symbols"}
+{"time": "2026-10-21T03:20:43-04:00", "level": "INFO", "message": "daily bars: 75/99 symbols"}
+{"time": "2026-10-21T03:20:46-04:00", "level": "INFO", "message": "intraday 5m bars: 10/54 symbols"}
+{"time": "2026-10-21T03:20:47-04:00", "level": "INFO", "message": "intraday 5m bars: 20/54 symbols"}
+{"time": "2026-10-21T03:20:49-04:00", "level": "INFO", "message": "intraday 5m bars: 30/54 symbols"}
+{"time": "2026-10-21T03:20:50-04:00", "level": "INFO", "message": "intraday 5m bars: 40/54 symbols"}
+{"time": "2026-10-21T03:20:51-04:00", "level": "INFO", "message": "intraday 5m bars: 50/54 symbols"}
+{"time": "2026-10-21T03:20:51-04:00", "level": "INFO", "message": "intraday 5m bars: 54/54 symbols"}
+{"time": "2026-10-21T03:21:00-04:00", "level": "WARNING", "message": "2026-08-27: position(s) held overnight by an intraday strategy (no data to close)"}
+{"time": "2026-10-21T03:21:01-04:00", "level": "WARNING", "message": "2026-09-14: position(s) held overnight by an intraday strategy (no data to close)"}
+{"time": "2026-10-21T03:21:04-04:00", "level": "INFO", "message": "run 20261021T072021Z-a195c3 finished: completed_with_warnings, net P&L 3025.44 USD, 13 trades"}
