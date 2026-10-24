@@ -1,29 +1,34 @@
-"""Run the start/stop PowerShell scripts from the venv's Scripts folder.
+"""Old command names, kept as aliases of the cross-platform `paper-bot` command.
 
-    paperbot-start [-Yes] [-SkipTest]                    scripts/start_paperbot.ps1
-    paperbot-shutdown [-Pause] [-CancelOrders] [-Timeout N]  scripts/stop_paperbot.ps1
+    paperbot-start [-Yes] [-DryRun]     = paper-bot start [--yes] [--dry-run]
+    paperbot-shutdown [-Timeout N]      = paper-bot stop [--timeout N]
 
-Arguments are passed through unchanged. The execution policy is bypassed for
-that one PowerShell process only.
+(The PowerShell launch scripts and Windows Task Scheduler setup they used to
+run are replaced by `paper-bot start` and its built-in scheduler.)
 """
-import subprocess
 import sys
 
-from paperbot import paths
+ALIASES = {"-yes": "--yes", "-dryrun": "--dry-run", "-timeout": "--timeout",
+           "-skiptest": None, "-pause": None, "-cancelorders": None}
 
 
-def _run_script(name: str) -> int:
-    script = paths.PROJECT_ROOT / "scripts" / name
-    return subprocess.call(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
-                            "-File", str(script), *sys.argv[1:]])
+def _translate(argv: list[str]) -> list[str]:
+    out = []
+    for arg in argv:
+        mapped = ALIASES.get(arg.lower(), arg)
+        if mapped is not None:
+            out.append(mapped)
+    return out
 
 
 def start() -> int:
-    return _run_script("start_paperbot.ps1")
+    from paperbot import cli
+    return cli.main(["start", *_translate(sys.argv[1:])])
 
 
 def shutdown() -> int:
-    return _run_script("stop_paperbot.ps1")
+    from paperbot import cli
+    return cli.main(["stop", *_translate(sys.argv[1:])])
 
 
 if __name__ == "__main__":

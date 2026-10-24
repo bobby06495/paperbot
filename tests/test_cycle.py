@@ -13,7 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest import mock
 
-from paperbot.runtime import cycle
+from paperbot.core import scheduled_pass as cycle
 
 ET = cycle.ET
 FC = dt.time(15, 51)
@@ -44,6 +44,54 @@ class TimeGateTest(unittest.TestCase):
 
     def test_force_close_time_comes_from_rules(self):
         self.assertEqual(cycle.force_close_at(), FC)
+
+
+class EtBoundaryTest(unittest.TestCase):
+    """Exact-second ET boundaries, other clock zones and the end of daylight saving."""
+
+    def test_second_boundaries(self):
+        def t(hour, minute, second):
+            return at(19, hour, minute).replace(second=second)
+        cases = [(t(9, 29, 59), "closed"), (t(9, 30, 0), "run"),
+                 (t(15, 50, 59), "run"), (t(15, 51, 0), "force_close"),
+                 (t(15, 59, 59), "force_close"), (t(16, 0, 0), "post_close"),
+                 (t(16, 9, 59), "post_close"), (t(16, 10, 0), "closed")]
+        for when, expected in cases:
+            self.assertEqual(cycle.time_gate(when, FC), expected, when)
+
+    def test_overnight_strategy_never_force_closes(self):
+        self.assertEqual(cycle.time_gate(at(19, 15, 55), None), "run")
+        self.assertEqual(cycle.seconds_to_force_close(at(19, 15, 50), None), 0.0)
+
+    def test_friday_night_to_saturday(self):
+        friday = dt.datetime(2026, 10, 23, 23, 59, 59, tzinfo=ET)
+        self.assertEqual(cycle.time_gate(friday, FC), "closed")
+        self.assertEqual(cycle.time_gate(friday + dt.timedelta(seconds=1), FC), "weekend")
+
+    def test_weekday_is_the_et_weekday_not_the_pc_zone(self):
+        from paperbot.core import engine
+        singapore = dt.timezone(dt.timedelta(hours=8))
+        # Saturday 04:02 in Singapore is Friday 16:02 ET: post-close still runs
+        saturday_sgt = dt.datetime(2026, 10, 24, 4, 2, tzinfo=singapore)
+        self.assertTrue(engine.post_close(saturday_sgt))
+        self.assertEqual(cycle.time_gate(saturday_sgt.astimezone(ET), FC), "post_close")
+        # Monday 04:02 in Singapore is Sunday 16:02 ET: nothing runs
+        self.assertFalse(engine.post_close(dt.datetime(2026, 10, 26, 4, 2, tzinfo=singapore)))
+
+    def test_end_of_daylight_saving(self):
+        # US clocks fall back on Sunday 2026-11-01: 20:51 UTC is 16:51 ET before, 15:51 ET after
+        before = dt.datetime(2026, 10, 30, 20, 51, tzinfo=dt.timezone.utc).astimezone(ET)
+        after = dt.datetime(2026, 11, 2, 20, 51, tzinfo=dt.timezone.utc).astimezone(ET)
+        self.assertEqual(cycle.time_gate(before, FC), "closed")
+        self.assertEqual(cycle.time_gate(after, FC), "force_close")
+        self.assertEqual(after.time(), dt.time(15, 51))
+
+    def test_hand_over_to_force_close(self):
+        def t(minute, second=0):
+            return at(19, 15, minute).replace(second=second)
+        self.assertEqual(cycle.seconds_to_force_close(t(45), FC), 0.0)  # the 15:50 run takes it
+        self.assertEqual(cycle.seconds_to_force_close(t(50, 30), FC), 30.0)
+        self.assertEqual(cycle.seconds_to_force_close(t(51), FC), 0.0)  # already force close
 
 
 class MainTest(unittest.TestCase):
@@ -113,14 +161,14 @@ class MainTest(unittest.TestCase):
 class RetryTest(unittest.TestCase):
     def test_one_retry_after_5_seconds(self):
         ib = mock.Mock()
-        with mock.patch("paperbot.trading.bot.connect", side_effect=[SystemExit(1), None]) as connect, \
+        with mock.patch("paperbot.core.engine.connect", side_effect=[SystemExit(1), None]) as connect, \
                 mock.patch.object(cycle.time, "sleep") as sleep:
             cycle.connect_with_retry(ib, {"client_id": 21}, mock.Mock())
         self.assertEqual(connect.call_count, 2)
         sleep.assert_called_once_with(5)
 
     def test_second_failure_exits(self):
-        with mock.patch("paperbot.trading.bot.connect", side_effect=SystemExit(1)) as connect, \
+        with mock.patch("paperbot.core.engine.connect", side_effect=SystemExit(1)) as connect, \
                 mock.patch.object(cycle.time, "sleep"):
             with self.assertRaises(SystemExit):
                 cycle.connect_with_retry(mock.Mock(), {"client_id": 21}, mock.Mock())
@@ -129,7 +177,7 @@ class RetryTest(unittest.TestCase):
 
 class RunGuardTest(unittest.TestCase):
     def setUp(self):
-        self.patch = mock.patch("paperbot.trading.bot.setup_logging")  # keep test lines out of logs/bot.log
+        self.patch = mock.patch("paperbot.core.engine.setup_logging")  # keep test lines out of logs/bot.log
         self.patch.start()
 
     def tearDown(self):
@@ -167,22 +215,25 @@ class ForceCloseTimingTest(unittest.TestCase):
 class RunFlowTest(unittest.TestCase):
     """cycle.run() with every IBKR / file dependency mocked: only the control flow is real."""
 
-    def run_at(self, when, holds=True, gate=None):
-        from paperbot.trading import strategy
+    def run_at(self, when, holds=True, gate=None, confirmed=True):
+        from paperbot.strategies import rule_strategy as strategy
         fake_dt = mock.Mock(wraps=dt.datetime)
         fake_dt.now = lambda tz=None: when
         ib = mock.MagicMock()
         ib.reqPnL.return_value = NS(dailyPnL=0.0)
         patches = [
             mock.patch.object(cycle.dt, "datetime", fake_dt),
-            mock.patch("paperbot.trading.bot.setup_logging"),
+            mock.patch("paperbot.core.engine.setup_logging"),
             mock.patch("paperbot.runtime.runstate.stop_requested", return_value=False),
             mock.patch("paperbot.runtime.runstate.running_pid", return_value=None),
             mock.patch("paperbot.runtime.runstate.claim_pid"),
             mock.patch("paperbot.runtime.runstate.release_pid"),
-            mock.patch("paperbot.trading.risk.RiskGuard"),
-            mock.patch("paperbot.trading.risk.verify_paper", return_value="DU1"),
-            mock.patch("paperbot.trading.strategy.load_state", return_value={"positions": {}}),
+            mock.patch("paperbot.core.risk.RiskGuard"),
+            mock.patch("paperbot.core.engine.preflight"),  # tested in test_runtime
+            mock.patch("paperbot.core.broker.verify_account", return_value="DU1"),
+            mock.patch("paperbot.strategies.rule_strategy.load_state", return_value={"positions": {}}),
+            mock.patch("paperbot.core.selector.unattended_key", return_value="trend_join_long"),
+            mock.patch.object(strategy, "_profile", None),
             mock.patch.object(strategy, "SCAN_BUDGET_SECONDS", strategy.SCAN_BUDGET_SECONDS),
             mock.patch("ib_async.IB", return_value=ib),
             mock.patch.object(cycle, "connect_with_retry"),
@@ -192,10 +243,10 @@ class RunFlowTest(unittest.TestCase):
         ]
         self.one_pass = mock.Mock(return_value=1)
         self.sleep_until = mock.Mock(return_value=True)
-        self.await_done = mock.Mock(return_value=True)
+        self.await_done = mock.Mock(return_value=confirmed)
         patches += [mock.patch.object(cycle, "one_pass", self.one_pass),
                     mock.patch.object(cycle, "sleep_until", self.sleep_until),
-                    mock.patch("paperbot.trading.bot.await_day_orders_done", self.await_done)]
+                    mock.patch("paperbot.core.engine.await_day_orders_done", self.await_done)]
         for p in patches:
             p.start()
         try:
@@ -231,6 +282,17 @@ class RunFlowTest(unittest.TestCase):
         self.run_at(at(19, 11, 0))
         self.await_done.assert_not_called()
         self.sleep_until.assert_not_called()
+
+    def test_post_close_pass_runs_even_if_day_orders_are_not_confirmed(self):
+        # the reconcile then still counts the unconfirmed order and puts no stop beside it
+        self.run_at(at(19, 16, 0).replace(second=3), confirmed=False)
+        self.await_done.assert_called_once()
+        self.one_pass.assert_called_once()
+
+    def test_force_close_run_ends_once_flat(self):
+        self.run_at(at(19, 15, 52), holds=False, gate="force_close")
+        self.one_pass.assert_called_once()  # no 30 s re-pricing loop, no post-close pass
+        self.await_done.assert_not_called()
 
 
 class OrphanStateTest(unittest.TestCase):

@@ -1,0 +1,623 @@
+{
+ "check_symbol": {
+  "held": {
+   "pass": false,
+   "price": 0.0,
+   "reasons": [
+    "FAIL already in position (5 shares)"
+   ],
+   "symbol": "AAPL"
+  },
+  "outside_window": {
+   "pass": false,
+   "price": 0.0,
+   "reasons": [
+    "FAIL outside entry window 10:05-15:30 ET (now Mon 09:50 ET)"
+   ],
+   "symbol": "TEST"
+  },
+  "pass": {
+   "gap": 4.575163398692794,
+   "pass": true,
+   "price": 97.7,
+   "quantity": 306,
+   "reasons": [
+    "no existing position",
+    "time gate ok (10:05-15:30 ET)",
+    "D2 prior close 91.80 > SMA200 71.90",
+    "price 97.70 >= 3.0",
+    "D3 gap 4.6%",
+    "D1 above prior-day high 92.80",
+    "I1 above premarket high 95.00",
+    "I2 above today's high 97.60",
+    "I3 RVOL 3.00"
+   ],
+   "rvol": 3.0,
+   "stop": 94.54,
+   "symbol": "TEST"
+  },
+  "window_last_minute": {
+   "gap": 4.575163398692794,
+   "pass": true,
+   "price": 97.7,
+   "quantity": 306,
+   "reasons": [
+    "no existing position",
+    "time gate ok (10:05-15:30 ET)",
+    "D2 prior close 91.80 > SMA200 71.90",
+    "price 97.70 >= 3.0",
+    "D3 gap 4.6%",
+    "D1 above prior-day high 92.80",
+    "I1 above premarket high 95.00",
+    "I2 above today's high 97.60",
+    "I3 RVOL 3.00"
+   ],
+   "rvol": 3.0,
+   "stop": 94.54,
+   "symbol": "TEST"
+  }
+ },
+ "decide": {
+  "after_close_live_exit": {
+   "positions": {
+    "AAPL": {
+     "breakeven": false,
+     "initial_stop": 95.0,
+     "partial_done": false,
+     "stop": 95.0
+    }
+   },
+   "requests": []
+  },
+  "after_close_protect": {
+   "positions": {
+    "AAPL": {
+     "breakeven": false,
+     "initial_stop": 95.0,
+     "partial_done": false,
+     "stop": 95.0
+    }
+   },
+   "requests": [
+    {
+     "kind": "StopUpdate",
+     "quantity": 9,
+     "reason": "restore protective stop",
+     "stop_price": 95.0,
+     "symbol": "AAPL"
+    }
+   ]
+  },
+  "breakeven_and_trail": {
+   "positions": {
+    "AAPL": {
+     "breakeven": true,
+     "initial_stop": 95.0,
+     "partial_basis": 9,
+     "partial_done": false,
+     "stop": 100.5
+    }
+   },
+   "requests": [
+    {
+     "kind": "StopUpdate",
+     "quantity": 9,
+     "reason": "sync protective stop",
+     "stop_price": 100.5,
+     "symbol": "AAPL"
+    },
+    {
+     "kind": "StopUpdate",
+     "quantity": 6,
+     "reason": "shrink stop before partial profit",
+     "stop_price": 100.5,
+     "symbol": "AAPL"
+    },
+    {
+     "action": "SELL",
+     "closing": true,
+     "good_till": null,
+     "kind": "OrderIntent",
+     "limit_price": 105.77,
+     "oca_group": null,
+     "quantity": 3,
+     "reason": "partial profit",
+     "stop_price": null,
+     "symbol": "AAPL"
+    }
+   ]
+  },
+  "entry_signal": {
+   "positions": {},
+   "requests": [
+    {
+     "action": "BUY",
+     "closing": false,
+     "good_till": "2026-10-19T15:31:00-04:00",
+     "kind": "OrderIntent",
+     "limit_price": 97.91,
+     "oca_group": null,
+     "quantity": 306,
+     "reason": "trend join: gap 4.6%, rvol 3.0, stop 94.54",
+     "stop_price": 94.54,
+     "symbol": "TEST"
+    }
+   ]
+  },
+  "entry_signal_partial_window": {
+   "positions": {},
+   "requests": [
+    {
+     "action": "BUY",
+     "closing": false,
+     "good_till": "2026-10-19T15:31:00-04:00",
+     "kind": "OrderIntent",
+     "limit_price": 97.91,
+     "oca_group": null,
+     "quantity": 306,
+     "reason": "trend join: gap 4.6%, rvol 3.0, stop 94.54",
+     "stop_price": 94.54,
+     "symbol": "TEST"
+    }
+   ]
+  },
+  "entry_sweep": {
+   "positions": {},
+   "requests": [
+    {
+     "kind": "CancelRequest",
+     "order_id": 3,
+     "reason": "entry window closed",
+     "symbol": "AAPL"
+    }
+   ]
+  },
+  "force_close_fresh_exit": {
+   "positions": {
+    "AAPL": {
+     "breakeven": false,
+     "initial_stop": 95.0,
+     "partial_done": false,
+     "stop": 95.0
+    }
+   },
+   "requests": []
+  },
+  "force_close_legacy_stop": {
+   "positions": {
+    "AAPL": {
+     "breakeven": false,
+     "force_attempts": 1,
+     "initial_stop": 95.0,
+     "partial_done": false,
+     "stop": 95.0
+    }
+   },
+   "requests": [
+    {
+     "kind": "CancelRequest",
+     "order_id": 5,
+     "reason": "force close: stop replaced by closing order (no OCA group)",
+     "symbol": "AAPL"
+    },
+    {
+     "action": "SELL",
+     "closing": true,
+     "good_till": null,
+     "kind": "OrderIntent",
+     "limit_price": 100.78,
+     "oca_group": null,
+     "quantity": 9,
+     "reason": "force close (attempt 1)",
+     "stop_price": null,
+     "symbol": "AAPL"
+    }
+   ]
+  },
+  "force_close_oca_stop": {
+   "positions": {
+    "AAPL": {
+     "breakeven": false,
+     "force_attempts": 1,
+     "initial_stop": 95.0,
+     "partial_done": false,
+     "stop": 95.0
+    }
+   },
+   "requests": [
+    {
+     "action": "SELL",
+     "closing": true,
+     "good_till": null,
+     "kind": "OrderIntent",
+     "limit_price": 100.29,
+     "oca_group": "g1",
+     "quantity": 9,
+     "reason": "force close (attempt 1)",
+     "stop_price": null,
+     "symbol": "AAPL"
+    }
+   ]
+  },
+  "force_close_stale_exit": {
+   "positions": {
+    "AAPL": {
+     "breakeven": false,
+     "force_attempts": 1,
+     "initial_stop": 95.0,
+     "partial_done": false,
+     "stop": 95.0
+    }
+   },
+   "requests": [
+    {
+     "kind": "CancelRequest",
+     "order_id": 7,
+     "reason": "force close: replace",
+     "symbol": "AAPL"
+    },
+    {
+     "action": "SELL",
+     "closing": true,
+     "good_till": null,
+     "kind": "OrderIntent",
+     "limit_price": 100.78,
+     "oca_group": null,
+     "quantity": 9,
+     "reason": "force close (attempt 1)",
+     "stop_price": null,
+     "symbol": "AAPL"
+    }
+   ]
+  },
+  "no_signal_outside_window": {
+   "positions": {},
+   "requests": []
+  },
+  "partial_profit": {
+   "positions": {
+    "AAPL": {
+     "breakeven": false,
+     "initial_stop": 95.0,
+     "partial_basis": 9,
+     "partial_done": false,
+     "stop": 95.0
+    }
+   },
+   "requests": [
+    {
+     "kind": "StopUpdate",
+     "quantity": 6,
+     "reason": "shrink stop before partial profit",
+     "stop_price": 95.0,
+     "symbol": "AAPL"
+    },
+    {
+     "action": "SELL",
+     "closing": true,
+     "good_till": null,
+     "kind": "OrderIntent",
+     "limit_price": 103.78,
+     "oca_group": null,
+     "quantity": 3,
+     "reason": "partial profit",
+     "stop_price": null,
+     "symbol": "AAPL"
+    }
+   ]
+  },
+  "restore_missing_stop": {
+   "positions": {
+    "AAPL": {
+     "breakeven": false,
+     "initial_stop": 95.0,
+     "partial_done": false,
+     "stop": 95.0
+    }
+   },
+   "requests": [
+    {
+     "kind": "StopUpdate",
+     "quantity": 9,
+     "reason": "restore protective stop",
+     "stop_price": 95.0,
+     "symbol": "AAPL"
+    }
+   ]
+  },
+  "sync_stop_size": {
+   "positions": {
+    "AAPL": {
+     "breakeven": false,
+     "initial_stop": 95.0,
+     "partial_done": false,
+     "stop": 95.0
+    }
+   },
+   "requests": [
+    {
+     "kind": "StopUpdate",
+     "quantity": 6,
+     "reason": "sync protective stop",
+     "stop_price": 95.0,
+     "symbol": "AAPL"
+    }
+   ]
+  }
+ },
+ "evaluate": {
+  "contract_missing": {
+   "gap": null,
+   "pass": false,
+   "price": 0.0,
+   "reasons": [
+    "FAIL contract not found at IBKR"
+   ],
+   "rvol": null,
+   "stop": null,
+   "symbol": "TEST"
+  },
+  "d1_below_prior_high": {
+   "gap": 4.575163398692794,
+   "pass": false,
+   "price": 97.7,
+   "reasons": [
+    "D2 prior close 91.80 > SMA200 71.90",
+    "price 97.70 >= 3.0",
+    "D3 gap 4.6%",
+    "FAIL D1 price not above prior-day high 500.00"
+   ],
+   "rvol": null,
+   "stop": null,
+   "symbol": "TEST"
+  },
+  "d2_below_sma": {
+   "gap": null,
+   "pass": false,
+   "price": 0.0,
+   "reasons": [
+    "FAIL D2 prior close 95.50 not above SMA200 145.25"
+   ],
+   "rvol": null,
+   "stop": null,
+   "symbol": "TEST"
+  },
+  "d2_short_history": {
+   "gap": null,
+   "pass": false,
+   "price": 0.0,
+   "reasons": [
+    "FAIL D2 prior close 91.80 not above SMA200 n/a (<200 days)"
+   ],
+   "rvol": null,
+   "stop": null,
+   "symbol": "TEST"
+  },
+  "d3_gap_small": {
+   "gap": 0.2178649237472685,
+   "pass": false,
+   "price": 97.7,
+   "reasons": [
+    "D2 prior close 91.80 > SMA200 71.90",
+    "price 97.70 >= 3.0",
+    "FAIL D3 gap 0.2% < 3.0%"
+   ],
+   "rvol": null,
+   "stop": null,
+   "symbol": "TEST"
+  },
+  "i1_below_premarket_high": {
+   "gap": 4.575163398692794,
+   "pass": false,
+   "price": 97.7,
+   "reasons": [
+    "D2 prior close 91.80 > SMA200 71.90",
+    "price 97.70 >= 3.0",
+    "D3 gap 4.6%",
+    "D1 above prior-day high 92.80",
+    "FAIL I1 price not above premarket high 999.00"
+   ],
+   "rvol": null,
+   "stop": null,
+   "symbol": "TEST"
+  },
+  "i1_no_premarket": {
+   "gap": 4.575163398692794,
+   "pass": false,
+   "price": 97.7,
+   "reasons": [
+    "D2 prior close 91.80 > SMA200 71.90",
+    "price 97.70 >= 3.0",
+    "D3 gap 4.6%",
+    "D1 above prior-day high 92.80",
+    "FAIL I1 no premarket bars"
+   ],
+   "rvol": null,
+   "stop": null,
+   "symbol": "TEST"
+  },
+  "i2_not_new_high": {
+   "gap": 4.575163398692794,
+   "pass": false,
+   "price": 97.7,
+   "reasons": [
+    "D2 prior close 91.80 > SMA200 71.90",
+    "price 97.70 >= 3.0",
+    "D3 gap 4.6%",
+    "D1 above prior-day high 92.80",
+    "I1 above premarket high 95.00",
+    "FAIL I2 price not above today's high 999.00"
+   ],
+   "rvol": null,
+   "stop": null,
+   "symbol": "TEST"
+  },
+  "i3_rvol_low": {
+   "gap": 4.575163398692794,
+   "pass": false,
+   "price": 97.7,
+   "reasons": [
+    "D2 prior close 91.80 > SMA200 71.90",
+    "price 97.70 >= 3.0",
+    "D3 gap 4.6%",
+    "D1 above prior-day high 92.80",
+    "I1 above premarket high 95.00",
+    "I2 above today's high 97.60",
+    "FAIL I3 RVOL 0.00 < 2.0"
+   ],
+   "rvol": 0.003,
+   "stop": null,
+   "symbol": "TEST"
+  },
+  "i3_rvol_short_history": {
+   "gap": 4.575163398692794,
+   "pass": false,
+   "price": 97.7,
+   "reasons": [
+    "D2 prior close 91.80 > SMA200 71.90",
+    "price 97.70 >= 3.0",
+    "D3 gap 4.6%",
+    "D1 above prior-day high 92.80",
+    "I1 above premarket high 95.00",
+    "I2 above today's high 97.60",
+    "FAIL I3 RVOL n/a < 2.0"
+   ],
+   "rvol": null,
+   "stop": null,
+   "symbol": "TEST"
+  },
+  "no_daily_history": {
+   "gap": null,
+   "pass": false,
+   "price": 0.0,
+   "reasons": [
+    "FAIL no daily history"
+   ],
+   "rvol": null,
+   "stop": null,
+   "symbol": "TEST"
+  },
+  "pass": {
+   "gap": 4.575163398692794,
+   "pass": true,
+   "price": 97.7,
+   "reasons": [
+    "D2 prior close 91.80 > SMA200 71.90",
+    "price 97.70 >= 3.0",
+    "D3 gap 4.6%",
+    "D1 above prior-day high 92.80",
+    "I1 above premarket high 95.00",
+    "I2 above today's high 97.60",
+    "I3 RVOL 3.00"
+   ],
+   "rvol": 3.0,
+   "stop": 94.54,
+   "symbol": "TEST"
+  },
+  "pass_early_session": {
+   "gap": 4.575163398692794,
+   "pass": true,
+   "price": 96.7,
+   "reasons": [
+    "D2 prior close 91.80 > SMA200 71.90",
+    "price 96.70 >= 3.0",
+    "D3 gap 4.6%",
+    "D1 above prior-day high 92.80",
+    "I1 above premarket high 95.00",
+    "I2 above today's high 96.60",
+    "I3 RVOL 3.00"
+   ],
+   "rvol": 3.0,
+   "stop": 94.54,
+   "symbol": "TEST"
+  },
+  "price_below_min": {
+   "gap": -97.82135076252723,
+   "pass": false,
+   "price": 2.0,
+   "reasons": [
+    "D2 prior close 91.80 > SMA200 71.90",
+    "FAIL price 2.00 < min 3.0"
+   ],
+   "rvol": null,
+   "stop": null,
+   "symbol": "TEST"
+  },
+  "prior_close_below_min": {
+   "gap": null,
+   "pass": false,
+   "price": 0.0,
+   "reasons": [
+    "FAIL prior close 2.00 < min 3.0"
+   ],
+   "rvol": null,
+   "stop": null,
+   "symbol": "TEST"
+  },
+  "too_few_bars": {
+   "gap": null,
+   "pass": false,
+   "price": 0.0,
+   "reasons": [
+    "D2 prior close 91.80 > SMA200 71.90",
+    "FAIL fewer than 2 completed 5m bars today"
+   ],
+   "rvol": null,
+   "stop": null,
+   "symbol": "TEST"
+  }
+ },
+ "sizing": {
+  "buying_power_binds": {
+   "action": "BUY",
+   "closing": false,
+   "good_till": null,
+   "kind": "OrderIntent",
+   "limit_price": 100.2,
+   "oca_group": null,
+   "quantity": 199,
+   "reason": "trend join: gap 4.0%, rvol 3.0, stop 98.00",
+   "stop_price": 98.0,
+   "symbol": "TEST"
+  },
+  "commission_after_bp_cap": null,
+  "commission_blocks": null,
+  "gtd": {
+   "action": "BUY",
+   "closing": false,
+   "good_till": "2026-10-19T15:31:00-04:00",
+   "kind": "OrderIntent",
+   "limit_price": 100.2,
+   "oca_group": null,
+   "quantity": 299,
+   "reason": "trend join: gap 4.0%, rvol 3.0, stop 98.00",
+   "stop_price": 98.0,
+   "symbol": "TEST"
+  },
+  "high_price": {
+   "action": "BUY",
+   "closing": false,
+   "good_till": null,
+   "kind": "OrderIntent",
+   "limit_price": 1361.32,
+   "oca_group": null,
+   "quantity": 22,
+   "reason": "trend join: gap 4.6%, rvol 2.4, stop 1331.33",
+   "stop_price": 1331.33,
+   "symbol": "TEST"
+  },
+  "stop_above_limit": null,
+  "typical": {
+   "action": "BUY",
+   "closing": false,
+   "good_till": null,
+   "kind": "OrderIntent",
+   "limit_price": 100.23,
+   "oca_group": null,
+   "quantity": 299,
+   "reason": "trend join: gap 4.0%, rvol 3.0, stop 98.00",
+   "stop_price": 98.0,
+   "symbol": "TEST"
+  }
+ }
+}

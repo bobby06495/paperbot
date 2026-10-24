@@ -1,6 +1,6 @@
 """Gracefully stop a running paperbot. Never kills or signals any process.
 
-    paperbot-stop [--timeout SECONDS]      (same as python -m paperbot.runtime.stopbot)
+    paper-bot stop [--timeout SECONDS]     (also paperbot-stop, python -m paperbot.runtime.stopbot)
 
 Creates the STOP file and waits for the bot to confirm it has exited (the
 bot removes logs/bot.pid on the way out). On its next loop the bot cancels
@@ -18,11 +18,11 @@ import time
 from paperbot.runtime import runstate
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Gracefully stop a running paperbot.")
     parser.add_argument("--timeout", type=int, default=120,
                         help="seconds to wait for the bot to exit (default 120)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     pid = runstate.running_pid()
     if pid is None:

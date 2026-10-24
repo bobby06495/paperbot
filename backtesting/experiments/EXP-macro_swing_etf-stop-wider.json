@@ -1,0 +1,18 @@
+{
+  "id": "EXP-macro_swing_etf-stop-wider",
+  "strategy_id": "macro_swing_etf",
+  "title": "Macro Swing ETF: stop wider",
+  "status": "proposed",
+  "created": "2026-10-21",
+  "hypothesis": "A wider ATR stop lets multi-day pullbacks recover instead of stopping out.",
+  "reason": "Stop distance drives both position size and how often trades are stopped out.",
+  "evidence": "No baseline run yet: proposed from the configuration alone.",
+  "changes": {
+    "stop.multiple": 3.0
+  },
+  "baseline_values": {
+    "stop.multiple": 2.0
+  },
+  "data_periods": "Choose on the validation segment only. The out-of-sample segment is reported once as an untouched-data check.",
+  "approval": "Not applied. Changing config/rules.json requires a human review."
+}

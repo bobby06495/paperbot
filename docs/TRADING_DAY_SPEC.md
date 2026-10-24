@@ -1,6 +1,6 @@
 # Paperbot — Trading-Day Technical Specification
 
-**Strategy:** Trend Join Long (long only, 5-minute bars) · **Broker:** Interactive Brokers, paper account only (port 4002) · **Code basis:** `main` @ `addfa52`, plus the 2026-10-20 hardening (see `retrospective_log.md`)
+**Strategy:** Trend Join Long (long only, 5-minute bars; `rules.json → strategies.trend_join_long`) · **Broker:** Interactive Brokers, paper mode (port 4002) · **Code basis:** `main` @ `addfa52`, plus the 2026-10-20 hardening and the strategy-engine / cross-platform refactor (see `retrospective_log.md`)
 
 This document traces what Paperbot does on one US trading day, from the 09:30 ET open to the 16:00 ET close. Every rule, threshold and timing below comes from the code (`src/paperbot/**`) and the live config (`config/config.json`, `config/rules.json`). Where the code behaves differently from what the config suggests, the difference is stated in the section where it applies and listed again in §6.
 
@@ -8,19 +8,21 @@ All times are **US Eastern (ET)**. The PC runs on Singapore time, and the schedu
 
 ---
 
-## 0. Two run modes (read this first)
+## 0. Run modes (read this first)
+
+> **Since 2026-10-20 the default is `paper-bot start`** on every OS: one long-running process (the *continuous* column below) that also runs the built-in scheduler (rotation 09:25, prefilter 09:55-12:55, daily summary 16:05) and reconnects to IB Gateway by itself. The strategy is chosen at start-up from `rules.json → strategies` (menu, `--strategy`, or the saved choice in `logs/active_strategy.json`). The scheduled mode traced in this document still works (`paperbot-cycle` / the `HT_*` tasks) and makes the same decisions; the timings that differ are noted in the continuous column. Module names below refer to their current homes: `strategy.decide()` is `strategies/rule_strategy.py`, `bot.*` is `core/engine.py`, `cycle.*` is `core/scheduled_pass.py`.
 
 Paperbot has two ways to run. Both use the same decision code: `strategy.decide()` → `RiskGuard` → `bot.handle_request()`. A pid lock (`logs/bot.pid`) makes sure only one of them runs at a time.
 
-| | **Scheduled mode** (deployed) | **Continuous mode** |
+| | **Scheduled mode** (legacy, Windows) | **Continuous mode** (`paper-bot start`, default) |
 |---|---|---|
-| Entry point | `paperbot.runtime.cycle --submit`, started by Windows Task Scheduler task `HT_Cycle` | `paperbot-bot --submit`, one long-running process |
+| Entry point | `paperbot.runtime.cycle --submit`, started by Windows Task Scheduler task `HT_Cycle` | `paper-bot start` (also `paperbot-bot --submit`), one long-running process |
 | Loop trigger | `schtasks /SC MINUTE /MO 5`: a **new process every 5 minutes** on the :00/:05/:10… grid, around the clock | `ib.sleep(loop_seconds)`: **30 s after the previous pass finishes** |
 | Activity gate | Exits in < 1 s on weekends and outside 09:30–16:10 ET | Loops at any hour. Outside the session it only protects positions |
 | Entry-scan budget | 150 s per run (one run usually scans the whole list) | 10 s per loop, then resumes where it stopped on the next loop |
 | Force close | The 15:50 run stays connected, starts at **15:51:00** and **repeats the pass every 30 s** until flat or 16:00 | Every 30-s loop from 15:51 |
 
-`scripts/start_paperbot.ps1` registers **scheduled mode**, so this document follows scheduled mode and notes where continuous mode differs.
+This document was written for scheduled mode (the deployment until 2026-10-20) and notes where continuous mode differs.
 
 ---
 
@@ -66,7 +68,7 @@ Every scheduled run, including the first one of the day, runs these steps in ord
 | `config.json → limits` | `allowed_symbols` | `["*"]` | Any symbol |
 | | `limit_orders_only` | true | Entries and exits must be limit orders. Stops are STP. |
 | `config.json` | `time_in_force` | DAY | Entries and exits. Stops are always GTC. |
-| `rules.json → risk` | `max_quantity_per_order` | 500 | Hard share cap per entry |
+| `rules.json → strategies.trend_join_long.risk` | `max_quantity_per_order` | 500 | Hard share cap per entry |
 | | `max_order_value` | **$30,000** | Cap on quantity × limit price per entry. **The binding size limit for the current watchlist.** |
 | | `max_orders_per_day` | 5 | Entries (BUY brackets) sent per ET day |
 | | `max_open_orders` | 2 | Working entry + exit orders. Protective stops are not counted. |
@@ -78,8 +80,8 @@ Every scheduled run, including the first one of the day, runs these steps in ord
 | | `max_drawdown_usd` | $6,000 | Multi-day drawdown breaker |
 
 These values are pinned in `tests/test_risk_policy.py` (`APPROVED_LIMITS`), which also checks them against a reference account ($781,120) and the 2026-10-19 watchlist. Changing a limit means updating that table in the same reviewed change.
-| `rules.json → time_filter` | entry window / force close | 10:05–15:30 / 15:51 | |
-| `rules.json → exit` | stop / partial / breakeven / trail | LOD − 1 % / +0.75R, ⅓ / +1R / 5-min swing low (2, 2) | |
+| `… trend_join_long.time_filter` | entry window / force close | 10:05–15:30 / 15:51 | |
+| `… trend_join_long.stop` / `manage` | stop / partial / breakeven / trail | LOD − 1 % / +0.75R, ⅓ / +1R / 5-min swing low (2, 2) | |
 
 ### 1.5 What the 09:30 run actually does
 
@@ -93,13 +95,13 @@ From the **09:35** run onward, positions carried in from earlier (§5.3) get ful
 
 ### 1.6 Watchlist build (09:55, re-run every 30 min until 12:55)
 
-`HT_Prefilter_01…07` run `paperbot.market.morning_prefilter`, which never connects to IBKR:
+`HT_Prefilter_01…07` run `paperbot.market.morning_prefilter`:
 1. Fetches today's S&P 500 members from Wikipedia.
 2. Keeps the **100 largest by market cap** (Yahoo Finance, 5 threads).
-3. Downloads 2 daily bars for those 100 in bulk.
-4. Computes gap = today's open ÷ yesterday's close − 1. A symbol survives if gap ≥ 3 % and its latest price ≥ $3.
+3. Requests about 5 days of regular-hours daily bars for those 100 from IB Gateway, over a **read-only** connection with its own clientId (`config.json` client_id + 4), 8 requests at a time. It can run next to the bot and can never place an order.
+4. Computes gap = today's open ÷ the previous session's close − 1 (the same IBKR data as the bot's gap check). A symbol survives if gap ≥ 3 % and its latest price ≥ $3.
 5. Sorts by gap, keeps the **top 20**, and writes them atomically to `data/watchlist.txt` with a header dated today.
-6. Sends an ALERT push if ≥ 30 % of the symbols failed to download (≥ 95 % = connection failure). Exits 1 if Yahoo has no bar for today yet.
+6. Sends an ALERT push if ≥ 30 % of the symbols have no IBKR data. A failed run exits 1 and does **not** write the watchlist, so the bot keeps an earlier list from today or falls back to `universe.txt`. It fails when Wikipedia or Yahoo is unavailable, IB Gateway can't be reached, IBKR has no bar for today yet, or ≥ 95 % of the symbols have no data. The `Prefilter FAILED` push names the step that failed.
 
 The strategy scans `watchlist.txt` only if its header date is today (ET). Otherwise it falls back to the static `config/universe.txt` (99 symbols) and logs a warning once per day. When a prefilter re-run changes the list, the scan position resets.
 

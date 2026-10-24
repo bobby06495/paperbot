@@ -1,0 +1,18 @@
+{
+  "id": "EXP-trend_join_long-stop-wider",
+  "strategy_id": "trend_join_long",
+  "title": "Trend Join Long: stop wider",
+  "status": "proposed",
+  "created": "2026-10-21",
+  "hypothesis": "A wider initial stop reduces premature stop-outs enough to offset the smaller position it implies (risk per trade is fixed).",
+  "reason": "Stop distance drives both position size and how often trades are stopped out.",
+  "evidence": "Baseline run 20261021T030231Z-72dcd5: 1 trades, 0 ended at the initial stop; most frequent blocking check: D2.",
+  "changes": {
+    "stop.pct": 2.0
+  },
+  "baseline_values": {
+    "stop.pct": 1.0
+  },
+  "data_periods": "Choose on the validation segment only. The out-of-sample segment is reported once as an untouched-data check.",
+  "approval": "Not applied. Changing config/rules.json requires a human review."
+}

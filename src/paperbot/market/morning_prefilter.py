@@ -1,33 +1,43 @@
 """Morning gap prefilter: today's biggest gappers of the configured index -> watchlist.txt.
 
-    python -m paperbot.market.morning_prefilter [--min-gap PCT] [--min-price USD] [--dry-run]
+    python -m paperbot.market.morning_prefilter [--strategy KEY] [--min-gap PCT]
+                                                [--min-price USD] [--dry-run]
     (paperbot-prefilter is the same command; output goes to data/watchlist.txt)
 
-The index, how many of its largest members to screen and both thresholds come
-from rules.json (market/universe.py): universe_filters.index ("S&P 500" or
-"Nasdaq-100"), universe_filters.top_n, universe_filters.min_price_usd and the
-entry rule D3 (daily_filters.D3_min_gap_pct_from_prior_close), so the screen
-and the entry check always use the same gap. --min-gap / --min-price override
-them for one run.
+What it screens comes from the watchlist strategy in rules.json (market/universe.py):
+the running/saved strategy if its universe is the watchlist, else the default or the
+first such strategy (--strategy picks one). Its universe names the index ("S&P 500" or
+"Nasdaq-100") and top_n; the gap and price thresholds are its own entry blocks
+(min_gap_pct, min_price), so the screen and the entry checks always agree.
+--min-gap / --min-price override them for one run.
 
 Run on a trading day after the 9:30 ET open and before the bot's entry
 window (10:05 ET). Steps:
   1. live constituents of the index from Wikipedia (sp500_tickers.py)
   2. top_n of them by current market cap (yfinance, 5 worker threads)
-  3. one bulk 2-day daily download for those (threads=5)
-  4. gap = today's open vs yesterday's close, the same measure as D3 in
-     rules.json; price = the latest intraday print
-  5. survivors (gap >= the D3 gap, price >= min_price_usd), sorted by gap,
-     capped at 20, written to watchlist.txt (skipped with --dry-run); the
-     header records the index, so the bot ignores a list built for another one
+  3. regular-hours daily bars for those from IB Gateway: a READ-ONLY connection
+     with its own clientId (config.json client_id + IB_CLIENT_ID_OFFSET), so it
+     runs next to the bot and can never place an order
+  4. gap = today's open vs the previous session's close (the bot's gap block uses
+     the same IBKR data); price = today's latest print
+  5. survivors (gap >= min gap, price >= min price), sorted by gap, capped at 20,
+     written to watchlist.txt (skipped with --dry-run); the header records the
+     index, so the bot ignores a list built for another one
+
+A failed run never writes the watchlist: Wikipedia, Yahoo or IB Gateway unavailable,
+or price data missing for FAIL_RATIO of the symbols. The previous watchlist is kept,
+so the bot scans an earlier list from today, or falls back to the static
+universe.txt, instead of an empty list.
 
 strategy.py scans watchlist.txt when it was generated today (ET) and falls
-back to the static universe.txt otherwise. A JSON summary goes to stdout,
-alerts to stderr. Unless --dry-run, the result (survivors, failure or a
-degradation alert) is also pushed via notify.py. Exit 0 on success, 1 when no usable data was downloaded.
-Read-only web access (Wikipedia, Yahoo Finance); never connects to IBKR.
+back to universe.txt otherwise. A JSON summary goes to stdout, alerts to
+stderr. Unless --dry-run, the result (survivors, failure naming the step that
+failed, or a degradation alert) is also pushed via notify.py. Exit 0 on
+success, 1 on failure.
 """
 import argparse
+import asyncio
+import dataclasses
 import datetime as dt
 import json
 import math
@@ -38,19 +48,43 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-import pandas as pd
 import yfinance as yf
 
 from paperbot import paths
+from paperbot.core.risk import ConfigError
 from paperbot.market import universe
 from paperbot.market.sp500_tickers import get_live_index_tickers, to_yahoo
 from paperbot.reporting.notify import notify
 
 WATCHLIST_PATH = paths.WATCHLIST_FILE
-RULES_FILE = paths.RULES_FILE
+DEFAULT_MIN_GAP_PCT = universe.DEFAULT_MIN_GAP  # when the strategy has no gap block
+DEFAULT_MIN_PRICE = universe.DEFAULT_MIN_PRICE
 MAX_SURVIVORS = 20
+TOP_N = universe.DEFAULT_TOP_N  # default; a strategy's universe.top_n overrides it
 YF_THREADS = 5  # keep low: each thread holds sockets/file descriptors
 ET = ZoneInfo("America/New_York")
+
+# clientIds in use: bot +0, kill switch +1, --check-only +2, backtester +3
+IB_CLIENT_ID_OFFSET = 4
+IB_CONNECT_TIMEOUT = 15  # seconds
+IB_REQUEST_TIMEOUT = 10  # seconds per contract lookup / historical request
+IB_CONCURRENCY = 8  # simultaneous historical requests (IBKR allows up to 50)
+IB_DURATION = "5 D"  # enough to contain the previous session after a holiday
+
+FAIL_RATIO = 0.95  # this share of symbols without data = failed run, no watchlist
+DEGRADED_RATIO = 0.30  # this share = watchlist written, with an alert
+SAMPLE_ERRORS = 3  # failed symbols quoted in a failure message
+
+
+class IbkrUnavailable(RuntimeError):
+    """IB Gateway could not be reached; str() is the message for the alert."""
+
+
+@dataclasses.dataclass(frozen=True)
+class DailyBar:
+    date: dt.date
+    open: float
+    close: float
 
 
 def market_caps(ibkr_symbols: list[str]) -> dict[str, float]:
@@ -68,43 +102,93 @@ def market_caps(ibkr_symbols: list[str]) -> dict[str, float]:
         return {s: c for s, c in pool.map(cap, ibkr_symbols) if c}
 
 
-def download(yahoo_symbols: list[str]) -> pd.DataFrame:
-    return yf.download(
-        tickers=" ".join(yahoo_symbols),
-        period="2d",
-        interval="1d",
-        group_by="ticker",
-        threads=YF_THREADS,
-        progress=False,
-        auto_adjust=True,
-    )
+def _as_date(value) -> dt.date:
+    return value.date() if isinstance(value, dt.datetime) else value
 
 
-def _bars(data: pd.DataFrame, yahoo_symbol: str) -> pd.DataFrame:
-    """One ticker's bars from a yf.download(group_by="ticker") frame (KeyError if absent)."""
-    if isinstance(data.columns, pd.MultiIndex):
-        return data[yahoo_symbol]
-    return data  # a single-ticker download has flat columns
+async def _fetch_all(ib, symbols: list[str]) -> tuple[dict[str, list[DailyBar]], dict[str, str]]:
+    from ib_async import Stock
+
+    gate = asyncio.Semaphore(IB_CONCURRENCY)
+
+    async def one(symbol: str) -> tuple[str, list[DailyBar] | None, str | None]:
+        async with gate:
+            contract = Stock(symbol, "SMART", "USD")
+            try:
+                await asyncio.wait_for(ib.qualifyContractsAsync(contract), IB_REQUEST_TIMEOUT)
+                if not contract.conId:
+                    return symbol, None, "contract not found at IBKR"
+                raw = await ib.reqHistoricalDataAsync(
+                    contract, "", IB_DURATION, "1 day", "TRADES", useRTH=True, formatDate=1,
+                    timeout=IB_REQUEST_TIMEOUT)
+            except asyncio.TimeoutError:
+                return symbol, None, "IBKR request timed out"
+            except Exception as e:  # noqa: BLE001 - one bad symbol must not stop the screen
+                return symbol, None, f"IBKR error {e!r}"
+            if not raw:
+                return symbol, None, "no daily bars from IBKR (timed out or no data permission)"
+            return symbol, [DailyBar(_as_date(b.date), float(b.open), float(b.close))
+                            for b in raw], None
+
+    bars, errors = {}, {}
+    for symbol, got, error in await asyncio.gather(*(one(s) for s in symbols)):
+        if error:
+            errors[symbol] = error
+        else:
+            bars[symbol] = got
+    return bars, errors
 
 
-def screen(data: pd.DataFrame, symbols: list[str], min_gap: float, min_price: float,
-           today: dt.date) -> dict:
-    """Apply the price and gap filters. Returns survivors (sorted, capped) and buckets."""
+def ibkr_daily_bars(symbols: list[str], cfg: dict | None = None
+                    ) -> tuple[dict[str, list[DailyBar]], dict[str, str]]:
+    """Recent regular-hours daily bars per symbol from IB Gateway (today's bar is the
+    session so far), and an error per symbol that has none. Read-only connection.
+    IbkrUnavailable if the Gateway cannot be reached; ConfigError for a bad config."""
+    from ib_async import IB
+
+    from paperbot.core import broker
+
+    cfg = cfg if cfg is not None else json.loads(paths.CONFIG_FILE.read_text())
+    conn = broker.settings(cfg)
+    client_id = conn.client_id + IB_CLIENT_ID_OFFSET
+    ib = IB()
+    try:
+        ib.connect(conn.host, conn.port, clientId=client_id, timeout=IB_CONNECT_TIMEOUT,
+                   readonly=True)
+    except (OSError, asyncio.TimeoutError, TimeoutError, ConnectionError) as e:
+        raise IbkrUnavailable(f"IB Gateway not reachable at {conn.host}:{conn.port} "
+                              f"(clientId {client_id}): {e!r}") from None
+    try:
+        return ib.run(_fetch_all(ib, symbols))
+    finally:
+        ib.disconnect()
+
+
+def latest_date(data: dict[str, list[DailyBar]]) -> dt.date | None:
+    return max((b.date for bars in data.values() for b in bars), default=None)
+
+
+def screen(data: dict[str, list[DailyBar]], symbols: list[str], min_gap: float,
+           min_price: float, today: dt.date, errors: dict[str, str] | None = None) -> dict:
+    """Apply the price and gap filters. Returns survivors (sorted, capped) and buckets.
+    `errors` explains symbols missing from `data` (shown in "failed")."""
+    errors = errors or {}
     survivors, failed = [], []
     below_gap = below_price = 0
     for symbol in symbols:
         try:
-            bars = _bars(data, to_yahoo(symbol)).dropna(subset=["Open", "Close"])
+            if symbol not in data:
+                raise ValueError(errors.get(symbol, "no daily bars"))
+            bars = sorted((b for b in data[symbol]
+                           if all(math.isfinite(v) and v > 0 for v in (b.open, b.close))),
+                          key=lambda b: b.date)
+            if not bars or bars[-1].date != today:
+                latest = bars[-1].date if bars else None
+                raise ValueError(f"no bar for today (latest {latest})")
             if len(bars) < 2:
-                raise ValueError("fewer than 2 daily bars")
-            if bars.index[-1].date() != today:
-                raise ValueError(f"no bar for today (latest {bars.index[-1].date()})")
-            prev_close = float(bars.iloc[-2]["Close"])
-            today_open = float(bars.iloc[-1]["Open"])
-            last = float(bars.iloc[-1]["Close"])  # latest intraday print
-            if prev_close <= 0 or any(math.isnan(v) for v in (prev_close, today_open, last)):
-                raise ValueError("missing price")
-        except (KeyError, IndexError, ValueError) as e:
+                raise ValueError("no previous session bar")
+            prev_close, today_open, last = bars[-2].close, bars[-1].open, bars[-1].close
+        except ValueError as e:
             failed.append(f"{symbol}: {e}")
             continue
         gap_pct = (today_open - prev_close) / prev_close * 100
@@ -124,13 +208,13 @@ def screen(data: pd.DataFrame, symbols: list[str], min_gap: float, min_price: fl
 def write_watchlist(path: Path, survivors: list[dict], passed: int, screened: int,
                     min_gap: float, min_price: float, now: dt.datetime,
                     index: str = universe.DEFAULT_INDEX):
-    """Overwrite the watchlist atomically. strategy.py reads the date in line 1 and
-    the index in line 2."""
+    """Overwrite the watchlist atomically. The bot reads the date in line 1 and the
+    index in the "# Index:" line."""
     lines = [
         f"# Auto-generated by morning_prefilter.py at {now:%Y-%m-%d %H:%M %Z}",
         f"# Index: {index}",
         f"# Filters: gap >= {min_gap:g}%, price >= ${min_price:g}",
-        "# Source: Live Daily Index Assembly & Dynamic yfinance Engine Filter Feed",
+        "# Source: Wikipedia index members, Yahoo market caps, IBKR daily bars",
         f"# Survivors: {len(survivors)} (capped at {MAX_SURVIVORS}; {passed} passed) "
         f"of {screened} Dynamic Screened Assets",
         "#",
@@ -144,13 +228,17 @@ def write_watchlist(path: Path, survivors: list[dict], passed: int, screened: in
     os.replace(tmp, path)
 
 
+def failure(failed: int, total: int) -> bool:
+    """Too few symbols with data for the watchlist to be trusted."""
+    return bool(total) and failed / total >= FAIL_RATIO
+
+
 def alerts(failed: int, total: int) -> list[str]:
-    if not total:
+    """Alerts for a run that still writes its watchlist (below FAIL_RATIO)."""
+    if not total or failure(failed, total):
         return []
-    if failed / total >= 0.95:
-        return ["ALERT: Yahoo/Wikipedia connection failure suspected"]
-    if failed / total >= 0.30:
-        return [f"ALERT: yfinance data degradation (failed {failed}/{total})"]
+    if failed / total >= DEGRADED_RATIO:
+        return [f"ALERT: IBKR price data degraded (failed {failed}/{total})"]
     return []
 
 
@@ -167,8 +255,7 @@ def push_summary(summary: dict, now: dt.datetime):
     stamp = f"{now:%H:%M} ET"
     if summary["success"]:
         def body() -> str:
-            lines = [f"{summary['index']}: {summary['survivors_count']}/"
-                     f"{summary['total_screened']} survivors (gap >= {summary['min_gap_pct']:g}%) "
+            lines = [f"{summary['survivors_count']}/{summary['total_screened']} survivors "
                      f"in {summary['elapsed_seconds']}s"]
             return "\n".join(lines + [f"- {s}" for s in summary["top_20_survivors"]])
         _push(f"Prefilter {stamp}", body, "default")
@@ -177,19 +264,34 @@ def push_summary(summary: dict, now: dt.datetime):
               "high")
 
 
+def setup_for(strategy: str | None = None) -> universe.Settings:
+    """The screen settings of the watchlist strategy (ConfigError if rules.json is
+    invalid or no strategy uses the watchlist)."""
+    if strategy:
+        from paperbot.core import profile as profiles
+        profile = profiles.load(strategy)
+        if profile.universe.get("source") != "watchlist":
+            raise ConfigError(f"strategy {strategy!r} does not use the morning watchlist")
+    else:
+        profile = universe.prefilter_profile()
+        if profile is None:
+            raise ConfigError("no strategy in rules.json uses the morning watchlist")
+    return universe.settings(profile)
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Morning S&P 500 gap prefilter.")
-    parser.add_argument("--min-gap", type=float, default=None,
-                        help="minimum gap %% from yesterday's close (default: rules.json D3)")
-    parser.add_argument("--min-price", type=float, default=None,
-                        help="minimum latest price in USD (default: rules.json min_price_usd)")
+    parser = argparse.ArgumentParser(description="Morning gap prefilter (index from rules.json).")
+    parser.add_argument("--strategy", help="the watchlist strategy whose settings to use")
+    parser.add_argument("--min-gap", type=float,
+                        help="minimum gap %% from yesterday's close (default: the strategy's gap block)")
+    parser.add_argument("--min-price", type=float,
+                        help="minimum latest price in USD (default: the strategy's price block)")
     parser.add_argument("--dry-run", action="store_true", help="do not write watchlist.txt")
     args = parser.parse_args(argv)
 
     started = time.monotonic()
     now = dt.datetime.now(ET)
-    summary = {"success": False, "index": None, "min_gap_pct": None, "min_price": None,
-               "total_screened": 0, "survivors_count": 0, "below_gap": 0,
+    summary = {"success": False, "total_screened": 0, "survivors_count": 0, "below_gap": 0,
                "below_price": 0, "failed": 0, "elapsed_seconds": 0.0, "top_20_survivors": [],
                "watchlist_path": None if args.dry_run else str(WATCHLIST_PATH)}
 
@@ -200,53 +302,65 @@ def main(argv: list[str] | None = None) -> int:
             push_summary(summary, now)
         return code
 
+    def fail(why: str, **extra) -> int:
+        """A failed run: the watchlist is NOT written, so the previous one is kept."""
+        kept = "" if args.dry_run else "; watchlist not updated (previous list kept)"
+        print(f"ALERT prefilter: {why}", file=sys.stderr)
+        return finish(1, error=why + kept, **extra)
+
     try:
-        setup = universe.settings(json.loads(RULES_FILE.read_text()))
-    except (OSError, ValueError) as e:  # ConfigError is a ValueError
-        print(f"ALERT: prefilter refused: {e}", file=sys.stderr)
+        setup = setup_for(args.strategy)
+    except (ConfigError, OSError, ValueError, KeyError) as e:
+        print(f"ALERT prefilter refused: {e}", file=sys.stderr)
         return finish(1, error=f"rules.json: {e}")
-    min_gap = setup.min_gap if args.min_gap is None else args.min_gap
-    min_price = setup.min_price if args.min_price is None else args.min_price
-    summary.update(index=setup.index, min_gap_pct=min_gap, min_price=min_price)
+    if args.min_gap is not None:
+        setup = dataclasses.replace(setup, min_gap=args.min_gap)
+    if args.min_price is not None:
+        setup = dataclasses.replace(setup, min_price=args.min_price)
+    summary.update(strategy=setup.strategy, index_name=setup.index, top_n=setup.top_n,
+                   min_gap=setup.min_gap, min_price=setup.min_price, data_source="ibkr")
 
     try:
         index = get_live_index_tickers(setup.index)
     except Exception as e:  # noqa: BLE001
-        print("ALERT: Yahoo/Wikipedia connection failure suspected", file=sys.stderr)
-        return finish(1, error=f"{setup.index} list unavailable: {e!r}")
+        return fail(f"Wikipedia {setup.index} member list unavailable: {e!r}")
 
     caps = market_caps(index)
     top = sorted(caps, key=caps.get, reverse=True)[:setup.top_n]
     if not top:
-        print("ALERT: Yahoo/Wikipedia connection failure suspected", file=sys.stderr)
-        return finish(1, error="no market caps returned by Yahoo Finance",
-                      index_size=len(index))
+        return fail("Yahoo Finance returned no market caps", index_size=len(index))
 
-    data = download([to_yahoo(s) for s in top])
-    if data is None or data.empty:
-        print("ALERT: Yahoo/Wikipedia connection failure suspected", file=sys.stderr)
-        return finish(1, error="yf.download returned no data", total_screened=len(top))
-    latest = max(d.date() for d in data.index)
-    if latest != now.date():
-        return finish(1, error=f"no daily bar for today yet (latest {latest}); run after "
-                               "the 9:30 ET open on a trading day", total_screened=len(top))
+    try:
+        data, errors = ibkr_daily_bars(top)
+    except (IbkrUnavailable, ConfigError, OSError, ValueError) as e:
+        return fail(str(e), total_screened=len(top))
+    latest = latest_date(data)
+    if data and latest != now.date():  # no data at all is reported below, per symbol
+        return fail(f"no IBKR daily bar for today yet (latest {latest}); run after the "
+                    "9:30 ET open on a trading day", total_screened=len(top))
 
-    result = screen(data, top, min_gap, min_price, now.date())
-    survivors = result["survivors"]
-    for line in alerts(len(result["failed"]), len(top)):
+    result = screen(data, top, setup.min_gap, setup.min_price, now.date(), errors)
+    failed = result["failed"]
+    if failure(len(failed), len(top)):
+        sample = "; ".join(failed[:SAMPLE_ERRORS])
+        return fail(f"IBKR price data missing for {len(failed)}/{len(top)} symbols "
+                    f"(e.g. {sample})", total_screened=len(top), failed=len(failed),
+                    failed_symbols=failed)
+    for line in alerts(len(failed), len(top)):
         print(line, file=sys.stderr)
         if not args.dry_run:
             _push(f"Prefilter ALERT {now:%H:%M} ET", lambda: line, "high")
+    survivors = result["survivors"]
     if not args.dry_run:
         write_watchlist(WATCHLIST_PATH, survivors, result["passed"], len(top),
-                        min_gap, min_price, now, setup.index)
+                        setup.min_gap, setup.min_price, now, setup.index)
     return finish(
         0, success=True, total_screened=len(top), survivors_count=len(survivors),
         below_gap=result["below_gap"], below_price=result["below_price"],
-        failed=len(result["failed"]),
+        failed=len(failed),
         top_20_survivors=[f"{s['symbol']} ({s['gap_pct']:+.2f}%)" for s in survivors],
         index_size=len(index), market_cap_missing=len(index) - len(caps),
-        failed_symbols=result["failed"])
+        failed_symbols=failed)
 
 
 if __name__ == "__main__":

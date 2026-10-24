@@ -27,8 +27,15 @@ venv/
 .coverage
 htmlcov/
 
+# ---- backtesting: generated results, reports and downloaded market data -----
+# (backtesting/config/ and backtesting/experiments/ are tracked)
+backtesting/results/
+backtesting/reports/
+backtesting/data_cache/
+
 # ---- editors / OS -----------------------------------------------------------
 .vscode/
 .idea/
 Thumbs.db
 desktop.ini
+review_comments.md

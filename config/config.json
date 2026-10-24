@@ -1,7 +1,9 @@
 {
-  "host": "127.0.0.1",
-  "port": 4002,
-  "client_id": 21,
+  "mode": "paper",
+  "connections": {
+    "paper": {"host": "127.0.0.1", "port": 4002, "client_id": 21},
+    "live": {"host": "127.0.0.1", "port": 4001, "client_id": 21, "account_id": "SET_YOUR_LIVE_ACCOUNT_ID"}
+  },
   "loop_seconds": 30,
   "lookup_timeout_seconds": 20,
   "time_in_force": "DAY",

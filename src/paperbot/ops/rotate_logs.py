@@ -93,7 +93,8 @@ def trim_trades(trades: Path, archive: Path, today: dt.date, report: list[str]) 
     """Rule 3: keep the last KEEP_DAYS days in trades.csv, archive older rows."""
     if not trades.exists() or trades.stat().st_size == 0:
         return 0
-    if runstate.running_pid() is not None:
+    pid = runstate.running_pid()
+    if pid is not None and pid != os.getpid():  # the running bot itself may trim (same thread)
         report.append("trades.csv not trimmed: bot or cycle run active")
         return 0
     cutoff = today - dt.timedelta(days=KEEP_DAYS)

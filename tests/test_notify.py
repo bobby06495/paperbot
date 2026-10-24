@@ -16,9 +16,9 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest import mock
 
-from paperbot.trading import bot
+from paperbot.core import engine as bot
 from paperbot.reporting import notify
-from paperbot.trading.risk import REF_ENTRY, REF_EXIT, REF_STOP
+from paperbot.core.risk import REF_ENTRY, REF_EXIT, REF_STOP
 
 TOKEN, CHAT = "123456:SECRET-token", "987654"
 
@@ -124,7 +124,7 @@ class FillNotifyTest(unittest.TestCase):
         self.ledger = Path(self.tmp.name) / "trades.csv"
         mock.patch.object(bot, "TRADES_CSV", self.ledger).start()
         mock.patch.object(bot, "NOTIFY_STATE", Path(self.tmp.name) / "notify_state.json").start()
-        mock.patch("paperbot.trading.strategy.load_state", return_value={
+        mock.patch("paperbot.strategies.rule_strategy.load_state", return_value={
             "positions": {"AAPL": {"stop": 95.0, "initial_stop": 94.0}}, "entered": {}}).start()
         self.sent = mock.patch.object(bot, "notify").start()
 

@@ -13,8 +13,8 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest import mock
 
-from paperbot.trading import bot
-from paperbot.trading.risk import ET, REF_ENTRY, REF_EXIT, REF_STOP, OrderIntent
+from paperbot.core import engine as bot
+from paperbot.core.risk import ET, REF_ENTRY, REF_EXIT, REF_STOP, OrderIntent
 
 
 class FakeTrade:
@@ -111,6 +111,19 @@ class AwaitDayOrdersTest(unittest.TestCase):
         self.assertTrue(bot.post_close(monday.replace(hour=16, minute=9)))
         self.assertFalse(bot.post_close(monday.replace(hour=16, minute=10)))
         self.assertFalse(bot.post_close(monday.replace(day=17, hour=16, minute=2)))  # Saturday
+
+    def test_continuous_post_close_check_retried_until_confirmed_then_once_a_day(self):
+        now = dt.datetime(2026, 10, 19, 16, 1, tzinfo=ET)
+        fake_dt = mock.Mock(wraps=dt.datetime)
+        fake_dt.now = lambda tz=None: now
+        guard = mock.Mock(halted=False)
+        with mock.patch.object(bot.dt, "datetime", fake_dt),                 mock.patch.object(bot, "daily_pnl", return_value=0.0),                 mock.patch.object(bot, "notify_fills_safely"),                 mock.patch.object(bot, "after_pass"),                 mock.patch.object(bot.strategy, "decide", return_value=[]) as decide,                 mock.patch.object(bot, "await_day_orders_done", side_effect=[False, True]) as wait:
+            first = bot.one_pass(None, guard, {}, "DU1", None, True)
+            second = bot.one_pass(None, guard, {}, "DU1", None, True, first)
+            third = bot.one_pass(None, guard, {}, "DU1", None, True, second)
+        self.assertEqual((first, second, third), (None, now.date(), now.date()))
+        self.assertEqual(wait.call_count, 2)  # unconfirmed is retried; confirmed is not re-run
+        self.assertEqual(decide.call_count, 3)  # the protect pass runs every time
 
 
 class OrderBuildTest(unittest.TestCase):

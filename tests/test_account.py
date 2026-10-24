@@ -14,8 +14,9 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest import mock
 
-from paperbot.trading import account
-from paperbot.trading import bot, strategy
+from paperbot.core import account
+from paperbot.core import engine as bot
+from paperbot.strategies import rule_strategy as strategy
 
 TODAY = dt.date(2026, 10, 19)
 SGD = [NS(tag="NetLiquidation", currency="SGD", value="1000013.88"),
@@ -101,7 +102,7 @@ class NetLiquidationTest(unittest.TestCase):
 
     def test_bot_and_strategy_use_the_converted_value(self):
         expected = round(1000013.88 / 1.28, 2)
-        self.assertEqual(strategy._net_liquidation(ib_with(SGD), "DU0000000"), expected)
+        self.assertEqual(strategy.net_liquidation_usd(ib_with(SGD), "DU0000000"), expected)
         self.assertEqual(bot.account_state(ib_with(SGD), "DU0000000", []).net_liquidation, expected)
 
     def test_telemetry_reads_memory_only(self):
@@ -123,6 +124,52 @@ class BuyingPowerTest(NetLiquidationTest):
 
     def test_missing_buying_power_is_none(self):
         self.assertIsNone(account.buying_power_usd(ib_with([]), "DU0000000"))
+
+
+class AccountValueParsingTest(NetLiquidationTest):
+    """IBKR account-value rows as they arrive: odd values, other tags, other currencies."""
+
+    def test_unusable_values_count_as_not_reported(self):
+        for bad in ("", "abc", "nan", "inf", "-inf", None):
+            with self.subTest(value=bad):
+                ib = ib_with([NS(tag="NetLiquidation", currency="USD", value=bad),
+                              NS(tag="BuyingPower", currency="USD", value=bad)])
+                self.assertIsNone(account.net_liquidation_usd(ib, "DU0000000"))
+                self.assertIsNone(account.buying_power_usd(ib, "DU0000000"))
+        self.fetch.assert_not_called()  # nothing to convert either
+
+    def test_unusable_usd_row_falls_back_to_the_base_currency(self):
+        ib = ib_with([NS(tag="NetLiquidation", currency="USD", value="nan"), *SGD])
+        self.assertEqual(account.net_liquidation_usd(ib, "DU0000000"), round(1000013.88 / 1.28, 2))
+
+    def test_segment_tags_and_base_rows_are_ignored(self):
+        ib = ib_with([NS(tag="NetLiquidation-S", currency="USD", value="5"),
+                      NS(tag="NetLiquidationByCurrency", currency="USD", value="7"),
+                      NS(tag="NetLiquidation", currency="BASE", value="9"),
+                      NS(tag="BuyingPower", currency="BASE", value="9")])
+        self.assertIsNone(account.net_liquidation_usd(ib, "DU0000000"))
+        self.assertIsNone(account.buying_power_usd(ib, "DU0000000"))
+
+    def test_values_are_read_for_the_given_account(self):
+        ib = mock.Mock(accountValues=mock.Mock(return_value=[
+            NS(tag="NetLiquidation", currency="USD", value="100")]))
+        account.net_liquidation_usd(ib, "DU0000000")
+        ib.accountValues.assert_called_once_with("DU0000000")
+
+    def test_zero_or_negative_values_block_entries(self):
+        from paperbot.core.risk import AccountState, OrderIntent, RiskGuard
+        from paperbot.core import profile as profiles
+        config = {"limits": {"allowed_symbols": ["*"], "limit_orders_only": True}}
+        limits = profiles.load("trend_join_long", config=config).limits
+        guard = RiskGuard(limits, Path(self.tmp.name) / "risk.json")
+        intent = OrderIntent("AAPL", "BUY", 200, 100.0, stop_price=90.0)
+        for net_liq, buying_power in ((0.0, 1e6), (-5000.0, 1e6), (None, 1e6),
+                                      (1e6, 0.0), (1e6, -1.0), (1e6, None)):
+            with self.subTest(net_liq=net_liq, buying_power=buying_power):
+                state = AccountState(net_liq, {}, set(), buying_power=buying_power)
+                self.assertNotEqual(guard.check(intent, 0, 0.0, state), [])
+        ok = AccountState(1e6, {}, set(), buying_power=1e6)
+        self.assertEqual(guard.check(intent, 0, 0.0, ok), [])
 
 
 class DailyPnlTest(unittest.TestCase):
@@ -186,7 +233,7 @@ class DailyPnlTest(unittest.TestCase):
             self.assertIsNone(account.daily_pnl(ib, "DU0000000", self.NAN))
 
     def test_guard_allows_the_first_entry_only_when_flat(self):
-        from paperbot.trading.risk import AccountState, Limits, OrderIntent, RiskGuard
+        from paperbot.core.risk import AccountState, Limits, OrderIntent, RiskGuard
         limits = Limits(allowed_symbols=["*"], max_quantity_per_order=1, max_order_value=2500.0,
                         max_orders_per_day=5, max_open_orders=2, max_daily_loss=1000.0,
                         max_risk_per_trade_pct=1.0, max_position_size_pct_of_portfolio=10,

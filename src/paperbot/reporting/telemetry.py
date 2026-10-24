@@ -26,7 +26,7 @@ from zoneinfo import ZoneInfo
 
 from paperbot import paths
 from paperbot.runtime import runstate
-from paperbot.trading.risk import REF_ENTRY, REF_EXIT, REF_STOP
+from paperbot.core.risk import REF_ENTRY, REF_EXIT, REF_STOP, ref_role  # noqa: F401 (REF_*: callers)
 
 SCHEMA_VERSION = 1
 ET = ZoneInfo("America/New_York")
@@ -41,7 +41,78 @@ STRATEGY_STATE = LOGS / "strategy_state.json"
 
 FIRST_READ_BYTES = 256 * 1024  # no saved offset yet: look at the tail only
 FIRST_READ_WINDOW = dt.timedelta(minutes=15)  # ... and only at recent lines
-ROLES = {REF_ENTRY: "entry", REF_STOP: "stop", REF_EXIT: "exit"}
+
+# ---------------------------------------------------------------- active strategy
+
+def active_strategy(rules: dict) -> tuple[str | None, dict, dict]:
+    """(key, rules.json section, legacy view) of the active strategy: the saved choice
+    (logs/active_strategy.json), else default_strategy, else the first. The legacy
+    view has the flat Trend Join Long layout the dashboard pages read. A flat (old)
+    rules.json is its own section and view."""
+    strategies = rules.get("strategies")
+    if not isinstance(strategies, dict) or not strategies:
+        return None, rules, rules
+    key = _load_json(LOGS / "active_strategy.json", {}).get("strategy")
+    if key not in strategies:
+        key = rules.get("default_strategy") if rules.get("default_strategy") in strategies \
+            else next(iter(strategies))
+    section = strategies[key] if isinstance(strategies[key], dict) else {}
+    return key, section, rules_view(key, section)
+
+
+def strategy_state_file(section: dict, key: str | None = None) -> Path:
+    """The strategy's state file (rules.json state_dir under logs/; "." = logs/)."""
+    if "state_dir" not in section and key is None:
+        return STRATEGY_STATE
+    return (LOGS / section.get("state_dir", f"strategies/{key}") / "strategy_state.json").resolve()
+
+
+def rules_view(key: str, section: dict) -> dict:
+    """A strategy section in the flat rules.json layout of the dashboard pages
+    (strategy_name, *_filters, exit with triggers); filters the strategy does not
+    use are shown as off."""
+    entry = {b.get("type"): b for b in section.get("entry", []) if isinstance(b, dict)}
+    manage = {b.get("type"): b for b in section.get("manage", []) if isinstance(b, dict)}
+    stop = section.get("stop") if isinstance(section.get("stop"), dict) else {}
+    trail = manage.get("trail_swing_low")
+    universe = section.get("universe") if isinstance(section.get("universe"), dict) else {}
+    def blocks(kind):
+        found = section.get(kind) or []
+        found = [found] if isinstance(found, dict) else found
+        return [{"type": b.get("type"), "label": b.get("label", ""),
+                 "settings": {k: v for k, v in b.items() if k not in ("type", "label")}}
+                for b in found if isinstance(b, dict)]
+
+    view = {
+        "strategy": key, "strategy_name": section.get("label", key),
+        "summary": section.get("summary", ""), "holding": section.get("holding", "intraday"),
+        "universe_symbols": universe.get("symbols"),
+        "blocks": {kind: blocks(kind) for kind in ("entry", "stop", "manage", "exit")},
+        "direction": "long_only", "trade_timeframe": section.get("timeframe"),
+        "universe_filters": {"index": universe.get("index", "custom list"),
+                             "min_price_usd": entry.get("min_price", {}).get("min_usd")},
+        "daily_filters": {
+            "D1_above_prior_day_high": "above_prior_day_high" in entry,
+            "D2_prior_close_above_sma200": "prior_close_above_sma" in entry,
+            "D3_min_gap_pct_from_prior_close": entry.get("min_gap_pct", {}).get("min_pct")},
+        "intraday_filters": {
+            "I1_above_premarket_high": "above_premarket_high" in entry,
+            "I2_above_today_hod": "new_high_of_day" in entry,
+            "I3_rvol_min": entry.get("min_rvol", {}).get("min"),
+            "I3_rvol_lookback_days": entry.get("min_rvol", {}).get("lookback_days")},
+        "time_filter": section.get("time_filter", {}),
+        "exit": {
+            "initial_stop_rule": (f"lod_minus_{stop.get('pct'):g}pct"
+                                  if stop.get("type") == "low_of_day_minus_pct" else stop.get("type")),
+            "partial_profit_trigger_R": manage.get("partial_profit", {}).get("at_R"),
+            "partial_profit_fraction": manage.get("partial_profit", {}).get("fraction"),
+            "breakeven_trigger_R": manage.get("breakeven", {}).get("at_R"),
+            "post_breakeven_trail": (f"swing_low_{section.get('timeframe')}_{trail.get('left', 2)}_"
+                                     f"{trail.get('right', 2)}" if trail else None)},
+        "risk": section.get("risk", {}),
+    }
+    return view
+
 
 # ---------------------------------------------------------------- session model
 
@@ -68,11 +139,14 @@ def hhmm(text: str, default: str) -> dt.time:
 
 
 def session_times(rules: dict) -> dict[str, dt.time]:
+    """The trading-day model. A strategy that holds overnight (force_close_et null)
+    has no force-close phase: its "force_close" time is the close itself."""
     tf = (rules or {}).get("time_filter", {})
+    overnight = "force_close_et" in tf and tf["force_close_et"] is None
     return {"open": SESSION_OPEN,
             "entry_start": hhmm(tf.get("earliest_entry_et"), "10:05"),
             "entry_end": hhmm(tf.get("latest_entry_et"), "15:30"),
-            "force_close": hhmm(tf.get("force_close_et"), "15:51"),
+            "force_close": SESSION_CLOSE if overnight else hhmm(tf.get("force_close_et"), "15:51"),
             "alert": ALERT_AT, "close": SESSION_CLOSE, "run_until": RUN_UNTIL}
 
 
@@ -327,20 +401,20 @@ ACCOUNT_TAGS = ("NetLiquidation", "BuyingPower", "AvailableFunds", "ExcessLiquid
 
 def pnl_decision() -> dict | None:
     """The daily P&L the risk guard used in this process, if any (trading/account.py)."""
-    from paperbot.trading import account as trading_account
+    from paperbot.core import account as trading_account
     return trading_account.last_daily_pnl()
 
 
 def fx_conversion() -> dict | None:
     """The base-currency conversion the bot made in this process, if any."""
-    from paperbot.trading import account as trading_account
+    from paperbot.core import account as trading_account
     return trading_account.last_conversion()
 
 
 def saved_conversion(currency: str, base_value: float) -> dict | None:
     """The bot's saved rate (logs/fx_rate.json), for passes in which it did not need the
     account value (e.g. after the entry window). Reads the file only; never the network."""
-    from paperbot.trading import account as trading_account
+    from paperbot.core import account as trading_account
     if trading_account.fallback_mode() == "off":
         return None
     saved = trading_account._saved_rate(currency)
@@ -402,7 +476,7 @@ def _guard_pnl(ibkr: float | None) -> float | None:
 def order_snapshot(trade) -> dict:
     order, status = trade.order, trade.orderStatus
     return {"order_id": order.orderId, "parent_id": order.parentId or None,
-            "symbol": trade.contract.symbol.upper(), "role": ROLES.get(order.orderRef, "manual"),
+            "symbol": trade.contract.symbol.upper(), "role": ref_role(order.orderRef) or "manual",
             "action": order.action, "type": order.orderType,
             "qty": _float(order.totalQuantity), "filled": _float(status.filled),
             "remaining": _float(status.remaining),
@@ -560,13 +634,13 @@ def _load_json(path: Path, default):
 
 
 def _watchlist() -> tuple[str, list[str], bool]:
-    """(source, symbols, generated_today), as strategy._universe() picks them."""
-    from paperbot.trading import strategy
+    """(source, symbols, generated_today), as the strategy engine picks them."""
+    from paperbot.strategies import rule_strategy as strategy
     today = dt.datetime.now(ET).date()
     try:
         if strategy.watchlist_date() == today:
             return "watchlist", strategy.read_symbols(strategy.WATCHLIST_FILE), True
-        return "universe", strategy.read_symbols(strategy.UNIVERSE_FILE), False
+        return "universe", strategy.read_symbols(paths.UNIVERSE_FILE), False
     except OSError:
         return "none", [], False
 
@@ -599,7 +673,7 @@ def record_pass(ib, account: str, source: str, submit: bool,
               if not first or _after(r.get("time"), since_first)]
 
     trades = _safe(lambda: list(ib.trades()), [])
-    names = {t.order.orderId: (t.contract.symbol.upper(), ROLES.get(t.order.orderRef, "manual"))
+    names = {t.order.orderId: (t.contract.symbol.upper(), ref_role(t.order.orderRef) or "manual")
              for t in trades if _safe(lambda: t.order.orderId, None) is not None}
     for e in events:
         known = next((names[i] for i in e["order_ids"] if i in names), None)
@@ -610,10 +684,10 @@ def record_pass(ib, account: str, source: str, submit: bool,
     all_open = [order_snapshot(t) for t in open_trades]
     ours = [o for o in all_open if o["role"] != "manual"]
 
-    rules = _load_json(paths.RULES_FILE, {})
+    _, section, rules = active_strategy(_load_json(paths.RULES_FILE, {}))
     config = _load_json(paths.CONFIG_FILE, {})
     limits = {**config.get("limits", {}), **rules.get("risk", {})}
-    strategy_state = _load_json(STRATEGY_STATE, {})
+    strategy_state = _load_json(strategy_state_file(section), {})
     risk_state = _load_json(RISK_STATE, {})
     acct = account_snapshot(ib, account)
     positions = positions_snapshot(ib, account, strategy_state, rules.get("exit", {}))

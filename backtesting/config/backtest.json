@@ -1,0 +1,42 @@
+{
+  "_about": "Backtest settings (paperbot-backtest). Every key is optional; defaults live in src/paperbot/backtesting/config.py. Strategy rules are NOT here: they come from config/rules.json (read-only) or an experiment file.",
+  "currency": "USD",
+  "starting_capital": 1000000.0,
+  "provider": "ibkr",
+  "fallback_provider": "yfinance",
+  "lookback_calendar_days": 120,
+  "daily_warmup_calendar_days": 420,
+  "symbols": [],
+  "max_watchlist": 20,
+  "benchmark_symbol": "SPY",
+  "execution": {
+    "half_spread_bps": 2.0,
+    "slippage_bps": 2.0,
+    "participation_rate": 0.10,
+    "buying_power_multiplier": 1.0,
+    "ambiguous_bar_policy": "stop_first",
+    "decision_delay_seconds": 3,
+    "reset_drawdown_breaker_next_day": false
+  },
+  "validation": {
+    "in_sample": 0.6,
+    "validation": 0.2,
+    "out_of_sample": 0.2,
+    "walk_forward_folds": 3,
+    "min_trades_for_assessment": 30,
+    "bootstrap_samples": 2000,
+    "bootstrap_seed": 7
+  },
+  "ibkr": {
+    "client_id_offset": 3,
+    "request_pause_seconds": 0.5,
+    "timeout_seconds": 60
+  },
+  "retention": {
+    "keep_last_runs_per_strategy": 50
+  },
+  "schedule": {
+    "enabled": false,
+    "note": "Manual only. Run `paperbot-backtest all` yourself; no scheduled task is registered."
+  }
+}

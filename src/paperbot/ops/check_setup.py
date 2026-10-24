@@ -25,14 +25,15 @@ from paperbot import paths
 
 MODULES = (
     "paperbot.paths",
-    "paperbot.runtime.runstate", "paperbot.trading.risk", "paperbot.trading.strategy",
-    "paperbot.trading.bot", "paperbot.runtime.kill_switch", "paperbot.runtime.stopbot",
-    "paperbot.market.sp500_tickers", "paperbot.market.universe",
-    "paperbot.market.morning_prefilter",
-    "paperbot.runtime.cycle", "paperbot.reporting.notify", "paperbot.reporting.compute_perf",
-    "paperbot.reporting.telemetry", "paperbot.reporting.dashboard", "paperbot.trading.account",
+    "paperbot.runtime.runstate", "paperbot.core.risk", "paperbot.core.profile",
+    "paperbot.core.selector", "paperbot.core.engine", "paperbot.core.scheduled_pass",
+    "paperbot.strategies.rule_strategy", "paperbot.blocks", "paperbot.indicators",
+    "paperbot.runtime.kill_switch", "paperbot.runtime.stopbot",
+    "paperbot.market.sp500_tickers", "paperbot.market.morning_prefilter",
+    "paperbot.reporting.notify", "paperbot.reporting.compute_perf",
+    "paperbot.reporting.telemetry", "paperbot.reporting.dashboard", "paperbot.core.account",
     "paperbot.ops.rotate_logs", "paperbot.ops.setup_schedule", "paperbot.ops.cleanup_schedule",
-    "paperbot.ops.run_tests", "paperbot.ops.launch",
+    "paperbot.ops.run_tests", "paperbot.ops.launch", "paperbot.backtesting.cli",
 )
 
 
@@ -64,43 +65,40 @@ def run_checks() -> tuple[list[str], list[str]]:
     print(f"ok  project root {paths.PROJECT_ROOT}")
 
     from paperbot.runtime import runstate
-    from paperbot.trading import strategy
-    from paperbot.trading.risk import PAPER_PORTS, load_limits
+    from paperbot.core import profile as profiles
+    from paperbot.core import selector
+    from paperbot.core import broker
+    from paperbot.strategies import rule_strategy as strategy
 
     try:
         cfg = json.loads(paths.CONFIG_FILE.read_text())
-        limits = load_limits(cfg, paths.RULES_FILE)
-        if cfg["port"] not in PAPER_PORTS:
-            problems.append(f"config.json port {cfg['port']} is not a paper port {PAPER_PORTS}")
-        missing = [k for k in ("host", "client_id", "loop_seconds",
-                               "lookup_timeout_seconds", "time_in_force") if k not in cfg]
+        conn = broker.settings(cfg)
+        missing = [k for k in ("loop_seconds", "lookup_timeout_seconds", "time_in_force")
+                   if k not in cfg]
         if missing:
             problems.append(f"config.json is missing {missing}")
-        print(f"ok  config.json + rules.json limits (port {cfg['port']}, "
-              f"max {limits.max_concurrent_positions} positions)")
+        print(f"ok  config.json: {conn.describe()}")
+        if conn.live:
+            warnings.append(f"LIVE mode: real money on {conn.account_id}; start-up asks you to "
+                            "type the account id (or set PAPERBOT_LIVE_CONFIRM for a service)")
+    except profiles.ConfigError as e:
+        problems.append(str(e))
     except (OSError, ValueError, KeyError, TypeError) as e:
-        problems.append(f"config.json/rules.json: {e!r}")
+        problems.append(f"config.json: {e!r}")
 
-    setup = None
-    try:
-        rules = strategy.load_rules()
-        print(f"ok  rules.json: {rules['strategy_name']}")
-        from paperbot.market import universe
-        setup = universe.settings(rules)
-        print(f"ok  prefilter screens {setup.describe()}, price >= ${setup.min_price:g}; "
-              f"fallback {setup.fallback_file.name}")
-    except SystemExit as e:
+    try:  # every strategy section must validate (blocks, times, limits)
+        loaded = profiles.load_all()
+        print(f"ok  rules.json: {len(loaded)} strategies valid ({', '.join(loaded)})")
+        try:
+            print(f"ok  active strategy: {selector.unattended_key()}")
+        except profiles.ConfigError as e:
+            warnings.append(f"no active strategy: {e}")
+    except profiles.ConfigError as e:
         problems.append(f"rules.json: {e}")
     except (OSError, ValueError, KeyError, TypeError) as e:
         problems.append(f"rules.json: {e!r}")
 
-    fallback_file = strategy.UNIVERSE_FILE
-    if setup is not None:
-        fallback_file = strategy._fallback_file(setup)
-        if not fallback_file.exists():
-            warnings.append(f"{fallback_file.name} (rules.json fallback_file) not found: with no "
-                            "watchlist for today the bot has nothing to scan")
-    for path in dict.fromkeys((strategy.UNIVERSE_FILE, fallback_file, strategy.WATCHLIST_FILE)):
+    for path in (paths.UNIVERSE_FILE, strategy.WATCHLIST_FILE):
         if not path.exists():
             continue
         symbols = strategy.read_symbols(path)
@@ -109,20 +107,34 @@ def run_checks() -> tuple[list[str], list[str]]:
             warnings.append(f"{path.name}: unusual IBKR tickers {bad} "
                             "(share classes use a space, e.g. 'BRK B')")
         print(f"ok  {path.name}: {len(symbols)} symbols")
-    from paperbot.trading.risk import today_et
+    from paperbot.core.risk import today_et
+    from paperbot.market import universe as watchlist_universe
+    try:
+        prefilter = watchlist_universe.prefilter_profile()
+    except (profiles.ConfigError, OSError, ValueError) as e:
+        prefilter = None
+        problems.append(f"prefilter settings: {e}")
+    if prefilter is not None:
+        setup = watchlist_universe.settings(prefilter)
+        print(f"ok  prefilter ({setup.strategy}) screens {setup.describe()}")
+        if not setup.fallback_file.exists():
+            warnings.append(f"{setup.fallback_file.name} missing: without today's watchlist the "
+                            f"bot has no {setup.index} symbols to scan")
+        built_for = strategy.watchlist_index()
+        if strategy.watchlist_date() == today_et() and built_for != setup.index:
+            warnings.append(f"watchlist.txt was built for {built_for} but {setup.strategy} screens "
+                            f"{setup.index}: the bot scans {setup.fallback_file.name} until the "
+                            "next prefilter run")
     generated = strategy.watchlist_date()
-    fallback = (fallback_file.name if fallback_file.exists()
-                else f"nothing (no {fallback_file.name})")
     if generated != today_et():
+        fallback = "universe.txt" if paths.UNIVERSE_FILE.exists() else "nothing (no universe.txt)"
         warnings.append(f"watchlist.txt {'from ' + str(generated) if generated else 'missing'}: "
                         f"the bot will scan {fallback} until morning_prefilter.py runs today")
-    elif setup is not None and strategy.watchlist_index() != setup.index:
-        warnings.append(f"watchlist.txt was built for {strategy.watchlist_index()}, rules.json "
-                        f"screens {setup.index}: the bot scans {fallback} until the next "
-                        "prefilter run")
 
-    for path in (paths.LOGS_DIR / "state.json", strategy.STATE,
-                 paths.LOGS_DIR / "drawdown_state.json"):
+    strategy_states = [p.state_file for p in selector.load_each().values()
+                       if not isinstance(p, profiles.ConfigError)]
+    for path in (paths.LOGS_DIR / "state.json", paths.LOGS_DIR / "drawdown_state.json",
+                 *strategy_states):
         try:
             runstate.read_json_state(path)
         except runstate.StateCorrupt as e:
