@@ -108,7 +108,7 @@
     if (it.type === 'error') return PB.pill('Error', 'red');
     if (it.type === 'missed') return PB.pill('Missed', 'red');
     if (it.passes.length > 1) return PB.pill(`Run · ${it.passes.length} passes`, 'violet');
-    return PB.pill(it.source === 'bot.py' ? 'Loop' : 'Run', 'green');
+    return PB.pill(it.source === 'bot.py' || it.source === 'paper-bot' ? 'Loop' : 'Run', 'green');
   }
 
   function stat(label, value, cls = '') {

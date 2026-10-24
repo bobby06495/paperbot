@@ -15,7 +15,7 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest import mock
 
-from paperbot.trading import bot
+from paperbot.core import engine as bot
 from paperbot.reporting import compute_perf as perf
 from paperbot.runtime import runstate
 
@@ -184,7 +184,7 @@ class HeartbeatTest(unittest.TestCase):
                  NS(contract=NS(secType="OPT", symbol="SPY"), position=1.0, averageCost=1.0,
                     marketPrice=1.0)]
         ib = mock.Mock(portfolio=lambda account: items)
-        with mock.patch("paperbot.trading.strategy.load_state", return_value={
+        with mock.patch("paperbot.strategies.rule_strategy.load_state", return_value={
                 "positions": {"AAPL": {"stop": 98.0, "initial_stop": 95.0}}, "entered": {}}):
             positions = bot.heartbeat_positions(ib, "DU1")
         self.assertEqual([p["symbol"] for p in positions], ["AAPL", "MU"])
@@ -197,6 +197,7 @@ class HeartbeatTest(unittest.TestCase):
                 mock.patch("paperbot.reporting.telemetry.record_pass") as recorded, \
                 mock.patch.object(bot.log, "warning") as warned:
             bot.after_pass(ib, "DU1", "cycle.py", True)
+            bot.wait_for_dashboard()
         data = json.loads(self.path.read_text())
         self.assertEqual((data["status"], data["mode"], data["source"]), ("ok", "SUBMIT", "cycle.py"))
         recorded.assert_called_once_with(ib, "DU1", "cycle.py", True)
@@ -208,8 +209,30 @@ class HeartbeatTest(unittest.TestCase):
                 mock.patch("paperbot.reporting.compute_perf.refresh_dashboard") as refreshed, \
                 mock.patch.object(bot.log, "warning") as warned:
             bot.after_pass(ib, "DU1", "cycle.py", True)
+            bot.wait_for_dashboard()
         self.assertIn("telemetry skipped", warned.call_args.args[0])
         refreshed.assert_called_once()  # the dashboard is still rebuilt
+
+    def test_slow_dashboard_never_delays_the_pass(self):
+        import threading
+        import time
+        release, ib = threading.Event(), mock.Mock(portfolio=lambda account: [])
+        with mock.patch("paperbot.reporting.compute_perf.refresh_dashboard",
+                        side_effect=lambda: release.wait(5)) as refreshed,                 mock.patch("paperbot.reporting.telemetry.record_pass"):
+            started = time.monotonic()
+            bot.after_pass(ib, "DU1", "bot.py", True)
+            bot.after_pass(ib, "DU1", "bot.py", True)  # previous rebuild still running
+            self.assertLess(time.monotonic() - started, 1.0)
+            release.set()
+            bot.wait_for_dashboard()
+        refreshed.assert_called_once()  # the second pass skipped it, did not queue it
+
+    def test_slow_telemetry_is_logged(self):
+        ib = mock.Mock(portfolio=lambda account: [])
+        with mock.patch("paperbot.reporting.compute_perf.refresh_dashboard"),                 mock.patch("paperbot.reporting.telemetry.record_pass"),                 mock.patch.object(bot, "AFTER_PASS_WARN_SECONDS", -1.0),                 mock.patch.object(bot.log, "warning") as warned:
+            bot.after_pass(ib, "DU1", "bot.py", True)
+            bot.wait_for_dashboard()
+        self.assertIn("heartbeat + telemetry took", warned.call_args.args[0])
 
     def test_crash_keeps_last_positions(self):
         runstate.write_heartbeat({"time": "x", "status": "ok", "positions": [{"symbol": "AAPL"}]})

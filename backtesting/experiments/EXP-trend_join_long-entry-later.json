@@ -1,0 +1,18 @@
+{
+  "id": "EXP-trend_join_long-entry-later",
+  "strategy_id": "trend_join_long",
+  "title": "Trend Join Long: entry later",
+  "status": "proposed",
+  "created": "2026-10-21",
+  "hypothesis": "Waiting longer after the open avoids the noisiest part of the session.",
+  "reason": "The opening half hour is the most volatile; the current start time is untested.",
+  "evidence": "Baseline run 20261021T030231Z-72dcd5: 1 trades, 0 ended at the initial stop; most frequent blocking check: D2.",
+  "changes": {
+    "time_filter.earliest_entry_et": "10:30"
+  },
+  "baseline_values": {
+    "time_filter.earliest_entry_et": "10:05"
+  },
+  "data_periods": "Choose on the validation segment only. The out-of-sample segment is reported once as an untouched-data check.",
+  "approval": "Not applied. Changing config/rules.json requires a human review."
+}

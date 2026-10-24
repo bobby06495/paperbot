@@ -4,8 +4,9 @@
     symbols = get_live_sp500_tickers()                 # ~503 symbols, sorted, e.g. "BRK B"
     symbols = get_live_index_tickers("Nasdaq-100")     # ~101 symbols (QQQ's holdings)
 
-The indexes (rules.json universe_filters.index) are listed in PAGES: each has its
-Wikipedia page, the ticker column and the fewest rows a healthy table has.
+The indexes (a watchlist strategy's universe.index in rules.json) are listed in
+PAGES: each has its Wikipedia page, the ticker column and the fewest rows a
+healthy table has.
 
 Share classes use a space in IBKR ("BRK B"), a period on Wikipedia ("BRK.B")
 and a hyphen on Yahoo Finance ("BRK-B"); to_ibkr() and to_yahoo() convert.
@@ -24,7 +25,7 @@ NASDAQ100_URL = "https://en.wikipedia.org/wiki/List_of_NASDAQ-100_companies"
 USER_AGENT = "paperbot/1.0 (personal paper-trading research script; python-requests)"
 MIN_EXPECTED = 450  # the index has ~503 lines; far fewer means the page layout changed
 
-# index name (rules.json universe_filters.index) -> (page, ticker column, fewest rows)
+# index name (rules.json universe.index) -> (page, ticker column, fewest rows)
 PAGES = {
     "S&P 500": (SP500_URL, "Symbol", MIN_EXPECTED),
     "Nasdaq-100": (NASDAQ100_URL, "Ticker", 95),  # ~101 lines (some share classes)
@@ -52,7 +53,7 @@ def get_live_index_tickers(index: str, timeout: float = 20) -> list[str]:
     response.raise_for_status()
     tables = [t for t in pd.read_html(StringIO(response.text)) if column in t.columns]
     if not tables:
-        raise ValueError(f"no {index} table with a {column!r} column on {url}")
+        raise ValueError(f"unexpected Wikipedia tables: no {column!r} column on the {index} page")
     table = max(tables, key=len)
     symbols = sorted({to_ibkr(s) for s in table[column].astype(str) if s.strip()})
     if len(symbols) < fewest:

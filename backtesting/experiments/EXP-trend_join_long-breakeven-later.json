@@ -1,0 +1,18 @@
+{
+  "id": "EXP-trend_join_long-breakeven-later",
+  "strategy_id": "trend_join_long",
+  "title": "Trend Join Long: breakeven later",
+  "status": "proposed",
+  "created": "2026-10-21",
+  "hypothesis": "Moving the stop to breakeven later lets more winners develop.",
+  "reason": "Early breakeven protects capital but may cut trends short.",
+  "evidence": "Baseline run 20261021T030231Z-72dcd5: 1 trades, 0 ended at the initial stop; most frequent blocking check: D2.",
+  "changes": {
+    "manage.1.at_R": 1.5
+  },
+  "baseline_values": {
+    "manage.1.at_R": 1.0
+  },
+  "data_periods": "Choose on the validation segment only. The out-of-sample segment is reported once as an untouched-data check.",
+  "approval": "Not applied. Changing config/rules.json requires a human review."
+}

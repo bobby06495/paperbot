@@ -1,4 +1,5 @@
-"""Offline tests for strategy.py, using a fake IB object.
+"""Offline tests for the strategy engine (strategies/rule_strategy.py running the
+Trend Join Long profile from rules.json), using a fake IB object.
 
 Covers stop reconciliation, orphan stops, partial profit, force close, the
 filter reasons from evaluate(), the check-only gates and the safety log.
@@ -16,11 +17,18 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest import mock
 
-from paperbot.trading import strategy
-from paperbot.trading.risk import REF_EXIT, REF_STOP, CancelRequest, OrderIntent, StopUpdate
+from paperbot import paths
+from paperbot.core import market_data as md
+from paperbot.core import orders, sizing
+from paperbot.core import profile as profiles
+from paperbot.core.common import ET
+from paperbot.core.profile import TimeFilter
+from paperbot.core.risk import (REF_ENTRY, REF_EXIT, REF_STOP, CancelRequest, OrderIntent,
+                                StopUpdate)
 from paperbot.runtime.runstate import write_json_atomic
+from paperbot.strategies import rule_strategy as strategy
 
-ET = strategy.ET
+BAR = dt.timedelta(minutes=5)  # Trend Join Long's timeframe
 UTC = dt.timezone.utc
 
 
@@ -45,7 +53,7 @@ class FakeIB:
                                avgCost=100.0)] if shares else [])
         self._trades = trades
         start = now.replace(hour=9, minute=30, second=0, microsecond=0)
-        self._bars = [bar(start + i * strategy.BAR, close) for i in range(6)]
+        self._bars = [bar(start + i * BAR, close) for i in range(6)]
         # live top of book: (bid, ask), default one cent either side of the bar close
         self.quote = quote if quote is not None else (close - 0.01, close + 0.01)
         self.buying_power = buying_power
@@ -88,14 +96,13 @@ class StrategyTestBase(unittest.TestCase):
         self.safety_log = Path(self.tmp.name) / "safety_log.jsonl"
         self.patches = [mock.patch.object(strategy, "STATE", self.state_path),
                         mock.patch.object(strategy, "SAFETY_LOG", self.safety_log),
-                        mock.patch.object(strategy, "_universe", lambda rules, today: [])]
+                        mock.patch.object(strategy, "_universe", lambda profile, today: []),
+                        mock.patch.object(strategy, "ACTIVE", "trend_join_long"),
+                        mock.patch.object(strategy, "_profile", None)]
         for p in self.patches:
             p.start()
-        strategy._orphans.clear()
-        strategy._daily_cache.clear()
-        strategy._rvol_cache.clear()
-        strategy._tickers.clear()
-        strategy._contracts.clear()
+        orders._orphans.clear()
+        md.clear_caches()
 
     def tearDown(self):
         for p in self.patches:
@@ -110,6 +117,20 @@ class StrategyTestBase(unittest.TestCase):
     def decide(self, ib, now):
         with mock.patch.object(strategy, "_now", lambda: now):
             return strategy.decide(ib, "DU1")
+
+
+class HarnessProfileTest(StrategyTestBase):
+    """The mocks above patch files and the universe, never the strategy itself."""
+
+    def test_harness_runs_the_real_trend_join_long_profile(self):
+        from paperbot.core.risk import load_limits
+        loaded = strategy.load_profile()
+        rules = json.loads(paths.RULES_FILE.read_text())
+        self.assertEqual(loaded.key, "trend_join_long")
+        self.assertEqual(loaded.raw, rules["strategies"]["trend_join_long"])
+        self.assertEqual(loaded.limits, load_limits(json.loads(paths.CONFIG_FILE.read_text()),
+                                                    paths.RULES_FILE, "trend_join_long"))
+        self.assertEqual(loaded.refs, (REF_ENTRY, REF_STOP, REF_EXIT))
 
 
 class DecideTest(StrategyTestBase):
@@ -190,7 +211,7 @@ class ForceCloseOcaTest(StrategyTestBase):
         self.assertFalse(any(isinstance(r, CancelRequest) for r in reqs))  # stop never cancelled
         sell = reqs[-1]
         self.assertEqual((sell.action, sell.quantity, sell.oca_group), ("SELL", 9, "paperbot:AAPL:1"))
-        self.assertEqual(sell.limit_price, round(100.50 * (1 - strategy.LIMIT_SLIPPAGE), 2))  # bid
+        self.assertEqual(sell.limit_price, sizing.to_tick(100.50 * (1 - sizing.LIMIT_SLIPPAGE), "SELL"))  # bid
 
     def test_stale_exit_replaced_while_linked_stop_stays(self):
         self.own()
@@ -202,29 +223,29 @@ class ForceCloseOcaTest(StrategyTestBase):
     def test_no_quote_falls_back_to_bar_close_with_alert(self):
         self.own()
         ib = FakeIB(9, [trade(REF_STOP, 5, 9, 95.0, oca="g1")], 101.0, self.NOW, quote=(0.0, 0.0))
-        with mock.patch.object(strategy, "QUOTE_TIMEOUT", 0), \
+        with mock.patch.object(md, "QUOTE_TIMEOUT", 0), \
                 self.assertLogs("paperbot", "ERROR") as logs:
             reqs = self.decide(ib, self.NOW)
-        self.assertEqual(reqs[-1].limit_price, round(101.0 * (1 - strategy.LIMIT_SLIPPAGE), 2))
+        self.assertEqual(reqs[-1].limit_price, sizing.to_tick(101.0 * (1 - sizing.LIMIT_SLIPPAGE), "SELL"))
         self.assertTrue(any("no live quote" in line for line in logs.output))
 
 
 class EntryWindowTest(StrategyTestBase):
-    TF = {"earliest_entry_et": "10:05", "latest_entry_et": "15:30"}
+    TF = TimeFilter("10:05", "15:30", "15:51")
 
     def test_window_is_inclusive_to_the_minute(self):
         day = dt.datetime(2026, 10, 19, tzinfo=ET)
-        self.assertTrue(strategy._in_entry_window(day.replace(hour=15, minute=30, second=4), self.TF))
-        self.assertTrue(strategy._in_entry_window(day.replace(hour=15, minute=30, second=59), self.TF))
-        self.assertFalse(strategy._in_entry_window(day.replace(hour=15, minute=31), self.TF))
-        self.assertFalse(strategy._in_entry_window(day.replace(hour=10, minute=4, second=59), self.TF))
+        self.assertTrue(self.TF.in_entry_window(day.replace(hour=15, minute=30, second=4)))
+        self.assertTrue(self.TF.in_entry_window(day.replace(hour=15, minute=30, second=59)))
+        self.assertFalse(self.TF.in_entry_window(day.replace(hour=15, minute=31)))
+        self.assertFalse(self.TF.in_entry_window(day.replace(hour=10, minute=4, second=59)))
 
     def test_entry_cutoff_is_end_of_last_minute(self):
         now = dt.datetime(2026, 10, 19, 11, 0, tzinfo=ET)
-        self.assertEqual(strategy._entry_cutoff(now, self.TF), now.replace(hour=15, minute=31))
+        self.assertEqual(self.TF.entry_cutoff(now), now.replace(hour=15, minute=31))
 
     def test_sweep_cancels_unfilled_entries_after_cutoff(self):
-        entry = trade(strategy.REF_ENTRY, 3, 1)
+        entry = trade(REF_ENTRY, 3, 1)
         at_cutoff = dt.datetime(2026, 10, 19, 15, 31, 0, tzinfo=ET)
         reqs = self.decide(FakeIB(0, [entry], 101.0, at_cutoff), at_cutoff)
         self.assertEqual(reqs, [CancelRequest(3, "AAPL", "entry window closed")])
@@ -245,7 +266,7 @@ class PartialRetryTest(StrategyTestBase):
     def test_unfilled_partial_resets_and_retries(self):
         self.own()
         sell = self.send_partial(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, self.NOW))
-        self.assertEqual(sell.limit_price, round(103.99 * (1 - strategy.LIMIT_SLIPPAGE), 2))
+        self.assertEqual(sell.limit_price, sizing.to_tick(103.99 * (1 - sizing.LIMIT_SLIPPAGE), "SELL"))
         st = strategy.load_state()["positions"]["AAPL"]
         self.assertEqual((st["partial_pending"], st["partial_attempts"], st["partial_done"]),
                          (9, 1, False))
@@ -274,14 +295,14 @@ class PartialRetryTest(StrategyTestBase):
         self.assertTrue(strategy.load_state()["positions"]["AAPL"]["partial_done"])
 
     def test_gives_up_after_max_attempts(self):
-        self.own(partial_pending=9, partial_attempts=strategy.PARTIAL_MAX_ATTEMPTS)
+        self.own(partial_pending=9, partial_attempts=orders.PARTIAL_MAX_ATTEMPTS)
         self.decide(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, self.NOW), self.NOW)
         self.assertTrue(strategy.load_state()["positions"]["AAPL"]["partial_done"])
 
     def test_no_quote_defers_partial(self):
         self.own()
         ib = FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, self.NOW, quote=(0.0, 0.0))
-        with mock.patch.object(strategy, "QUOTE_TIMEOUT", 0):
+        with mock.patch.object(md, "QUOTE_TIMEOUT", 0):
             reqs = self.decide(ib, self.NOW)
         self.assertFalse(any(isinstance(r, OrderIntent) for r in reqs))
 
@@ -299,29 +320,34 @@ class QuoteTest(StrategyTestBase):
 
     def test_halted_or_crossed_quote_is_rejected(self):
         now = dt.datetime(2026, 10, 19, 11, 0, tzinfo=ET)
-        with mock.patch.object(strategy, "QUOTE_TIMEOUT", 0):
+        with mock.patch.object(md, "QUOTE_TIMEOUT", 0):
             for quote in ((101.0, 100.0), (float("nan"), 100.0)):
-                strategy._tickers.clear()
-                self.assertIsNone(strategy._quote(FakeIB(0, [], 1.0, now, quote=quote), "AAPL"))
+                md._tickers.clear()
+                self.assertIsNone(md.quote(FakeIB(0, [], 1.0, now, quote=quote), "AAPL"))
             ib = FakeIB(0, [], 1.0, now)
             ib.reqMktData = lambda c, *a, **k: NS(contract=c, bid=100.0, ask=100.1, halted=1.0)
-            strategy._tickers.clear()
-            self.assertIsNone(strategy._quote(ib, "AAPL"))
+            md._tickers.clear()
+            self.assertIsNone(md.quote(ib, "AAPL"))
 
 
 class SizingTest(StrategyTestBase):
     SIGNAL = {"price": 100.0, "stop": 90.0, "gap": 4.0, "rvol": 3.0}
     BIG = {"max_quantity_per_order": 10_000, "max_order_value": 1e9}
 
+    def setUp(self):
+        super().setUp()
+        base = strategy.load_profile()  # what-if caps below start from the real profile
+        self.assertEqual(base.key, "trend_join_long")
+        self.assertEqual(base.limits, profiles.load("trend_join_long").limits)
+
     def size(self, buying_power=1e9, rules_extra=None, caps=None, good_till=None):
-        rules = json.loads(json.dumps(strategy.load_rules()))
-        rules["risk"].update(rules_extra or {})
-        with mock.patch.object(strategy, "_caps", caps or self.BIG):
-            return strategy._size_entry("AAPL", self.SIGNAL, rules, 1_000_000.0, buying_power,
-                                        100.0, good_till)
+        profile = strategy.with_limits(strategy.load_profile(), **(caps or self.BIG),
+                                       **(rules_extra or {}))
+        return strategy._size_entry("AAPL", self.SIGNAL, profile, 1_000_000.0, buying_power,
+                                    100.0, good_till)
 
     def test_priced_from_ask(self):
-        self.assertEqual(self.size().limit_price, round(100.0 * (1 + strategy.LIMIT_SLIPPAGE), 2))
+        self.assertEqual(self.size().limit_price, sizing.to_tick(100.0 * (1 + sizing.LIMIT_SLIPPAGE), "BUY"))
 
     def test_buying_power_caps_quantity(self):
         self.assertEqual(self.size(buying_power=5_010.0).quantity, 50)
@@ -335,11 +361,10 @@ class SizingTest(StrategyTestBase):
 
     def test_large_share_cap_never_bypasses_other_limits(self):
         # a generous max_quantity_per_order is only a ceiling: value, risk and size still bind
-        rules = strategy.load_rules()
-        caps = {"max_quantity_per_order": 35, "max_order_value": 2500.0}
-        with mock.patch.object(strategy, "_caps", caps):
-            by_value = strategy._size_entry("AAPL", self.SIGNAL, rules, 1_000_000.0, 1e9, 100.0)
-            by_risk = strategy._size_entry("AAPL", self.SIGNAL, rules, 21_000.0, 1e9, 100.0)
+        profile = strategy.with_limits(strategy.load_profile(), max_quantity_per_order=35,
+                                       max_order_value=2500.0)
+        by_value = strategy._size_entry("AAPL", self.SIGNAL, profile, 1_000_000.0, 1e9, 100.0)
+        by_risk = strategy._size_entry("AAPL", self.SIGNAL, profile, 21_000.0, 1e9, 100.0)
         self.assertEqual(by_value.quantity, 24)  # floor(2500 / 100.20), not 35
         self.assertLessEqual(by_value.quantity * by_value.limit_price, 2500.0)
         self.assertEqual(by_risk.quantity, 20)  # 10% of 21,000 / 100.20 (and 1% risk), not 35
@@ -383,7 +408,7 @@ class FakeMarket(FakeIB):
 
 class EvaluateTest(StrategyTestBase):
     def evaluate(self, ib, now=MONDAY_11):
-        return strategy.evaluate(ib, "TEST", strategy.load_rules(), now)
+        return strategy.evaluate(ib, "TEST", strategy.load_profile(), now)
 
     def test_all_filters_pass_with_reasons(self):
         result = self.evaluate(FakeMarket())
@@ -392,7 +417,7 @@ class EvaluateTest(StrategyTestBase):
         self.assertEqual([r.split()[0] for r in result["reasons"]],
                          ["D2", "price", "D3", "D1", "I1", "I2", "I3"])
         self.assertAlmostEqual(result["price"], 97.7)
-        self.assertEqual(result["stop"], round(95.5 * 0.99, 2))
+        self.assertEqual(result["stop"], sizing.to_tick(95.5 * 0.99, "STOP"))
 
     def test_first_failure_is_reported(self):
         result = self.evaluate(FakeMarket(gap_open=92.0))  # gap 0.2% < 3%

@@ -1,0 +1,41 @@
+# paper-bot + a headless IB Gateway on any Linux server or cloud VM.
+#
+#   cp deploy/docker.env.example deploy/.env        # then fill in your IBKR login
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#   docker compose -f deploy/docker-compose.yml logs -f paper-bot
+#   docker compose -f deploy/docker-compose.yml exec paper-bot paper-bot status
+#
+# The gateway image logs in automatically (IBC). Paper accounts need no 2FA on
+# the API; a LIVE login still needs your IBKR Mobile approval. Check the image's
+# documentation for its current settings: https://github.com/gnzsnz/ib-gateway-docker
+# Pin the image to a specific version tag once it runs for you.
+services:
+  ib-gateway:
+    image: ghcr.io/gnzsnz/ib-gateway:stable
+    restart: always
+    env_file: .env
+    environment:
+      TRADING_MODE: ${TRADING_MODE:-paper}   # must match config.json "mode"
+      READ_ONLY_API: "no"
+      TWOFA_TIMEOUT_ACTION: restart
+      TZ: America/New_York
+    # API relays inside the compose network: 4004 = paper, 4003 = live.
+    # Nothing is published to the internet; uncomment for VNC debugging on this host only:
+    # ports: ["127.0.0.1:5900:5900"]
+
+  paper-bot:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: on-failure            # a STOP file (paper-bot stop) exits cleanly: no restart
+    depends_on: [ib-gateway]
+    env_file: .env
+    environment:
+      PAPERBOT_IB_HOST: ib-gateway
+      PAPERBOT_IB_PORT: ${PAPERBOT_IB_PORT:-4004}       # 4004 paper, 4003 live
+      PAPERBOT_STRATEGY: ${PAPERBOT_STRATEGY:-trend_join_long}
+    volumes:
+      - ../config:/app/config
+      - ../logs:/app/logs
+      - ../data:/app/data
+      - ../dashboard:/app/dashboard

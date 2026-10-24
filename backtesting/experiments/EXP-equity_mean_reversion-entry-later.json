@@ -1,0 +1,18 @@
+{
+  "id": "EXP-equity_mean_reversion-entry-later",
+  "strategy_id": "equity_mean_reversion",
+  "title": "Equities Mean Reversion: entry later",
+  "status": "proposed",
+  "created": "2026-10-21",
+  "hypothesis": "Waiting longer after the open avoids the noisiest part of the session.",
+  "reason": "The opening half hour is the most volatile; the current start time is untested.",
+  "evidence": "No baseline run yet: proposed from the configuration alone.",
+  "changes": {
+    "time_filter.earliest_entry_et": "10:25"
+  },
+  "baseline_values": {
+    "time_filter.earliest_entry_et": "10:00"
+  },
+  "data_periods": "Choose on the validation segment only. The out-of-sample segment is reported once as an untouched-data check.",
+  "approval": "Not applied. Changing config/rules.json requires a human review."
+}

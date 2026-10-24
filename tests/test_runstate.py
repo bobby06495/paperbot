@@ -13,7 +13,8 @@ from types import SimpleNamespace
 from unittest import mock
 
 from paperbot.runtime import runstate
-from paperbot.trading import strategy
+from paperbot.indicators import swing_low
+from paperbot.strategies import rule_strategy as strategy
 
 
 class StateFileTest(unittest.TestCase):
@@ -85,11 +86,11 @@ class SwingLowTest(unittest.TestCase):
     def test_latest_pivot_low(self):
         lows = [10, 9, 8, 9, 10, 11, 10.5, 10.2, 10.6, 11]
         bars = [SimpleNamespace(low=x) for x in lows]
-        self.assertEqual(strategy._swing_low(bars, 2, 2), 10.2)
+        self.assertEqual(swing_low(bars, 2, 2), 10.2)
 
     def test_no_pivot_yet(self):
         bars = [SimpleNamespace(low=x) for x in (10, 9, 8, 7)]
-        self.assertIsNone(strategy._swing_low(bars, 2, 2))
+        self.assertIsNone(swing_low(bars, 2, 2))
 
 
 if __name__ == "__main__":

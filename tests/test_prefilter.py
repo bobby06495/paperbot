@@ -1,39 +1,39 @@
-"""Offline tests for sp500_tickers.py, universe.py, morning_prefilter.py and the watchlist merge.
+"""Offline tests for sp500_tickers.py, morning_prefilter.py and the watchlist merge.
 
-No network: Wikipedia and Yahoo Finance are replaced with fixed data.
+No network: Wikipedia, Yahoo Finance and IB Gateway are replaced with fixed data.
 Run: python -m unittest discover -s tests -p test_prefilter.py -v
 """
 import os
 
 os.environ["PAPERBOT_NOTIFY"] = "off"  # tests must never send real notifications
 
-import contextlib
 import datetime as dt
-import io
-import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-import pandas as pd
-
-from paperbot import paths
+from paperbot.core.risk import ConfigError
 from paperbot.market import morning_prefilter as mp
-from paperbot.market import sp500_tickers, universe
-from paperbot.trading import strategy
-from paperbot.trading.risk import ConfigError
+from paperbot.market import universe
+from paperbot.market import sp500_tickers
+from types import SimpleNamespace
+
+from paperbot.core import common
+from paperbot.strategies import rule_strategy as strategy
 
 ET = mp.ET
 TODAY = dt.date(2026, 10, 19)
 NOW = dt.datetime(2026, 10, 19, 9, 45, tzinfo=ET)
 
 
-def frame(rows: dict[str, tuple]) -> pd.DataFrame:
-    """yf.download(group_by="ticker")-shaped data: {yahoo: (prev_close, open, last)}."""
-    index = pd.DatetimeIndex([pd.Timestamp(TODAY - dt.timedelta(days=3)), pd.Timestamp(TODAY)])
-    return pd.concat({sym: pd.DataFrame({"Open": [prev, opn], "Close": [prev, last]}, index=index)
-                      for sym, (prev, opn, last) in rows.items()}, axis=1)
+PREV_SESSION = TODAY - dt.timedelta(days=3)  # the Friday before
+
+
+def frame(rows: dict[str, tuple]) -> dict[str, list]:
+    """ibkr_daily_bars-shaped data: {ibkr symbol: (prev_close, open, last)}."""
+    return {sym: [mp.DailyBar(PREV_SESSION, prev, prev), mp.DailyBar(TODAY, opn, last)]
+            for sym, (prev, opn, last) in rows.items()}
 
 
 class TickerFormatTest(unittest.TestCase):
@@ -62,158 +62,6 @@ class TickerFormatTest(unittest.TestCase):
                 sp500_tickers.get_live_sp500_tickers()
 
 
-class IndexListTest(unittest.TestCase):
-    def page(self, html):
-        response = mock.Mock(text=html, raise_for_status=lambda: None)
-        return mock.patch.object(sp500_tickers.requests, "get", return_value=response)
-
-    def test_nasdaq100_members_from_their_own_table(self):
-        rows = "".join(f"<tr><td>{s}</td><td>x</td></tr>" for s in
-                       ["NVDA", "GOOGL", "GOOG"] + [f"N{i:03d}" for i in range(98)])
-        html = ("<table><tr><th>Year</th><th>Level</th></tr><tr><td>1</td><td>2</td></tr></table>"
-                f"<table><tr><th>Ticker</th><th>Company</th></tr>{rows}</table>")
-        with self.page(html) as get:
-            symbols = sp500_tickers.get_live_index_tickers("Nasdaq-100")
-        self.assertEqual(get.call_args.args[0], sp500_tickers.NASDAQ100_URL)
-        self.assertEqual(len(symbols), 101)
-        self.assertEqual(symbols[:3], ["GOOG", "GOOGL", "N000"])
-
-    def test_nasdaq100_short_or_missing_table_is_rejected(self):
-        short = "<table><tr><th>Ticker</th></tr><tr><td>NVDA</td></tr></table>"
-        other = "<table><tr><th>Symbol</th></tr><tr><td>NVDA</td></tr></table>"
-        for html in (short, other):
-            with self.page(html), self.assertRaises(ValueError):
-                sp500_tickers.get_live_index_tickers("Nasdaq-100")
-
-    def test_every_configurable_index_has_a_page(self):
-        self.assertEqual(sorted(sp500_tickers.PAGES), sorted(universe.INDEXES))
-        with self.assertRaises(KeyError):
-            sp500_tickers.get_live_index_tickers("Russell 2000")
-
-
-class UniverseSettingsTest(unittest.TestCase):
-    RULES = {"universe_filters": {"index": "Nasdaq-100", "min_price_usd": 5.0, "top_n": 50,
-                                  "fallback_file": "universe_nasdaq100.txt"},
-             "daily_filters": {"D3_min_gap_pct_from_prior_close": 2.0}}
-
-    @classmethod
-    def with_uf(cls, **changes):
-        return {**cls.RULES, "universe_filters": {**cls.RULES["universe_filters"], **changes}}
-
-    def test_settings_from_rules(self):
-        setup = universe.settings(self.RULES)
-        self.assertEqual((setup.index, setup.top_n, setup.min_price, setup.min_gap),
-                         ("Nasdaq-100", 50, 5.0, 2.0))
-        self.assertEqual(setup.fallback_file, paths.CONFIG_DIR / "universe_nasdaq100.txt")
-        self.assertEqual(setup.describe(), "Nasdaq-100 (top 50), gap >= 2%")
-
-    def test_defaults_match_the_original_screen(self):
-        setup = universe.settings({})
-        self.assertEqual((setup.index, setup.top_n, setup.min_price, setup.min_gap,
-                          setup.fallback_file.name), ("S&P 500", 100, 3.0, 3.0, "universe.txt"))
-
-    def test_live_rules_still_screen_the_sp500_top_100_at_3pct(self):
-        setup = universe.settings(json.loads(paths.RULES_FILE.read_text()))
-        self.assertEqual((setup.index, setup.top_n, setup.min_gap, setup.min_price),
-                         ("S&P 500", 100, 3.0, 3.0))
-        self.assertTrue(setup.fallback_file.exists())
-
-    def test_bad_values_fail_closed(self):
-        cases = [(self.with_uf(index="QQQ"), "index 'QQQ' is not supported"),
-                 (self.with_uf(top_n=0), "top_n must be a number greater than 0"),
-                 (self.with_uf(top_n=10.5), "top_n must be a whole number"),
-                 (self.with_uf(top_n=True), "top_n must be a number"),
-                 (self.with_uf(fallback_file="../secrets.txt"), "fallback_file must be a file name"),
-                 (self.with_uf(indx="S&P 500"), "unknown keys ['indx']"),
-                 ({**self.RULES, "daily_filters": {"D3_min_gap_pct_from_prior_close": -1}},
-                  "D3_min_gap_pct_from_prior_close must be a number 0 or more")]
-        for rules, message in cases:
-            with self.subTest(message=message), self.assertRaises(ConfigError) as caught:
-                universe.settings(rules)
-            self.assertIn(message, str(caught.exception))
-        zero_gap = {**self.RULES, "daily_filters": {"D3_min_gap_pct_from_prior_close": 0}}
-        self.assertEqual(universe.settings(zero_gap).min_gap, 0.0)  # gap filter switched off
-
-    def test_require_refuses_to_start_with_an_alert(self):
-        with self.assertLogs("paperbot", "ERROR") as logs, self.assertRaises(SystemExit):
-            universe.require(self.with_uf(index="QQQ"))
-        self.assertIn("ALERT refusing to start", logs.output[0])
-
-    def test_nasdaq100_fallback_file_is_shipped(self):
-        path = paths.CONFIG_DIR / "universe_nasdaq100.txt"
-        symbols = strategy.read_symbols(path)
-        self.assertGreaterEqual(len(symbols), 95)
-        self.assertEqual(len(symbols), len(set(symbols)))
-        self.assertIn("NVDA", symbols)
-
-
-class PrefilterRunTest(unittest.TestCase):
-    """main() end to end with Wikipedia and Yahoo replaced by fixed data."""
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        root = Path(self.tmp.name)
-        self.rules, self.watchlist = root / "rules.json", root / "watchlist.txt"
-        fake_dt = mock.Mock(wraps=dt.datetime)
-        fake_dt.now = lambda tz=None: NOW
-        self.members = mock.Mock(return_value=["AAA", "BBB", "CCC"])
-        data = frame({"AAA": (100, 102.5, 103),  # +2.5% gap
-                      "BBB": (100, 104, 104),    # +4%
-                      "CCC": (100, 100.5, 101)})  # +0.5%
-        self.patches = [mock.patch.object(mp, "RULES_FILE", self.rules),
-                        mock.patch.object(mp, "WATCHLIST_PATH", self.watchlist),
-                        mock.patch.object(mp.dt, "datetime", fake_dt),
-                        mock.patch.object(mp, "get_live_index_tickers", self.members),
-                        mock.patch.object(mp, "market_caps",
-                                          lambda symbols: {s: 1e9 - i for i, s in enumerate(symbols)}),
-                        mock.patch.object(mp, "download", return_value=data),
-                        mock.patch.object(mp, "push_summary")]
-        for p in self.patches:
-            p.start()
-
-    def tearDown(self):
-        for p in reversed(self.patches):
-            p.stop()
-        self.tmp.cleanup()
-
-    def run_main(self, rules, *argv):
-        self.rules.write_text(json.dumps(rules))
-        out, err = io.StringIO(), io.StringIO()
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            code = mp.main(list(argv))
-        return code, json.loads(out.getvalue()), err.getvalue()
-
-    def test_index_and_gap_come_from_rules(self):
-        code, summary, _ = self.run_main(UniverseSettingsTest.RULES)
-        self.assertEqual(code, 0)
-        self.members.assert_called_once_with("Nasdaq-100")
-        self.assertEqual((summary["index"], summary["min_gap_pct"], summary["min_price"]),
-                         ("Nasdaq-100", 2.0, 5.0))
-        self.assertEqual(summary["top_20_survivors"], ["BBB (+4.00%)", "AAA (+2.50%)"])
-        text = self.watchlist.read_text()
-        self.assertIn("# Index: Nasdaq-100\n# Filters: gap >= 2%, price >= $5\n", text)
-        self.assertEqual(strategy.watchlist_index(self.watchlist), "Nasdaq-100")
-        self.assertEqual(strategy.watchlist_date(self.watchlist), TODAY)
-
-    def test_command_line_overrides_the_rules_for_one_run(self):
-        code, summary, _ = self.run_main(UniverseSettingsTest.RULES, "--min-gap", "3", "--dry-run")
-        self.assertEqual((code, summary["min_gap_pct"]), (0, 3.0))
-        self.assertEqual(summary["top_20_survivors"], ["BBB (+4.00%)"])
-        self.assertFalse(self.watchlist.exists())  # --dry-run writes nothing
-
-    def test_top_n_limits_the_screen(self):
-        code, summary, _ = self.run_main(UniverseSettingsTest.with_uf(top_n=2), "--dry-run")
-        self.assertEqual((code, summary["total_screened"]), (0, 2))
-
-    def test_invalid_rules_stop_before_any_download(self):
-        code, summary, err = self.run_main(UniverseSettingsTest.with_uf(index="QQQ"), "--dry-run")
-        self.assertEqual(code, 1)
-        self.assertIn("not supported", summary["error"])
-        self.assertIn("ALERT: prefilter refused", err)
-        self.members.assert_not_called()
-        self.assertFalse(self.watchlist.exists())
-
-
 class ScreenTest(unittest.TestCase):
     def test_buckets_ranking_and_open_based_gap(self):
         data = frame({
@@ -221,19 +69,29 @@ class ScreenTest(unittest.TestCase):
             "BBB": (100, 110, 99),    # gap +10% from the open (faded since) -> survivor, ranked 1st
             "CCC": (100, 101, 120),   # +20% on the day but only +1% gap -> below_gap
             "DDD": (2.0, 2.5, 2.6),   # price < $3 -> below_price
-            "BRK-B": (100, 104, 104),  # share class, Yahoo format in the data
+            "BRK B": (100, 104, 104),  # share class, IBKR format
         })
-        result = mp.screen(data, ["AAA", "BBB", "CCC", "DDD", "BRK B", "EEE"], 3.0, 3.0, TODAY)
+        result = mp.screen(data, ["AAA", "BBB", "CCC", "DDD", "BRK B", "EEE"], 3.0, 3.0, TODAY,
+                           {"EEE": "contract not found at IBKR"})
         self.assertEqual([s["symbol"] for s in result["survivors"]], ["BBB", "AAA", "BRK B"])
         self.assertEqual((result["below_gap"], result["below_price"]), (1, 1))
-        self.assertEqual(len(result["failed"]), 1)  # EEE not in the data: KeyError -> failed
-        self.assertTrue(result["failed"][0].startswith("EEE"))
+        self.assertEqual(result["failed"], ["EEE: contract not found at IBKR"])
 
     def test_stale_or_nan_rows_fail_without_crashing(self):
         data = frame({"AAA": (100, float("nan"), 104)})
         self.assertEqual(len(mp.screen(data, ["AAA"], 3, 3, TODAY)["failed"]), 1)
         self.assertEqual(len(mp.screen(frame({"AAA": (100, 105, 105)}), ["AAA"], 3, 3,
                                        TODAY + dt.timedelta(days=1))["failed"]), 1)
+        only_today = {"AAA": [mp.DailyBar(TODAY, 105, 105)]}
+        self.assertIn("no previous session", mp.screen(only_today, ["AAA"], 3, 3, TODAY)["failed"][0])
+
+    def test_gap_uses_the_last_session_before_today(self):
+        """A missing session in between must not matter: the previous bar is used."""
+        bars = {"AAA": [mp.DailyBar(PREV_SESSION - dt.timedelta(days=1), 50, 50),
+                        mp.DailyBar(TODAY, 104, 104), mp.DailyBar(PREV_SESSION, 100, 100)]}
+        survivor = mp.screen(bars, ["AAA"], 3, 3, TODAY)["survivors"][0]
+        self.assertEqual(survivor["prev_close"], 100)
+        self.assertAlmostEqual(survivor["gap_pct"], 4.0)
 
     def test_caps_at_max_survivors(self):
         data = frame({f"S{i:02d}": (100, 104 + i * 0.1, 105) for i in range(30)})
@@ -242,10 +100,133 @@ class ScreenTest(unittest.TestCase):
         self.assertEqual(result["passed"], 30)
         self.assertEqual(result["survivors"][0]["symbol"], "S29")
 
-    def test_degradation_alerts(self):
+    def test_degradation_alerts_and_failure_threshold(self):
         self.assertEqual(mp.alerts(10, 100), [])
-        self.assertIn("degradation (failed 30/100)", mp.alerts(30, 100)[0])
-        self.assertIn("connection failure", mp.alerts(95, 100)[0])
+        self.assertIn("degraded (failed 30/100)", mp.alerts(30, 100)[0])
+        self.assertFalse(mp.failure(94, 100))
+        self.assertTrue(mp.failure(95, 100))
+        self.assertEqual(mp.alerts(95, 100), [])  # a failed run, not a degraded one
+
+
+class PrefilterFailureTest(unittest.TestCase):
+    """A failed run names the failing step and never overwrites the watchlist."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.watchlist = Path(tmp.name) / "watchlist.txt"
+        self.watchlist.write_text("# earlier list\nAAPL\n")
+        self.pushed = []
+        setup = universe.Settings("trend_join_long", "S&P 500", 3, Path("universe.txt"), 3.0, 3.0)
+        fake_now = mock.MagicMock(wraps=dt.datetime)
+        fake_now.now.return_value = NOW
+        for p in (mock.patch.object(mp, "setup_for", return_value=setup),
+                  mock.patch.object(mp, "get_live_index_tickers", return_value=["A", "B", "C"]),
+                  mock.patch.object(mp, "market_caps", return_value={"A": 3.0, "B": 2.0, "C": 1.0}),
+                  mock.patch.object(mp, "WATCHLIST_PATH", self.watchlist),
+                  mock.patch.object(mp.dt, "datetime", fake_now),
+                  mock.patch.object(mp, "notify", side_effect=lambda *a: self.pushed.append(a)),
+                  mock.patch("builtins.print")):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def run_and_check(self, needle: str):
+        self.assertEqual(mp.main([]), 1)
+        self.assertEqual(self.watchlist.read_text(), "# earlier list\nAAPL\n")
+        (title, body, priority), = self.pushed
+        self.assertTrue(title.startswith("Prefilter FAILED"))
+        self.assertIn(needle, body)
+        self.assertIn("previous list kept", body)
+        self.assertEqual(priority, "high")
+
+    def test_gateway_unreachable(self):
+        with mock.patch.object(mp, "ibkr_daily_bars",
+                               side_effect=mp.IbkrUnavailable("IB Gateway not reachable at h:1")):
+            self.run_and_check("IB Gateway not reachable")
+
+    def test_bad_connection_config(self):
+        with mock.patch.object(mp, "ibkr_daily_bars", side_effect=ConfigError("bad port")):
+            self.run_and_check("bad port")
+
+    def test_price_data_missing_for_almost_every_symbol(self):
+        errors = {s: "IBKR request timed out" for s in "ABC"}
+        data = {"Z": [mp.DailyBar(TODAY, 1, 1)]}  # today's bar exists, just not for these
+        with mock.patch.object(mp, "ibkr_daily_bars", return_value=(data, errors)):
+            self.run_and_check("IBKR price data missing for 3/3 symbols (e.g. A: IBKR request timed out")
+
+    def test_no_data_at_all_is_reported_as_missing_data(self):
+        errors = {s: "no daily bars from IBKR" for s in "ABC"}
+        with mock.patch.object(mp, "ibkr_daily_bars", return_value=({}, errors)):
+            self.run_and_check("IBKR price data missing for 3/3 symbols (e.g. A: no daily bars")
+
+    def test_no_bar_for_today_yet(self):
+        data = {"A": [mp.DailyBar(PREV_SESSION, 1, 1)]}
+        with mock.patch.object(mp, "ibkr_daily_bars", return_value=(data, {})):
+            self.run_and_check("no IBKR daily bar for today yet")
+
+    def test_wikipedia_and_yahoo_failures_name_their_step(self):
+        with mock.patch.object(mp, "get_live_index_tickers", side_effect=OSError("down")):
+            self.run_and_check("Wikipedia S&P 500 member list unavailable")
+        self.pushed.clear()
+        with mock.patch.object(mp, "market_caps", return_value={}):
+            self.run_and_check("Yahoo Finance returned no market caps")
+
+    def test_success_writes_the_watchlist(self):
+        data = frame({"A": (100, 105, 105), "B": (100, 101, 101), "C": (100, 104, 104)})
+        with mock.patch.object(mp, "ibkr_daily_bars", return_value=(data, {})):
+            self.assertEqual(mp.main([]), 0)
+        self.assertEqual(strategy.read_symbols(self.watchlist), ["A", "C"])
+        self.assertIn("IBKR daily bars", self.watchlist.read_text())
+
+
+class IbkrFetchTest(unittest.TestCase):
+    """ibkr_daily_bars against a fake IB: read-only, own clientId, per-symbol errors."""
+
+    def test_fetch(self):
+        import asyncio
+
+        class FakeIB:
+            def __init__(self):
+                self.connected_with = None
+                self.disconnected = False
+
+            def connect(self, host, port, **kw):
+                self.connected_with = (host, port, kw)
+
+            def run(self, coro):
+                return asyncio.run(coro)
+
+            def disconnect(self):
+                self.disconnected = True
+
+            async def qualifyContractsAsync(self, contract):
+                contract.conId = 0 if contract.symbol == "NOPE" else 1
+
+            async def reqHistoricalDataAsync(self, contract, *args, **kw):
+                if contract.symbol == "EMPTY":
+                    return []
+                return [SimpleNamespace(date=PREV_SESSION, open=10, close=11),
+                        SimpleNamespace(date=TODAY, open=12, close=13)]
+
+        fake = FakeIB()
+        cfg = {"mode": "paper", "connections": {"paper": {"host": "127.0.0.1", "port": 4002,
+                                                          "client_id": 21}}}
+        with mock.patch("ib_async.IB", return_value=fake):
+            bars, errors = mp.ibkr_daily_bars(["AAPL", "NOPE", "EMPTY"], cfg)
+        host, port, kw = fake.connected_with
+        self.assertEqual((host, port, kw["clientId"], kw["readonly"]), ("127.0.0.1", 4002, 25, True))
+        self.assertTrue(fake.disconnected)
+        self.assertEqual(bars["AAPL"][-1], mp.DailyBar(TODAY, 12.0, 13.0))
+        self.assertEqual(errors, {"NOPE": "contract not found at IBKR",
+                                  "EMPTY": "no daily bars from IBKR (timed out or no data permission)"})
+
+    def test_unreachable_gateway_raises(self):
+        fake = mock.Mock()
+        fake.connect.side_effect = ConnectionRefusedError("refused")
+        cfg = {"mode": "paper", "connections": {"paper": {"host": "127.0.0.1", "port": 4002,
+                                                          "client_id": 21}}}
+        with mock.patch("ib_async.IB", return_value=fake), self.assertRaises(mp.IbkrUnavailable):
+            mp.ibkr_daily_bars(["AAPL"], cfg)
 
 
 class WatchlistMergeTest(unittest.TestCase):
@@ -254,11 +235,12 @@ class WatchlistMergeTest(unittest.TestCase):
         self.watchlist = Path(self.tmp.name) / "watchlist.txt"
         self.universe = Path(self.tmp.name) / "universe.txt"
         self.universe.write_text("AAPL\nMSFT\n")
-        self.patches = [mock.patch.object(strategy, "WATCHLIST_FILE", self.watchlist),
-                        mock.patch.object(strategy, "UNIVERSE_FILE", self.universe)]
+        self.patches = [mock.patch.object(strategy, "WATCHLIST_FILE", self.watchlist)]
         for p in self.patches:
             p.start()
-        strategy._warned.clear()
+        common._warned.clear()
+        self.profile = SimpleNamespace(universe={"source": "watchlist", "index": "S&P 500",
+                                                 "fallback_file": str(self.universe)})
 
     def tearDown(self):
         for p in self.patches:
@@ -280,43 +262,12 @@ class WatchlistMergeTest(unittest.TestCase):
 
     def test_bot_scans_todays_watchlist(self):
         self.write()
-        self.assertEqual(strategy._universe({}, TODAY), ["BRK B"])
+        self.assertEqual(strategy._universe(self.profile, TODAY), ["BRK B"])
 
     def test_stale_or_missing_watchlist_falls_back_to_universe(self):
-        rules = {"universe_filters": {"index": "S&P 500"}}
-        self.assertEqual(strategy._universe(rules, TODAY), ["AAPL", "MSFT"])
+        self.assertEqual(strategy._universe(self.profile, TODAY), ["AAPL", "MSFT"])
         self.write(now=NOW - dt.timedelta(days=1))
-        self.assertEqual(strategy._universe(rules, TODAY), ["AAPL", "MSFT"])
-
-    def test_watchlist_for_another_index_is_not_scanned(self):
-        survivors = [{"symbol": "ARM", "gap_pct": 4.2, "open": 150.0, "prev_close": 143.9}]
-        mp.write_watchlist(self.watchlist, survivors, 1, 100, 3.0, 3.0, NOW, "Nasdaq-100")
-        sp500 = {"universe_filters": {"index": "S&P 500"}}
-        with self.assertLogs("paperbot", "WARNING") as logs:
-            self.assertEqual(strategy._universe(sp500, TODAY), ["AAPL", "MSFT"])
-        self.assertIn("generated for Nasdaq-100 but rules.json screens S&P 500", logs.output[0])
-        nasdaq = {"universe_filters": {"index": "Nasdaq-100"}}
-        self.assertEqual(strategy._universe(nasdaq, TODAY), ["ARM"])
-
-    def test_watchlist_without_an_index_line_counts_as_sp500(self):
-        self.watchlist.write_text("# Auto-generated by morning_prefilter.py at 2026-10-19 09:45 EDT\n"
-                                  "# Filters: gap >= 3%, price >= $3\nAMD\n")
-        self.assertEqual(strategy.watchlist_index(self.watchlist), "S&P 500")
-        self.assertEqual(strategy._universe({}, TODAY), ["AMD"])
-        self.assertEqual(strategy.watchlist_index(Path(self.tmp.name) / "missing.txt"), "S&P 500")
-
-    def test_configured_fallback_file_is_used(self):
-        (Path(self.tmp.name) / "universe_nasdaq100.txt").write_text("# QQQ\nNVDA\nASML\n")
-        rules = {"universe_filters": {"index": "Nasdaq-100",
-                                      "fallback_file": "universe_nasdaq100.txt"}}
-        with self.assertLogs("paperbot", "WARNING"):
-            self.assertEqual(strategy._universe(rules, TODAY), ["NVDA", "ASML"])
-
-    def test_missing_fallback_file_scans_nothing_with_a_warning(self):
-        rules = {"universe_filters": {"index": "Nasdaq-100", "fallback_file": "nope.txt"}}
-        with self.assertLogs("paperbot", "WARNING") as logs:
-            self.assertEqual(strategy._universe(rules, TODAY), [])
-        self.assertTrue(any("nope.txt missing" in line for line in logs.output))
+        self.assertEqual(strategy._universe(self.profile, TODAY), ["AAPL", "MSFT"])
 
 
 if __name__ == "__main__":

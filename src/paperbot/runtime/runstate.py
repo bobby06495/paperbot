@@ -35,6 +35,20 @@ HEARTBEAT_FILE = paths.LOGS_DIR / "heartbeat.json"
 
 # ---------------------------------------------------------------- STOP file
 
+BACKTEST_ENV = "PAPERBOT_BACKTEST"  # set to "1" by every backtesting process
+
+
+class LiveTradingBlocked(RuntimeError):
+    """A backtesting process tried to reach live order code."""
+
+
+def refuse_if_backtest(what: str):
+    """Fail closed: live order code must never run inside a backtesting process."""
+    if os.environ.get(BACKTEST_ENV) == "1":
+        raise LiveTradingBlocked(f"{what} refused: this is a backtesting process "
+                                 f"({BACKTEST_ENV}=1); backtests never send orders")
+
+
 def stop_requested() -> bool:
     return STOP_FILE.exists()
 
@@ -51,28 +65,8 @@ def pid_alive(pid: int) -> bool:
     On Windows os.kill(pid, 0) would terminate the process, so the Win32 API
     is queried instead.
     """
-    if sys.platform == "win32":
-        import ctypes
-        from ctypes import wintypes
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
-        kernel32.OpenProcess.restype = wintypes.HANDLE
-        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
-        if not handle:
-            return ctypes.get_last_error() == 5  # access denied: exists, owned by someone else
-        try:
-            code = wintypes.DWORD()
-            ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
-            return bool(ok) and code.value == 259  # STILL_ACTIVE
-        finally:
-            kernel32.CloseHandle(handle)
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+    from paperbot.system.procs import pid_alive as os_pid_alive  # the per-OS check
+    return os_pid_alive(pid)
 
 
 def running_pid() -> int | None:

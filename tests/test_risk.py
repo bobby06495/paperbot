@@ -13,7 +13,7 @@ import unittest
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from paperbot.trading.risk import (AccountState, ConfigError, DrawdownBreaker, Limits, OrderIntent,
+from paperbot.core.risk import (AccountState, ConfigError, DrawdownBreaker, Limits, OrderIntent,
                                    RiskGuard, StopUpdate, commission_drag, load_limits,
                                    require_limits, round_trip_commission, today_et, verify_paper)
 from paperbot.runtime.runstate import StateCorrupt
@@ -213,8 +213,9 @@ class LoadLimitsTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def load(self, risk=None, config=None):
-        self.rules.write_text(json.dumps({"risk": RULES_RISK if risk is None else risk}))
-        return load_limits(CONFIG_RAILS if config is None else config, self.rules)
+        self.rules.write_text(json.dumps(
+            {"strategies": {"s": {"risk": RULES_RISK if risk is None else risk}}}))
+        return load_limits(CONFIG_RAILS if config is None else config, self.rules, "s")
 
     def fails(self, text, **kwargs):
         with self.assertRaises(ConfigError) as caught:
@@ -248,10 +249,12 @@ class LoadLimitsTest(unittest.TestCase):
 
     def test_missing_rules_file_or_section_refuses(self):
         with self.assertRaises(ConfigError):
-            load_limits(CONFIG_RAILS, self.rules.with_name("none.json"))
-        self.rules.write_text(json.dumps({"exit": {}}))
+            load_limits(CONFIG_RAILS, self.rules.with_name("none.json"), "s")
+        self.rules.write_text(json.dumps({"strategies": {"s": {"exit": {}}}}))
         with self.assertRaises(ConfigError):
-            load_limits(CONFIG_RAILS, self.rules)
+            load_limits(CONFIG_RAILS, self.rules, "s")
+        with self.assertRaises(ConfigError):  # unknown strategy
+            load_limits(CONFIG_RAILS, self.rules, "other")
 
     def test_bad_values_refuse(self):
         for key, bad in (("max_quantity_per_order", "1"), ("max_quantity_per_order", 1.5),
@@ -269,16 +272,18 @@ class LoadLimitsTest(unittest.TestCase):
         self.fails("unknown keys ['typo']", config={"limits": {"allowed_symbols": ["*"], "typo": 1}})
 
     def test_require_limits_alerts_and_exits(self):
-        self.rules.write_text(json.dumps({"risk": {}}))
+        self.rules.write_text(json.dumps({"strategies": {"s": {"risk": {}}}}))
         with self.assertLogs("paperbot", "ERROR") as logs, self.assertRaises(SystemExit) as caught:
-            require_limits(CONFIG_RAILS, self.rules)
+            require_limits(CONFIG_RAILS, self.rules, "s")
         self.assertIn("Refusing to start", str(caught.exception))
         self.assertIn("ALERT refusing to start", logs.output[0])
 
     def test_live_config_files_load(self):
         from paperbot import paths
-        limits = load_limits(json.loads(paths.CONFIG_FILE.read_text()), paths.RULES_FILE)
-        # the values are yours to tune; the files must load with the right types
+        limits = load_limits(json.loads(paths.CONFIG_FILE.read_text()), paths.RULES_FILE,
+                             "trend_join_long")
+        # Types only here: the exact approved values of every strategy are locked in
+        # test_risk_policy.APPROVED_LIMITS, and checked against the portfolio model there.
         for name, kind in (("max_quantity_per_order", int), ("max_order_value", float),
                            ("max_orders_per_day", int), ("max_open_orders", int),
                            ("max_daily_loss", float), ("allowed_symbols", list),

@@ -163,7 +163,7 @@
     const resultTone = cyc.registered ? (cyc.result_ok ? 'green' : 'red') : 'slate';
     const schedCol = `
       <div class="flex flex-wrap items-center gap-2">${PB.pill(live.status, PB.SCHED_TONE[live.status], { dot: true, live: live.status === 'ACTIVE' })}
-        <span class="text-xs text-ink-300">${esc(sched.mode === 'continuous' ? 'continuous bot.py' : 'Task Scheduler · HT_Cycle every 5 min')}</span></div>
+        <span class="text-xs text-ink-300">${esc(sched.mode === 'continuous' ? (sched.builtin ? 'paper-bot · built-in scheduler' : 'continuous bot.py') : 'Task Scheduler · HT_Cycle every 5 min')}</span></div>
       <p class="mt-2 text-sm leading-relaxed text-slate-300">${esc(live.detail)}</p>
       <dl class="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
         <dt class="text-ink-400">HT_Cycle</dt><dd class="text-slate-200">${sched.available === false ? 'n/a on this OS' : cyc.registered ? (cyc.enabled ? 'enabled' : 'disabled') : 'not registered'}</dd>

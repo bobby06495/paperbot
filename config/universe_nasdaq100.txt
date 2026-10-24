@@ -1,5 +1,5 @@
 # Nasdaq-100 (QQQ holdings), 101 members from Wikipedia on 2026-10-20,
-# largest market cap first. Static fallback for universe_filters.fallback_file;
+# largest market cap first. Static fallback for a strategy's universe.fallback_file in rules.json;
 # refresh when the index is rebalanced.
 NVDA
 AAPL

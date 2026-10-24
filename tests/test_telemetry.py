@@ -283,7 +283,7 @@ class MissedRunsTest(unittest.TestCase):
 
 class SavedConversionTest(unittest.TestCase):
     def test_saved_rate_used_without_network(self):
-        from paperbot.trading import account
+        from paperbot.core import account
         with tempfile.TemporaryDirectory() as tmp:
             rate_file = Path(tmp) / "fx_rate.json"
             today = dt.datetime.now(ET).date().isoformat()
