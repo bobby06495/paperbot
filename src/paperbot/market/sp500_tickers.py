@@ -3,8 +3,9 @@
     from paperbot.market.sp500_tickers import get_live_index_tickers, get_live_sp500_tickers
     symbols = get_live_sp500_tickers()                 # ~503 symbols, sorted, e.g. "BRK B"
     symbols = get_live_index_tickers("Nasdaq-100")     # ~101 symbols (QQQ's holdings)
+    # also "S&P MidCap 400" (~400) and "S&P SmallCap 600" (~600)
 
-The indexes (a watchlist strategy's universe.index in rules.json) are listed in
+The indexes (a watchlist strategy's universe.index / indexes in rules.json) are listed in
 PAGES: each has its Wikipedia page, the ticker column and the fewest rows a
 healthy table has.
 
@@ -22,13 +23,17 @@ import requests
 
 SP500_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 NASDAQ100_URL = "https://en.wikipedia.org/wiki/List_of_NASDAQ-100_companies"
+SP400_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies"
+SP600_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies"
 USER_AGENT = "paperbot/1.0 (personal paper-trading research script; python-requests)"
 MIN_EXPECTED = 450  # the index has ~503 lines; far fewer means the page layout changed
 
-# index name (rules.json universe.index) -> (page, ticker column, fewest rows)
+# index name (rules.json universe.index / indexes) -> (page, ticker column, fewest rows)
 PAGES = {
     "S&P 500": (SP500_URL, "Symbol", MIN_EXPECTED),
     "Nasdaq-100": (NASDAQ100_URL, "Ticker", 95),  # ~101 lines (some share classes)
+    "S&P MidCap 400": (SP400_URL, "Symbol", 380),  # ~400 lines
+    "S&P SmallCap 600": (SP600_URL, "Symbol", 570),  # ~600 lines (some share classes)
 }
 
 

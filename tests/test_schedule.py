@@ -85,12 +85,17 @@ class CommandTest(unittest.TestCase):
         self.assertEqual(list(self.commands), setup.TASK_NAMES)
         self.assertEqual(sum(n.startswith("HT_Prefilter_") for n in self.commands), 7)
 
-    def test_cycle_every_5_minutes_with_submit_no_start_date(self):
+    def test_cycle_every_5_minutes_in_the_session_on_weekdays_only(self):
+        """09:30-16:10 ET Mon-Fri, not every 5 minutes around the clock."""
         cmd = self.commands["HT_Cycle"]
-        self.assertEqual(cmd[cmd.index("/SC") + 1:cmd.index("/SC") + 4], ["MINUTE", "/MO", "5"])
+        self.assertEqual(cmd[cmd.index("/SC") + 1], "WEEKLY")
+        self.assertEqual(cmd[cmd.index("/D") + 1], "MON,TUE,WED,THU,FRI")  # 21:30 SGT, same day
+        self.assertEqual(cmd[cmd.index("/RI") + 1], "5")
+        self.assertEqual(cmd[cmd.index("/DU") + 1], "06:40")  # until 16:10 ET (04:10 SGT)
+        self.assertNotIn("MINUTE", cmd)
         self.assertTrue(cmd[cmd.index("/TR") + 1].endswith("-m paperbot.runtime.cycle --submit"))
         self.assertNotIn("/SD", cmd)
-        self.assertEqual(cmd[cmd.index("/ST") + 1], "22:00")  # 10:00 EDT in Singapore
+        self.assertEqual(cmd[cmd.index("/ST") + 1], "21:30")  # 09:30 EDT in Singapore
 
     def test_dashboard_runs_on_singapore_weekdays(self):
         cmd = self.commands["HT_Dashboard"]

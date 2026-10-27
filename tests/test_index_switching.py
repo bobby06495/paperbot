@@ -35,9 +35,16 @@ NASDAQ_PAGE = """<table><tr><th>Company</th><th>Ticker</th></tr>{rows}</table>
 
 
 def rules_with(**universe_keys) -> dict:
+    """The live rules with a single-index (legacy "index") watchlist universe."""
     rules = json.loads(paths.RULES_FILE.read_text(encoding="utf-8"))
-    rules["strategies"]["trend_join_long"]["universe"].update(universe_keys)
+    uni = rules["strategies"]["trend_join_long"]["universe"]
+    uni.pop("indexes", None)
+    uni.update(universe_keys)
     return rules
+
+
+def live_rules_section(key: str = "trend_join_long") -> dict:
+    return json.loads(paths.RULES_FILE.read_text(encoding="utf-8"))["strategies"][key]
 
 
 def load(rules: dict, key: str = "trend_join_long"):
@@ -80,7 +87,9 @@ class RulesValidationTest(unittest.TestCase):
         setup = universe.settings(profile)
         self.assertEqual((setup.index, setup.top_n, setup.fallback_file.name),
                          ("Nasdaq-100", 101, "universe_nasdaq100.txt"))
-        self.assertEqual((setup.min_gap, setup.min_price), (3.0, 3.0))  # the strategy's own blocks
+        entry = {b["type"]: b for b in live_rules_section()["entry"]}
+        self.assertEqual((setup.min_gap, setup.min_price),  # the strategy's own blocks
+                         (entry["min_gap_pct"]["min_pct"], entry["min_price"]["min_usd"]))
         self.assertTrue(setup.fallback_file.exists())
 
     def test_invalid_settings_fail_closed(self):

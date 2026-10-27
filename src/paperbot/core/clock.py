@@ -10,14 +10,18 @@ Jobs (weekdays, ET):
                                 trim trades.csv (in-process; bot.log is closed
                                 and reopened around it)
   prefilter      09:55 ... 12:55 every 30 min, only for strategies whose
-                                universe is the morning watchlist (background)
+                                universe is the morning watchlist (background);
+                                trading days only (market/market_calendar.py), and
+                                not after the day's last entry time (on an early
+                                close 15:15 becomes 12:15, so 12:25/12:55 are skipped)
   daily_summary  16:05          performance summary + push (background)
 
 A job runs a time slot once. If the bot starts or reconnects after a slot,
 the latest slot still within the job's grace period runs immediately; older
 slots are skipped. A background job whose previous run is still going skips
 the slot. Every run is recorded in logs/scheduler_state.json, which the
-dashboard reads. Holidays are not modelled (the jobs are harmless then).
+dashboard reads. rotate_logs and daily_summary are maintenance/reporting and run
+on every weekday, market holidays included.
 """
 import dataclasses
 import datetime as dt
@@ -27,6 +31,7 @@ from typing import Callable
 
 from paperbot import paths
 from paperbot.core.common import ET, hhmm, log
+from paperbot.market import market_calendar
 from paperbot.runtime import runstate
 
 STATE_FILE = paths.LOGS_DIR / "scheduler_state.json"
@@ -41,6 +46,8 @@ class Job:
     command: list[str] | None = None  # background: a subprocess (python -m ...)
     call: Callable[[], None] | None = None  # in-process: a function
     enabled: Callable[[], bool] = lambda: True
+    trading_only: bool = False  # skip days the market is closed (or the calendar is unknown)
+    until: Callable[["market_calendar.Session"], dt.time | None] | None = None  # last slot time
 
 
 class Clock:
@@ -60,8 +67,16 @@ class Clock:
         """The latest slot of `job` that is due now (and still within grace), or None."""
         if now.weekday() >= 5 or not job.enabled():
             return None
+        times = sorted(hhmm(x) for x in job.times)
+        if job.trading_only:
+            day = market_calendar.session_at(now)
+            if not day.trading:
+                return None
+            last = job.until(day) if job.until else None
+            if last is not None:
+                times = [t for t in times if t <= last]
         today = [now.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
-                 for t in sorted(hhmm(x) for x in job.times)]
+                 for t in times]
         past = [s for s in today if s <= now]
         if not past or now - past[-1] > job.grace:
             return None
@@ -154,7 +169,9 @@ def default_jobs(profile, rotate: Callable[[], None]) -> list[Job]:
         Job("rotate_logs", ("09:25",), dt.timedelta(hours=6), call=rotate),
         Job("prefilter", PREFILTER_TIMES, dt.timedelta(minutes=25),
             command=[python, "-m", "paperbot.market.morning_prefilter"],
-            enabled=lambda: watchlist),
+            enabled=lambda: watchlist, trading_only=True,
+            until=lambda day: market_calendar.shift(
+                hhmm(profile.time_filter.latest_entry_et), day)),
         Job("daily_summary", ("16:05",), dt.timedelta(hours=3),
             command=[python, "-m", "paperbot.reporting.compute_perf"]),
     ]

@@ -87,6 +87,26 @@ class FakeIB:
                 NS(tag="BuyingPower", currency="USD", value=str(self.buying_power))]
 
 
+def _live_tjl():
+    return profiles.load("trend_join_long")
+
+
+def partial_price() -> float:
+    """A bar close just past the live partial-profit target for entry 100 / stop 95
+    (R = 5), still below the breakeven trigger, so only the partial fires."""
+    tjl = _live_tjl()
+    partial, breakeven = tjl.block("manage", "partial_profit"), tjl.block("manage", "breakeven")
+    price = round(100.0 + 5.0 * partial.at_R + 0.25, 2)
+    assert breakeven is None or price < 100.0 + 5.0 * breakeven.at_R, "fixture needs a gap"
+    return price
+
+
+def live_cutoff(day: dt.datetime) -> dt.datetime:
+    """The end of the live latest_entry_et minute on `day` (when unfilled entries die)."""
+    latest = profiles.hhmm(_live_tjl().time_filter.latest_entry_et)
+    return day.replace(hour=latest.hour, minute=latest.minute, second=0) + dt.timedelta(minutes=1)
+
+
 class StrategyTestBase(unittest.TestCase):
     """Temp state and safety-log files, cleared caches, and decide() at a fixed time."""
 
@@ -155,8 +175,8 @@ class DecideTest(StrategyTestBase):
     def test_partial_profit_shrinks_stop_first(self):
         now = dt.datetime(2026, 10, 19, 11, 0, tzinfo=ET)
         self.own()
-        # entry 100, stop 95 -> R = 5; 0.75R target = 103.75
-        reqs = self.decide(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, now), now)
+        # entry 100, stop 95 -> R = 5; the bar closes just past the live partial target
+        reqs = self.decide(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], partial_price(), now), now)
         kinds = [type(r) for r in reqs]
         self.assertEqual(kinds, [StopUpdate, OrderIntent])
         self.assertEqual((reqs[0].quantity, reqs[1].quantity, reqs[1].closing), (6, 3, True))
@@ -246,11 +266,14 @@ class EntryWindowTest(StrategyTestBase):
 
     def test_sweep_cancels_unfilled_entries_after_cutoff(self):
         entry = trade(REF_ENTRY, 3, 1)
-        at_cutoff = dt.datetime(2026, 10, 19, 15, 31, 0, tzinfo=ET)
+        at_cutoff = live_cutoff(dt.datetime(2026, 10, 19, tzinfo=ET))  # live latest_entry_et + 1 min
         reqs = self.decide(FakeIB(0, [entry], 101.0, at_cutoff), at_cutoff)
         self.assertEqual(reqs, [CancelRequest(3, "AAPL", "entry window closed")])
-        before = at_cutoff.replace(minute=30, second=30)
+        before = at_cutoff - dt.timedelta(seconds=30)
         self.assertEqual(self.decide(FakeIB(0, [entry], 101.0, before), before), [])
+
+
+PRICE = partial_price()  # past the live partial-profit target (entry 100, stop 95)
 
 
 class PartialRetryTest(StrategyTestBase):
@@ -265,43 +288,44 @@ class PartialRetryTest(StrategyTestBase):
 
     def test_unfilled_partial_resets_and_retries(self):
         self.own()
-        sell = self.send_partial(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, self.NOW))
-        self.assertEqual(sell.limit_price, sizing.to_tick(103.99 * (1 - sizing.LIMIT_SLIPPAGE), "SELL"))
+        sell = self.send_partial(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], PRICE, self.NOW))
+        bid = round(PRICE - 0.01, 2)  # FakeIB quotes one cent under the bar close
+        self.assertEqual(sell.limit_price, sizing.to_tick(bid * (1 - sizing.LIMIT_SLIPPAGE), "SELL"))
         st = strategy.load_state()["positions"]["AAPL"]
         self.assertEqual((st["partial_pending"], st["partial_attempts"], st["partial_done"]),
                          (9, 1, False))
         # the order expired unfilled: still 9 shares, no exit working -> reset, no order this pass
-        reqs = self.decide(FakeIB(9, [trade(REF_STOP, 5, 6, 95.0)], 104.0, self.NOW), self.NOW)
+        reqs = self.decide(FakeIB(9, [trade(REF_STOP, 5, 6, 95.0)], PRICE, self.NOW), self.NOW)
         self.assertFalse(any(isinstance(r, OrderIntent) for r in reqs))
         self.assertIn(StopUpdate("AAPL", 9, 95.0, "sync protective stop"), reqs)
         st = strategy.load_state()["positions"]["AAPL"]
         self.assertNotIn("partial_pending", st)
         self.assertFalse(st["partial_done"])
         # next pass: target recalculated and the partial retried
-        self.send_partial(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, self.NOW))
+        self.send_partial(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], PRICE, self.NOW))
         self.assertEqual(strategy.load_state()["positions"]["AAPL"]["partial_attempts"], 2)
 
     def test_working_partial_is_left_alone(self):
         self.own()
-        self.send_partial(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, self.NOW))
+        self.send_partial(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], PRICE, self.NOW))
         working = [trade(REF_STOP, 5, 6, 95.0), trade(REF_EXIT, 7, 3, age_s=10)]
-        self.assertEqual(self.decide(FakeIB(9, working, 104.0, self.NOW), self.NOW), [])
+        self.assertEqual(self.decide(FakeIB(9, working, PRICE, self.NOW), self.NOW), [])
         self.assertEqual(strategy.load_state()["positions"]["AAPL"]["partial_pending"], 9)
 
     def test_filled_partial_is_done(self):
         self.own()
-        self.send_partial(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, self.NOW))
-        self.decide(FakeIB(6, [trade(REF_STOP, 5, 6, 95.0)], 104.0, self.NOW), self.NOW)
+        self.send_partial(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], PRICE, self.NOW))
+        self.decide(FakeIB(6, [trade(REF_STOP, 5, 6, 95.0)], PRICE, self.NOW), self.NOW)
         self.assertTrue(strategy.load_state()["positions"]["AAPL"]["partial_done"])
 
     def test_gives_up_after_max_attempts(self):
         self.own(partial_pending=9, partial_attempts=orders.PARTIAL_MAX_ATTEMPTS)
-        self.decide(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, self.NOW), self.NOW)
+        self.decide(FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], PRICE, self.NOW), self.NOW)
         self.assertTrue(strategy.load_state()["positions"]["AAPL"]["partial_done"])
 
     def test_no_quote_defers_partial(self):
         self.own()
-        ib = FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, self.NOW, quote=(0.0, 0.0))
+        ib = FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], PRICE, self.NOW, quote=(0.0, 0.0))
         with mock.patch.object(md, "QUOTE_TIMEOUT", 0):
             reqs = self.decide(ib, self.NOW)
         self.assertFalse(any(isinstance(r, OrderIntent) for r in reqs))
@@ -310,11 +334,11 @@ class PartialRetryTest(StrategyTestBase):
 class QuoteTest(StrategyTestBase):
     def test_quotes_released_when_no_longer_needed(self):
         now = dt.datetime(2026, 10, 19, 11, 0, tzinfo=ET)
-        ib = FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], 104.0, now)
+        ib = FakeIB(9, [trade(REF_STOP, 5, 9, 95.0)], PRICE, now)
         self.own()
         self.decide(ib, now)  # partial profit quotes AAPL
         self.assertEqual(ib.subscribed, ["AAPL"])
-        flat = FakeIB(0, [], 104.0, now)
+        flat = FakeIB(0, [], PRICE, now)
         self.decide(flat, now)
         self.assertEqual(flat.cancelled, ["AAPL"])
 
@@ -367,9 +391,14 @@ class SizingTest(StrategyTestBase):
         by_risk = strategy._size_entry("AAPL", self.SIGNAL, profile, 21_000.0, 1e9, 100.0)
         self.assertEqual(by_value.quantity, 24)  # floor(2500 / 100.20), not 35
         self.assertLessEqual(by_value.quantity * by_value.limit_price, 2500.0)
-        self.assertEqual(by_risk.quantity, 20)  # 10% of 21,000 / 100.20 (and 1% risk), not 35
-        self.assertLessEqual(by_risk.quantity * (by_risk.limit_price - 90.0), 21_000.0 * 0.01)
-        self.assertLessEqual(by_risk.quantity * by_risk.limit_price, 21_000.0 * 0.10)
+        lim = profile.limits
+        risk_pct, size_pct = lim.max_risk_per_trade_pct / 100, lim.max_position_size_pct_of_portfolio / 100
+        expected = min(int(21_000.0 * size_pct / by_risk.limit_price),
+                       int(21_000.0 * risk_pct / (by_risk.limit_price - 90.0)))
+        self.assertEqual(by_risk.quantity, expected)  # position % and risk % of 21,000, not 35
+        self.assertLess(by_risk.quantity, 35)
+        self.assertLessEqual(by_risk.quantity * (by_risk.limit_price - 90.0), 21_000.0 * risk_pct)
+        self.assertLessEqual(by_risk.quantity * by_risk.limit_price, 21_000.0 * size_pct)
 
     def test_entry_is_gtd_at_cutoff(self):
         cutoff = dt.datetime(2026, 10, 19, 15, 31, tzinfo=ET)
@@ -417,7 +446,8 @@ class EvaluateTest(StrategyTestBase):
         self.assertEqual([r.split()[0] for r in result["reasons"]],
                          ["D2", "price", "D3", "D1", "I1", "I2", "I3"])
         self.assertAlmostEqual(result["price"], 97.7)
-        self.assertEqual(result["stop"], sizing.to_tick(95.5 * 0.99, "STOP"))
+        pct = strategy.load_profile().stop.pct  # low of day minus the live stop %
+        self.assertEqual(result["stop"], sizing.to_tick(95.5 * (1 - pct / 100), "STOP"))
 
     def test_first_failure_is_reported(self):
         result = self.evaluate(FakeMarket(gap_open=92.0))  # gap 0.2% < 3%
@@ -439,7 +469,10 @@ class EvaluateTest(StrategyTestBase):
         self.assertEqual(result["reasons"], ["FAIL already in position (5 shares)"])
 
     def test_check_only_blocks_outside_window(self):
-        result = self.check(FakeMarket(), now=MONDAY_11.replace(hour=9, minute=50))
+        earliest = profiles.hhmm(strategy.load_profile().time_filter.earliest_entry_et)
+        before = (dt.datetime.combine(MONDAY_11.date(), earliest, ET) - dt.timedelta(minutes=1))
+        self.assertGreaterEqual(before.time(), dt.time(9, 30))  # market open, window not yet
+        result = self.check(FakeMarket(), now=before)
         self.assertTrue(result["reasons"][0].startswith("FAIL outside entry window"))
         self.assertFalse(result["pass"])
 

@@ -6,15 +6,23 @@
 
 What it screens comes from the watchlist strategy in rules.json (market/universe.py):
 the running/saved strategy if its universe is the watchlist, else the default or the
-first such strategy (--strategy picks one). Its universe names the index ("S&P 500" or
-"Nasdaq-100") and top_n; the gap and price thresholds are its own entry blocks
-(min_gap_pct, min_price), so the screen and the entry checks always agree.
---min-gap / --min-price override them for one run.
+first such strategy (--strategy picks one). Its universe names the index ("S&P 500",
+"Nasdaq-100", "S&P MidCap 400", "S&P SmallCap 600") or several ("indexes") and top_n;
+the gap and price thresholds are its own entry blocks (min_gap_pct, min_price), so the
+screen and the entry checks always agree. --min-gap / --min-price override them for
+one run.
 
-Run on a trading day after the 9:30 ET open and before the bot's entry
-window (10:05 ET). Steps:
-  1. live constituents of the index from Wikipedia (sp500_tickers.py)
-  2. top_n of them by current market cap (yfinance, 5 worker threads)
+Run on a trading day after the 9:30 ET open. On a weekend, a market holiday or a
+day the market calendar does not cover (market/market_calendar.py) it does nothing
+and exits 0 without a "FAILED" push. Steps:
+  1. live constituents of every index (market/constituents.py: Wikipedia, cached
+     in data/constituents/ and used up to 7 days old when Wikipedia is down; an
+     index that cannot be had is left out with an alert, the others still count),
+     combined and de-duplicated
+  2. one index: top_n of them by current market cap (yfinance, 5 worker threads).
+     several indexes (~1,500 symbols): a broad first screen on Yahoo daily bars
+     (batched downloads): price >= min price, then the top_n by gap. Only these
+     go to IBKR, so the IBKR load is the same as for one index.
   3. regular-hours daily bars for those from IB Gateway: a READ-ONLY connection
      with its own clientId (config.json client_id + IB_CLIENT_ID_OFFSET), so it
      runs next to the bot and can never place an order
@@ -22,7 +30,14 @@ window (10:05 ET). Steps:
      the same IBKR data); price = today's latest print
   5. survivors (gap >= min gap, price >= min price), sorted by gap, capped at 20,
      written to watchlist.txt (skipped with --dry-run); the header records the
-     index, so the bot ignores a list built for another one
+     index set and the run ID, so the bot ignores a list built for another one
+
+Every run has a run ID (PF-YYYYMMDD-HHMM-xxxx). Each ticker it looked at gets one
+line in data/prefilter_runs/<date>/<run ID>.jsonl: the indexes it came from, the
+stage it stopped at and why (invalid ticker, no Yahoo data, below the price, not
+in the top_n, contract not found at IBKR, no bar today, gap below the minimum,
+passed but beyond the 20-symbol cap, or survivor). Also written for --dry-run
+and for failed runs; folders older than RUN_LOG_DAYS are removed.
 
 A failed run never writes the watchlist: Wikipedia, Yahoo or IB Gateway unavailable,
 or price data missing for FAIL_RATIO of the symbols. The previous watchlist is kept,
@@ -43,7 +58,9 @@ import json
 import math
 import os
 import sys
+import shutil
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -52,7 +69,7 @@ import yfinance as yf
 
 from paperbot import paths
 from paperbot.core.risk import ConfigError
-from paperbot.market import universe
+from paperbot.market import constituents, market_calendar, universe
 from paperbot.market.sp500_tickers import get_live_index_tickers, to_yahoo
 from paperbot.reporting.notify import notify
 
@@ -74,6 +91,65 @@ IB_DURATION = "5 D"  # enough to contain the previous session after a holiday
 FAIL_RATIO = 0.95  # this share of symbols without data = failed run, no watchlist
 DEGRADED_RATIO = 0.30  # this share = watchlist written, with an alert
 SAMPLE_ERRORS = 3  # failed symbols quoted in a failure message
+YAHOO_CHUNK = 200  # symbols per batched Yahoo download (broad multi-index screen)
+RUN_LOG_DAYS = 30  # days of per-run ticker logs kept in data/prefilter_runs/
+
+
+def constituents_dir() -> Path:
+    """Index member cache, next to the watchlist (data/constituents/)."""
+    return WATCHLIST_PATH.parent / "constituents"
+
+
+def run_log_dir() -> Path:
+    """Per-run ticker logs, next to the watchlist (data/prefilter_runs/)."""
+    return WATCHLIST_PATH.parent / "prefilter_runs"
+
+
+def new_run_id(now: dt.datetime) -> str:
+    return f"PF-{now:%Y%m%d-%H%M}-{uuid.uuid4().hex[:4]}"
+
+
+class RunLog:
+    """One JSON line per ticker a run looked at: where it stopped and why."""
+
+    def __init__(self, run_id: str, now: dt.datetime, strategy: str):
+        self.run_id, self.now, self.strategy = run_id, now, strategy
+        self.rows: dict[str, dict] = {}
+        self.members: dict[str, tuple[str, ...]] = {}
+
+    def add(self, symbol: str, stage: str, status: str, reason: str, **extra):
+        row = {"run_id": self.run_id, "time": self.now.isoformat(timespec="seconds"),
+               "strategy": self.strategy, "symbol": symbol,
+               "indexes": list(self.members.get(symbol, ())), "stage": stage,
+               "status": status, "reason": reason}
+        row.update({k: (round(v, 4) if isinstance(v, float) else v)
+                    for k, v in extra.items() if v is not None})
+        self.rows[symbol] = row
+
+    def counts(self) -> dict[str, int]:
+        out: dict[str, int] = {}
+        for row in self.rows.values():
+            out[row["status"]] = out.get(row["status"], 0) + 1
+        return out
+
+    def write(self, base: Path) -> Path | None:
+        """<base>/<date>/<run_id>.jsonl; prunes days older than RUN_LOG_DAYS. None on error."""
+        folder = base / self.now.date().isoformat()
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            path = folder / f"{self.run_id}.jsonl"
+            path.write_text("".join(json.dumps(r) + "\n" for r in self.rows.values()))
+            cutoff = self.now.date() - dt.timedelta(days=RUN_LOG_DAYS)
+            for old in base.iterdir():
+                try:
+                    if old.is_dir() and dt.date.fromisoformat(old.name) < cutoff:
+                        shutil.rmtree(old, ignore_errors=True)
+                except ValueError:
+                    continue
+            return path
+        except OSError as e:
+            print(f"ALERT prefilter: run log not written: {e!r}", file=sys.stderr)
+            return None
 
 
 class IbkrUnavailable(RuntimeError):
@@ -164,6 +240,65 @@ def ibkr_daily_bars(symbols: list[str], cfg: dict | None = None
         ib.disconnect()
 
 
+def yahoo_daily(symbols: list[str], today: dt.date
+                ) -> tuple[dict[str, tuple[float, float, float]], dict[str, str]]:
+    """{symbol: (previous close, today's open, latest price)} from batched Yahoo daily
+    bars, and a reason per symbol without usable data. Never raises."""
+    import pandas as pd
+
+    rows, errors = {}, {}
+    for start in range(0, len(symbols), YAHOO_CHUNK):
+        chunk = symbols[start:start + YAHOO_CHUNK]
+        try:
+            frame = yf.download([to_yahoo(s) for s in chunk], period="5d", interval="1d",
+                                group_by="ticker", auto_adjust=False, progress=False,
+                                threads=True)
+        except Exception as e:  # noqa: BLE001 - one bad batch must not stop the screen
+            errors.update({s: f"Yahoo download error {e!r}"[:200] for s in chunk})
+            continue
+        for symbol in chunk:
+            try:
+                bars = frame[to_yahoo(symbol)] if isinstance(frame.columns, pd.MultiIndex) else frame
+                bars = bars.dropna(subset=["Open", "Close"])
+                bars = bars[(bars["Open"] > 0) & (bars["Close"] > 0)]
+                if bars.empty:
+                    raise ValueError("no Yahoo daily bars")
+                last_day = pd.Timestamp(bars.index[-1]).date()
+                if last_day != today:
+                    raise ValueError(f"no Yahoo bar for today (latest {last_day})")
+                if len(bars) < 2:
+                    raise ValueError("no previous Yahoo session bar")
+                rows[symbol] = (float(bars["Close"].iloc[-2]), float(bars["Open"].iloc[-1]),
+                                float(bars["Close"].iloc[-1]))
+            except ValueError as e:
+                errors[symbol] = str(e)
+            except (KeyError, TypeError, IndexError, AttributeError):
+                errors[symbol] = "no Yahoo daily bars"
+    return rows, errors
+
+
+def broad_screen(rows: dict[str, tuple[float, float, float]], symbols: list[str],
+                 min_price: float, top_n: int
+                 ) -> tuple[list[str], dict[str, str], dict[str, float]]:
+    """First, coarse screen of a multi-index universe on Yahoo data: price >= min_price,
+    then the top_n by gap go to IBKR. Returns (top, {symbol: exclusion reason},
+    {symbol: Yahoo gap %})."""
+    gaps, excluded = {}, {}
+    for symbol in symbols:
+        if symbol not in rows:
+            continue
+        prev_close, today_open, last = rows[symbol]
+        gaps[symbol] = (today_open - prev_close) / prev_close * 100
+        if last < min_price:
+            excluded[symbol] = f"Yahoo price ${last:.2f} below ${min_price:g}"
+    ranked = sorted((s for s in gaps if s not in excluded), key=lambda s: gaps[s], reverse=True)
+    top = ranked[:top_n]
+    for symbol in ranked[top_n:]:
+        excluded[symbol] = (f"Yahoo gap {gaps[symbol]:+.2f}% not in the top {top_n} by gap "
+                            "(not checked at IBKR)")
+    return top, excluded, gaps
+
+
 def latest_date(data: dict[str, list[DailyBar]]) -> dt.date | None:
     return max((b.date for bars in data.values() for b in bars), default=None)
 
@@ -175,6 +310,7 @@ def screen(data: dict[str, list[DailyBar]], symbols: list[str], min_gap: float,
     errors = errors or {}
     survivors, failed = [], []
     below_gap = below_price = 0
+    details: dict[str, tuple[str, str, float | None, float | None]] = {}
     for symbol in symbols:
         try:
             if symbol not in data:
@@ -190,31 +326,43 @@ def screen(data: dict[str, list[DailyBar]], symbols: list[str], min_gap: float,
             prev_close, today_open, last = bars[-2].close, bars[-1].open, bars[-1].close
         except ValueError as e:
             failed.append(f"{symbol}: {e}")
+            details[symbol] = ("failed", str(e), None, None)
             continue
         gap_pct = (today_open - prev_close) / prev_close * 100
         if last < min_price:
             below_price += 1
+            details[symbol] = ("below_price", f"price ${last:.2f} below ${min_price:g}",
+                               gap_pct, last)
         elif gap_pct < min_gap:
             below_gap += 1
+            details[symbol] = ("below_gap", f"gap {gap_pct:+.2f}% below {min_gap:g}%",
+                               gap_pct, last)
         else:
+            details[symbol] = ("survivor", f"gap {gap_pct:+.2f}% >= {min_gap:g}%", gap_pct, last)
             survivors.append({"symbol": symbol, "gap_pct": gap_pct, "open": today_open,
                               "prev_close": prev_close, "last": last,
                               "change_pct": (last - prev_close) / prev_close * 100})
     survivors.sort(key=lambda s: s["gap_pct"], reverse=True)
+    for s in survivors[MAX_SURVIVORS:]:
+        details[s["symbol"]] = ("beyond_cap", f"passed (gap {s['gap_pct']:+.2f}%) but beyond the "
+                                f"{MAX_SURVIVORS}-symbol watchlist cap", s["gap_pct"], s["last"])
     return {"survivors": survivors[:MAX_SURVIVORS], "passed": len(survivors),
-            "below_gap": below_gap, "below_price": below_price, "failed": failed}
+            "below_gap": below_gap, "below_price": below_price, "failed": failed,
+            "details": details}
 
 
 def write_watchlist(path: Path, survivors: list[dict], passed: int, screened: int,
                     min_gap: float, min_price: float, now: dt.datetime,
-                    index: str = universe.DEFAULT_INDEX):
+                    index: str = universe.DEFAULT_INDEX, run_id: str | None = None,
+                    source: str = "Wikipedia index members, Yahoo market caps, IBKR daily bars"):
     """Overwrite the watchlist atomically. The bot reads the date in line 1 and the
-    index in the "# Index:" line."""
+    index set in the "# Index:" line."""
     lines = [
         f"# Auto-generated by morning_prefilter.py at {now:%Y-%m-%d %H:%M %Z}",
         f"# Index: {index}",
+        *([f"# Run: {run_id}"] if run_id else []),
         f"# Filters: gap >= {min_gap:g}%, price >= ${min_price:g}",
-        "# Source: Wikipedia index members, Yahoo market caps, IBKR daily bars",
+        f"# Source: {source}",
         f"# Survivors: {len(survivors)} (capped at {MAX_SURVIVORS}; {passed} passed) "
         f"of {screened} Dynamic Screened Assets",
         "#",
@@ -294,9 +442,14 @@ def main(argv: list[str] | None = None) -> int:
     summary = {"success": False, "total_screened": 0, "survivors_count": 0, "below_gap": 0,
                "below_price": 0, "failed": 0, "elapsed_seconds": 0.0, "top_20_survivors": [],
                "watchlist_path": None if args.dry_run else str(WATCHLIST_PATH)}
+    run: RunLog | None = None
 
     def finish(code: int, **extra) -> int:
         summary.update(extra, elapsed_seconds=round(time.monotonic() - started, 1))
+        if run is not None:
+            path = run.write(run_log_dir())
+            summary.update(run_id=run.run_id, run_log=str(path) if path else None,
+                           ticker_status=run.counts())
         print(json.dumps(summary, indent=2))
         if not args.dry_run:
             push_summary(summary, now)
@@ -308,6 +461,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ALERT prefilter: {why}", file=sys.stderr)
         return finish(1, error=why + kept, **extra)
 
+    def alert(text: str):
+        print(f"ALERT prefilter: {text}", file=sys.stderr)
+        if not args.dry_run:
+            _push(f"Prefilter ALERT {now:%H:%M} ET", lambda: text, "high")
+
     try:
         setup = setup_for(args.strategy)
     except (ConfigError, OSError, ValueError, KeyError) as e:
@@ -317,29 +475,82 @@ def main(argv: list[str] | None = None) -> int:
         setup = dataclasses.replace(setup, min_gap=args.min_gap)
     if args.min_price is not None:
         setup = dataclasses.replace(setup, min_price=args.min_price)
-    summary.update(strategy=setup.strategy, index_name=setup.index, top_n=setup.top_n,
-                   min_gap=setup.min_gap, min_price=setup.min_price, data_source="ibkr")
+    indexes = tuple(setup.indexes) or (setup.index,)
+    multi = len(indexes) > 1
+    summary.update(strategy=setup.strategy, index_name=setup.index, indexes=list(indexes),
+                   top_n=setup.top_n, min_gap=setup.min_gap, min_price=setup.min_price,
+                   data_source="ibkr")
 
-    try:
-        index = get_live_index_tickers(setup.index)
-    except Exception as e:  # noqa: BLE001
-        return fail(f"Wikipedia {setup.index} member list unavailable: {e!r}")
+    day = market_calendar.session_at(now)
+    if not day.trading:  # weekend, holiday or an uncovered day: nothing to screen
+        summary.update(success=True, skipped=f"market closed: {day.describe()}",
+                       elapsed_seconds=round(time.monotonic() - started, 1))
+        if day.kind == "unknown":
+            print(f"ALERT prefilter: market calendar: {day.describe()}", file=sys.stderr)
+        print(json.dumps(summary, indent=2))
+        return 0
 
-    caps = market_caps(index)
-    top = sorted(caps, key=caps.get, reverse=True)[:setup.top_n]
-    if not top:
-        return fail("Yahoo Finance returned no market caps", index_size=len(index))
+    run = RunLog(new_run_id(now), now, setup.strategy)
+    print(f"prefilter run {run.run_id}: {setup.describe()}", file=sys.stderr)
+
+    found = constituents.resolve(indexes, lambda name: get_live_index_tickers(name),
+                                 constituents_dir(), now)
+    run.members = found.members
+    for symbol, why in found.invalid.items():
+        run.add(symbol, "members", "excluded", why)
+    summary.update(index_sources=found.sources, indexes_failed=found.failed)
+    if not found.members:
+        details = "; ".join(f"{i}: {why}" for i, why in found.failed.items())
+        return fail(f"Wikipedia {setup.index} member list unavailable: {details}")
+    for text in found.alerts:
+        alert(text)
+    members = found.symbols
+
+    if multi:  # broad Yahoo screen, then the top_n by gap go to IBKR
+        rows, yahoo_errors = yahoo_daily(members, now.date())
+        top, excluded, yahoo_gaps = broad_screen(rows, members, setup.min_price, setup.top_n)
+        for symbol, why in yahoo_errors.items():
+            run.add(symbol, "yahoo", "excluded", why)
+        for symbol, why in excluded.items():
+            run.add(symbol, "yahoo", "excluded", why, yahoo_gap_pct=yahoo_gaps.get(symbol),
+                    yahoo_price=rows.get(symbol, (None, None, None))[2])
+        if not top:
+            return fail(f"Yahoo Finance returned no usable daily bars for today "
+                        f"({len(yahoo_errors)}/{len(members)} without data)",
+                        index_size=len(members))
+        source = "Wikipedia index members, Yahoo daily bars (broad screen), IBKR daily bars"
+    else:  # one index: the largest top_n by market cap, as before
+        caps = market_caps(members)
+        top = sorted(caps, key=caps.get, reverse=True)[:setup.top_n]
+        for symbol in members:
+            if symbol not in caps:
+                run.add(symbol, "market_cap", "excluded", "no market cap from Yahoo")
+            elif symbol not in top:
+                run.add(symbol, "market_cap", "excluded",
+                        f"not in the top {setup.top_n} by market cap", market_cap=caps[symbol])
+        if not top:
+            return fail("Yahoo Finance returned no market caps", index_size=len(members))
+        yahoo_gaps = {}
+        source = "Wikipedia index members, Yahoo market caps, IBKR daily bars"
 
     try:
         data, errors = ibkr_daily_bars(top)
     except (IbkrUnavailable, ConfigError, OSError, ValueError) as e:
+        for symbol in top:
+            run.add(symbol, "ibkr", "excluded", f"IBKR unavailable: {e}")
         return fail(str(e), total_screened=len(top))
     latest = latest_date(data)
     if data and latest != now.date():  # no data at all is reported below, per symbol
+        for symbol in top:
+            run.add(symbol, "ibkr", "excluded", f"no IBKR daily bar for today (latest {latest})")
         return fail(f"no IBKR daily bar for today yet (latest {latest}); run after the "
                     "9:30 ET open on a trading day", total_screened=len(top))
 
     result = screen(data, top, setup.min_gap, setup.min_price, now.date(), errors)
+    for symbol, (status, why, gap, last) in result.get("details", {}).items():
+        run.add(symbol, "ibkr", "excluded" if status not in ("survivor",) else "survivor",
+                why if status != "failed" else f"IBKR: {why}", gap_pct=gap, price=last,
+                yahoo_gap_pct=yahoo_gaps.get(symbol))
     failed = result["failed"]
     if failure(len(failed), len(top)):
         sample = "; ".join(failed[:SAMPLE_ERRORS])
@@ -353,13 +564,14 @@ def main(argv: list[str] | None = None) -> int:
     survivors = result["survivors"]
     if not args.dry_run:
         write_watchlist(WATCHLIST_PATH, survivors, result["passed"], len(top),
-                        setup.min_gap, setup.min_price, now, setup.index)
+                        setup.min_gap, setup.min_price, now, setup.index, run.run_id, source)
     return finish(
         0, success=True, total_screened=len(top), survivors_count=len(survivors),
         below_gap=result["below_gap"], below_price=result["below_price"],
         failed=len(failed),
         top_20_survivors=[f"{s['symbol']} ({s['gap_pct']:+.2f}%)" for s in survivors],
-        index_size=len(index), market_cap_missing=len(index) - len(caps),
+        index_size=len(members),
+        market_cap_missing=0 if multi else len(members) - len(caps),
         failed_symbols=failed)
 
 

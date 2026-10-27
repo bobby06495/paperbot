@@ -25,7 +25,7 @@ from paperbot.strategies import rule_strategy
 
 LIMIT = 105.74  # to_tick(105.50 x 1.0002 x 1.002, BUY): marketable limit through the ask proxy
 ENTRY = round(105.5 * 1.0004, 4)  # the 10:10 bar opens 105.50: fills at open + 4 bps
-STOP = 101.97  # to_tick(LOD 103.00 x 0.99, STOP)
+STOP = 102.22  # to_tick(LOD 103.00 x (1 - 0.75%), STOP): rules.json low_of_day_minus_pct 0.75
 QTY = 283  # floor(30,000 / 105.74): the order-value cap binds
 N = (105.5, 105.6, 105.4, 105.5)  # a quiet bar (e.g. the 10:05 bar, in which the entry is sent)
 
@@ -51,7 +51,9 @@ class EntryTest(unittest.TestCase):
         self.assertEqual(entry["limit_price"], LIMIT)
         self.assertAlmostEqual(by(r.fills, side="BUY")[0]["commission"], commission_per_side(QTY, ENTRY))
         self.assertIn("I3 RVOL 3.00", t["entry_conditions"])
-        self.assertEqual(r.funnel, {"pass": 1})
+        # entries open at 09:45 (rules.json earliest_entry_et): the 09:45-10:00 passes see AAA
+        # before its breakout bar completes and fail I2 (new high of day); 10:05:03 passes
+        self.assertEqual(r.funnel, {"I2": 4, "pass": 1})
 
     def test_bracket_stop_is_child_of_entry(self):
         r = F.simulate(F.scenario())
@@ -102,8 +104,8 @@ class EntryTest(unittest.TestCase):
 
 class ExitTest(unittest.TestCase):
     def test_stop_fill_with_slippage(self):
-        """Entry at the 10:10 open; the 10:15 bar trades down to 101.50: the 101.97 stop
-        fills at 101.97 less 4 bps."""
+        """Entry at the 10:10 open; the 10:15 bar trades down to 101.50: the 102.22 stop
+        fills at 102.22 less 4 bps."""
         r = F.simulate(F.scenario(after={"AAA": [N, N, (104, 104, 101.5, 102)]}))
         t = r.trades[0]
         self.assertEqual(t["exit_reason"], "initial stop")
@@ -129,25 +131,26 @@ class ExitTest(unittest.TestCase):
         self.assertEqual(by(r.orders, kind="exit")[0]["placed_at_et"], "2025-06-02T15:51:00-04:00")
 
     def test_partial_profit_then_force_close(self):
-        """10:15 bar closes 108.50 >= +0.75R (avg cost incl. fee 105.5472, R 3.5772): the
-        10:20:03 pass shrinks the stop to 189 and sends SELL split_shares(283, 0.3333) = 94;
-        it fills at the 10:25 open less 4 bps."""
-        after = [N, N, (105.5, 108.6, 105.4, 108.5), (108.5, 108.6, 108.3, 108.5)]
+        """10:15 bar closes 109.00 >= +1.0R (avg cost incl. fee 105.5472, stop 102.22,
+        R 3.3272, target 108.87; breakeven at 1.25R = 109.71 not reached): the 10:20:03 pass
+        shrinks the stop to 189 and sends SELL split_shares(283, 0.3333) = 94; it fills at
+        the 10:25 open less 4 bps."""
+        after = [N, N, (105.5, 109.1, 105.4, 109.0), (109.0, 109.1, 108.8, 109.0)]
         r = F.simulate(F.scenario(after={"AAA": after}))
         partial = [f for f in by(r.fills, kind="exit") if f["order_reason"].startswith("partial profit")]
         self.assertEqual(partial[0]["quantity"], 94)
         self.assertEqual(partial[0]["time_et"], "2025-06-02T10:25:00-04:00")
-        self.assertAlmostEqual(partial[0]["price"], round(108.5 * 0.9996, 4), places=4)
+        self.assertAlmostEqual(partial[0]["price"], round(109.0 * 0.9996, 4), places=4)
         self.assertEqual(r.trades[0]["exit_reason"], "partial profit + force close")
         self.assertEqual(sum(f["quantity"] for f in by(r.fills, side="SELL")), QTY)
 
     def test_ambiguous_bar_assumes_stop_first(self):
-        """The partial limit (sent 10:20:03) is still working when the 10:25 bar opens
-        108.00, spikes to 109 and falls to 101: the order of high and low is unknown, so
+        """The partial limit (108.76, sent 10:20:03) is still working when the 10:25 bar opens
+        108.50, spikes to 109.50 and falls to 101: the order of high and low is unknown, so
         the (shrunk, 189-share) stop fills first and the partial does NOT fill in that bar
         (conservative). The bot replaces an exit after 60 s; that is switched off here so
         the partial is still working when the bar's range is reached."""
-        after = [N, N, (105.5, 108.6, 105.4, 108.5), (108.0, 108.2, 107.9, 108.0), (108.0, 109.0, 101.0, 101.5)]
+        after = [N, N, (105.5, 109.1, 105.4, 109.0), (108.5, 108.6, 108.4, 108.5), (108.5, 109.5, 101.0, 101.5)]
         with mock.patch.object(core_orders, "EXIT_STALE_SECONDS", 10 ** 6):
             r = F.simulate(F.scenario(after={"AAA": after}))
         t = (r.trades + r.open_trades)[0]  # the 94 partial shares stay open (no replacement)

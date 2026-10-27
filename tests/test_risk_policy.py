@@ -34,12 +34,15 @@ from paperbot.strategies import rule_strategy as strategy
 APPROVED_LIMITS = {
     # Approved 2026-10-20: caps raised so high-priced watchlist names (up to ~$1,360/share)
     # can size above the commission-drag floor; daily loss and drawdown scaled with R.
+    # Retuned 2026-10-27 (owner's rules.json retune, approved with review_comments.md):
+    # half the risk per trade (1% -> 0.5%), 4 positions (was 5), 8 orders/day (was 5),
+    # 3 working orders (was 2), commission allowance 2% of R (was 1%) for the smaller R.
     "trend_join_long": {
         "allowed_symbols": ["*"], "limit_orders_only": True,
-        "max_quantity_per_order": 500, "max_order_value": 30000.0, "max_orders_per_day": 5,
-        "max_open_orders": 2, "max_daily_loss": 2000.0, "max_risk_per_trade_pct": 1.0,
-        "max_position_size_pct_of_portfolio": 10.0, "max_concurrent_positions": 5,
-        "max_commission_pct_of_risk": 1.0, "max_drawdown_usd": 6000.0,
+        "max_quantity_per_order": 500, "max_order_value": 30000.0, "max_orders_per_day": 8,
+        "max_open_orders": 3, "max_daily_loss": 2000.0, "max_risk_per_trade_pct": 0.5,
+        "max_position_size_pct_of_portfolio": 10.0, "max_concurrent_positions": 4,
+        "max_commission_pct_of_risk": 2.0, "max_drawdown_usd": 6000.0,
     },
     # Approved 2026-10-20 (Phase 3): same caps and loss limits as Trend Join Long; up to
     # 3 overnight positions, 1,000 shares so ~$40 sector ETFs can reach the $30k cap,

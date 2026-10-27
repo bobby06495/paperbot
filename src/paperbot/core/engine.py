@@ -79,6 +79,7 @@ from paperbot.core import market_data as md
 from paperbot.core import profile as profiles
 from paperbot.core import selector
 from paperbot.core.account import buying_power_usd, daily_pnl, net_liquidation_usd
+from paperbot.market import market_calendar
 from paperbot.core.risk import (ET, AccountState, CancelRequest, DrawdownBreaker, OrderIntent,
                                 RiskGuard, StopUpdate, ref_role, require_limits)
 from paperbot.strategies import rule_strategy as strategy
@@ -97,6 +98,7 @@ UNSET_PNL = 1e100  # IBKR reports "no realized P&L" (opening fills) as ~1.8e308
 CANCEL_WAIT_SECONDS = 5  # how long to wait for IBKR to confirm a cancel
 DAY_ORDER_WAIT_SECONDS = 90  # after the close: how long IBKR gets to expire DAY orders
 POST_CLOSE_UNTIL = dt.time(16, 10)  # end of the post-close protect window (ET)
+POST_CLOSE_WINDOW = dt.timedelta(minutes=10)  # same window after an early close (13:00-13:10)
 OCA_REDUCE_WITH_BLOCK = 2  # IBKR ocaType: fills shrink the other orders, overfill blocked
 RECONNECT_FIRST_SECONDS, RECONNECT_MAX_SECONDS = 30, 300  # back-off while Gateway is down
 SOURCE = "paper-bot"  # heartbeat/telemetry source of the long-running runner
@@ -179,9 +181,23 @@ def cancel_working(ib: IB, why: str):
 
 
 def post_close(now: dt.datetime) -> bool:
-    """Weekday, from the 16:00 ET close until POST_CLOSE_UNTIL."""
+    """Trading day, from the close (16:00 ET, or the early close) for POST_CLOSE_WINDOW."""
     now = now.astimezone(ET)
-    return now.weekday() < 5 and dt.time(16, 0) <= now.time() < POST_CLOSE_UNTIL
+    day = market_calendar.session_at(now)
+    if not day.trading:
+        return False
+    close = dt.datetime.combine(day.day, day.close, ET)
+    return close <= now < close + POST_CLOSE_WINDOW
+
+
+def check_market_hours(ib: IB, now: dt.datetime | None = None):
+    """Cross-check today's market hours with IBKR (a stricter IBKR answer wins) and warn
+    when the calendar file is about to run out. ALERTs only; never raises."""
+    now = now or dt.datetime.now(ET)
+    for text in (market_calendar.cross_check_with_ibkr(ib, now),
+                 market_calendar.coverage_warning(now.date())):
+        if text:
+            log.error("ALERT %s", text)
 
 
 def await_day_orders_done(ib: IB, submit: bool, timeout: float = DAY_ORDER_WAIT_SECONDS) -> bool:
@@ -410,6 +426,7 @@ def run_session(conn: broker.Connection, cfg: dict, profile, guard: RiskGuard, s
     account = pnl = None
     failures, passes = 0, 0
     day_orders_confirmed: dt.date | None = None  # post-close check done for this date
+    hours_checked: dt.date | None = None  # IBKR market-hours cross-check done for this date
     try:
         while max_passes is None or passes < max_passes:
             jobs.tick()
@@ -438,6 +455,10 @@ def run_session(conn: broker.Connection, cfg: dict, profile, guard: RiskGuard, s
                          conn.mode, account, "SUBMIT" if submit else "DRY RUN", profile.key,
                          profile.limits)
                 failures = 0
+            today = dt.datetime.now(ET).date()
+            if hours_checked != today:
+                check_market_hours(ib)
+                hours_checked = today
             try:
                 day_orders_confirmed = one_pass(ib, guard, cfg, account, pnl, submit,
                                                 day_orders_confirmed)

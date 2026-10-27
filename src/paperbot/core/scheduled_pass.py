@@ -5,9 +5,16 @@
     python -m paperbot.core.scheduled_pass --print-task  print a schtasks command (installs nothing)
 (`paperbot-cycle` is the same command.) For the full schedule use paperbot-schedule.
 
-Schedule it every 5 minutes, around the clock. Each run:
-  1. Time gate on the ET clock, before any heavy import, so off-hours runs exit
-     in well under a second: weekend or outside 09:30-16:10 ET -> exit 0.
+paperbot-schedule runs it every 5 minutes from 09:30 to 16:10 ET on New York
+weekdays (HT_Cycle). Each run:
+  1. Time gate on the ET clock and the US market calendar
+     (market/market_calendar.py, standard library), before any heavy import, so
+     closed-market runs exit in well under a second: weekend, holiday, or outside
+     the day's session (09:30 until 10 minutes after the close: 16:10, or 13:10
+     on an early close) -> exit 0. A weekday the calendar does not cover runs
+     protect-only (no entries, exits or force closes) with an ALERT. After
+     connecting, IBKR's hours for SPY are cross-checked; a closure or earlier
+     close reported by IBKR wins and is re-gated.
   2. Skips quietly if a STOP file exists or bot.py / another cycle is running
      (logs/bot.pid), then claims the pid file for the duration of the run.
   3. Connects with the bot's clientId (so it can manage the bot's own stops);
@@ -53,6 +60,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from paperbot import paths  # standard library only: keeps the off-hours exit fast
+from paperbot.market import market_calendar  # standard library only as well
 
 LOGS = paths.LOGS_DIR
 ERROR_LOG = LOGS / "cycle_errors.log"
@@ -95,18 +103,43 @@ def force_close_at() -> dt.time | None:
         return dt.time(15, 51)
 
 
-def time_gate(now: dt.datetime, force_close: dt.time | None) -> str:
-    """'weekend', 'closed', 'force_close', 'post_close' or 'run' for an ET datetime."""
-    if now.weekday() >= 5:
-        return "weekend"
+POST_CLOSE_WINDOW = dt.timedelta(minutes=10)  # RUN_UNTIL - SESSION_END
+
+
+def time_gate(now: dt.datetime, force_close: dt.time | None,
+              day: "market_calendar.Session | None" = None) -> str:
+    """'weekend', 'holiday', 'unknown', 'closed', 'force_close', 'post_close' or 'run'
+    for an ET datetime. force_close is the configured time; on an early close it moves
+    earlier with the close (market_calendar.shift)."""
+    now = now.astimezone(ET) if now.tzinfo else now
+    day = day or market_calendar.session_at(now)
     t = now.time()
-    if t < SESSION_START or t >= RUN_UNTIL:
+    if day.kind == "weekend":
+        return "weekend"
+    if day.kind == "holiday":
+        return "holiday"
+    if day.kind == "unknown":  # protect-only, inside the usual window
+        return "unknown" if SESSION_START <= t < RUN_UNTIL else "closed"
+    run_until = (dt.datetime.combine(day.day, day.close) + POST_CLOSE_WINDOW).time()
+    if t < day.open or t >= run_until:
         return "closed"
-    if force_close is not None and force_close <= t < SESSION_END:
+    force_close = market_calendar.shift(force_close, day)
+    if force_close is not None and force_close <= t < day.close:
         return "force_close"
-    if t >= SESSION_END:
+    if t >= day.close:
         return "post_close"
     return "run"
+
+
+def force_close_today(now: dt.datetime) -> dt.time | None:
+    """The active strategy's force close on the day of `now` (early close: moved earlier)."""
+    return market_calendar.shift(force_close_at(), market_calendar.session_at(now))
+
+
+def session_end(now: dt.datetime) -> dt.time:
+    """Today's close (16:00, or the early close); SESSION_END when the market is closed."""
+    day = market_calendar.session_at(now)
+    return day.close if day.trading else SESSION_END
 
 
 def seconds_to_force_close(now: dt.datetime, force_close: dt.time | None) -> float:
@@ -277,6 +310,15 @@ def run(gate: str, submit: bool) -> int:
     try:
         connect_with_retry(ib, cfg, log)
         account = broker.verify_account(bot.connection_settings(cfg), ib.managedAccounts())
+        before = market_calendar.session_at(dt.datetime.now(ET))
+        bot.check_market_hours(ib)  # IBKR closed / earlier close -> stricter session
+        after = market_calendar.session_at(dt.datetime.now(ET))
+        if after != before:  # IBKR changed today's session: gate this run again
+            gate = time_gate(dt.datetime.now(ET), force_close_at(), after)
+            log.warning("IBKR changed today's session to %s; cycle gate now %s",
+                        after.describe(), gate)
+            if gate in ("weekend", "holiday", "closed"):
+                return 0
         log.info("cycle start (%s, %s) on paper account %s", gate,
                  "SUBMIT" if submit else "DRY RUN", account)
         pnl = ib.reqPnL(account)
@@ -301,16 +343,17 @@ def run(gate: str, submit: bool) -> int:
             bot.await_day_orders_done(ib, submit)  # ALERTs itself if not confirmed
         handled = one_pass(ib, guard, cfg, account, pnl, submit)
         if gate == "run" and submit:
-            wait = seconds_to_force_close(dt.datetime.now(ET), force_close_at())
+            now = dt.datetime.now(ET)
+            wait = seconds_to_force_close(now, force_close_today(now))
             if wait and holds_bot_positions(ib, account):
                 log.info("staying connected %.0f s to start the force close at %s ET",
-                         wait, force_close_at().strftime("%H:%M"))
+                         wait, force_close_today(now).strftime("%H:%M"))
                 if sleep_until(ib, time.monotonic() + wait):
                     gate = "force_close"
                     handled += one_pass(ib, guard, cfg, account, pnl, submit)
         # Force close: keep re-pricing every 30 s until flat or the close.
         while (gate == "force_close" and submit and not runstate.stop_requested()
-               and dt.datetime.now(ET).time() < SESSION_END
+               and dt.datetime.now(ET).time() < session_end(dt.datetime.now(ET))
                and holds_bot_positions(ib, account)):
             ib.sleep(FORCE_LOOP_SECONDS)
             handled += one_pass(ib, guard, cfg, account, pnl, submit)
@@ -363,7 +406,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     gate = time_gate(dt.datetime.now(ET), force_close_at())
-    if gate in ("weekend", "closed"):
+    if gate in ("weekend", "holiday", "closed"):
         return 0  # fast exit: nothing imported, nothing connected
 
     try:

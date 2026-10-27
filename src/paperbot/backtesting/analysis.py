@@ -60,9 +60,12 @@ def explain_profile(profile) -> list[dict]:
     elif "file" in uni:
         rows.append(("universe.file", uni["file"], "Universe", f"Symbols listed in config/{uni['file']}."))
     else:
-        rows.append(("universe.index", f"{uni.get('index', 'S&P 500')} watchlist", "Universe",
+        from paperbot.market import universe as index_universe
+        index = index_universe.label(index_universe.indexes_of(uni))
+        key = "universe.indexes" if "indexes" in uni else "universe.index"
+        rows.append((key, f"{index} watchlist", "Universe",
                      UNIVERSE_TEXT["watchlist"].format(fallback=uni.get("fallback_file", "universe.txt"),
-                                                       index=uni.get("index", "S&P 500"),
+                                                       index=index,
                                                        top_n=uni.get("top_n", 100))))
     rows += [
         ("time_filter.earliest_entry_et", tf.earliest_entry_et, "First entry time",

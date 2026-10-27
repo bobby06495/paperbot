@@ -89,7 +89,9 @@ def rules_view(key: str, section: dict) -> dict:
         "universe_symbols": universe.get("symbols"),
         "blocks": {kind: blocks(kind) for kind in ("entry", "stop", "manage", "exit")},
         "direction": "long_only", "trade_timeframe": section.get("timeframe"),
-        "universe_filters": {"index": universe.get("index", "custom list"),
+        "universe_filters": {"index": (" + ".join(universe["indexes"])
+                                       if universe.get("indexes") and "symbols" not in universe
+                                       else universe.get("index", "custom list")),
                              "min_price_usd": entry.get("min_price", {}).get("min_usd")},
         "daily_filters": {
             "D1_above_prior_day_high": "above_prior_day_high" in entry,

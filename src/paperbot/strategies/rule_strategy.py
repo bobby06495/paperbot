@@ -17,6 +17,10 @@ Each pass, in priority order (only for the strategy's own orders and state):
      that, signal exits (close_above_sma, time_stop, ...) close single
      positions the same way. A multi_day strategy has no force close and
      holds overnight on its GTC stops.
+  "Regular hours" come from the US market calendar (market/market_calendar.py):
+  weekends, holidays and days the calendar does not cover are protect-only
+  (step 1 only), and on an early close the session ends at 13:00 ET with the
+  strategy's late times moved earlier (profile.for_session).
   4. In the entry window (inclusive, to the minute): scan the universe once per
      bar of the strategy's timeframe within a time budget, run the entry blocks
      (cheapest first, first failure stops) and size passing signals with
@@ -49,6 +53,8 @@ from paperbot.core.common import ET, RTH_CLOSE, RTH_OPEN, log, warn_once
 from paperbot.core.orders import Working
 from paperbot.core.risk import OrderIntent
 from paperbot.core.sizing import size_entry
+from paperbot.market import market_calendar
+from paperbot.market import universe as index_universe
 from paperbot.runtime import runstate
 from paperbot.runtime.runstate import StateCorrupt, read_json_state, write_json_atomic
 
@@ -58,6 +64,7 @@ WATCHLIST_FILE = paths.WATCHLIST_FILE  # today's gappers from morning_prefilter.
 STATE: Path | None = None  # None = the profile's state file (tests point it elsewhere)
 SAFETY_LOG: Path | None = None  # None = the profile's safety log
 ACTIVE: str | None = None  # strategy key to load when not configured; None = saved choice
+session_for = market_calendar.session_at  # the backtester replaces it (weekday sessions)
 SCAN_BUDGET_SECONDS = 10  # max entry-scan time per pass; the scan resumes next pass
 
 _profile: profiles.StrategyProfile | None = None
@@ -170,10 +177,10 @@ def _universe(profile: profiles.StrategyProfile, today: dt.date) -> list[str]:
     if "file" in universe:
         return read_symbols(paths.CONFIG_DIR / universe["file"])
     fallback = paths.CONFIG_DIR / universe.get("fallback_file", "universe.txt")
-    index = universe.get("index", "S&P 500")
+    index = index_universe.label(index_universe.indexes_of(universe))
     if watchlist_date() == today:
         built_for = watchlist_index()
-        if built_for == index:
+        if index_universe.parse_label(built_for) == index_universe.parse_label(index):
             warn_once(f"watchlist:{today}", logging.INFO, "scanning %s (generated today, %s)",
                       WATCHLIST_FILE.name, index)
             return read_symbols(WATCHLIST_FILE)
@@ -187,7 +194,7 @@ def _universe(profile: profiles.StrategyProfile, today: dt.date) -> list[str]:
     if not fallback.exists():
         warn_once("universe", logging.WARNING,
                   "%s missing: add the %s symbols (one per line) to scan for entries",
-                  fallback.name, universe.get("index", "universe"))
+                  fallback.name, index)
         return []
     return read_symbols(fallback)
 
@@ -211,9 +218,12 @@ def decide(ib: IB, account: str) -> list:
     state = load_state()
     orders.adopt_and_forget(state, held, working)
 
+    day = session_for(now)
+    _note_session(day)
+    profile = profiles.for_session(profile, day)  # early close: late times moved earlier
     tf = profile.time_filter
     close_at = tf.force_close_time()
-    session = now.weekday() < 5 and RTH_OPEN <= now.time() < RTH_CLOSE
+    session = day.is_open(now)
     force_close = session and close_at is not None and now.time() >= close_at
     bars: dict[str, list] = {}
     if session and not force_close and profile.manage:
@@ -244,7 +254,7 @@ def decide(ib: IB, account: str) -> list:
             requests += _find_entries(ib, account, profile, state, held, working, now)
     elif not session and profile.holding == "intraday":
         for symbol in held:
-            if symbol in state["positions"] and now.time() >= RTH_CLOSE:
+            if symbol in state["positions"] and now.time() >= (day.close or RTH_CLOSE):
                 warn_once(f"overnight:{symbol}:{now.date()}", logging.ERROR,
                           "ALERT %s still open after the close; protective stop kept at IBKR",
                           symbol)
@@ -256,6 +266,19 @@ def decide(ib: IB, account: str) -> list:
     _save_state(state)
     md.release_quotes(ib, set(held) | set(working))
     return orders.dedupe_cancels(requests)
+
+
+def _note_session(day: market_calendar.Session):
+    """Log once per day why the session is closed or shortened."""
+    key = f"session:{day.day}"
+    if day.kind == "unknown":
+        warn_once(key, logging.ERROR, "ALERT market calendar: %s; no entries, exits or force "
+                  "closes today (protective stops are still reconciled)", day.describe())
+    elif day.kind == "holiday":
+        warn_once(key, logging.INFO, "market closed today: %s; protect-only", day.describe())
+    elif day.kind == "early_close":
+        warn_once(key, logging.WARNING, "early close today: %s; late strategy times move "
+                  "earlier to keep their distance to the close", day.describe())
 
 
 def _bar_start(now: dt.datetime, bar: dt.timedelta) -> dt.datetime:
@@ -375,8 +398,9 @@ def check_symbol(ib: IB, account: str, symbol: str) -> dict:
     Order: position dedupe, entry window, then every entry block via evaluate().
     A passing result also shows the quantity the bot would buy.
     """
-    profile = load_profile()
     now = _now()
+    day = session_for(now)
+    profile = profiles.for_session(load_profile(), day)
     symbol = symbol.upper()
     tf = profile.time_filter
     window = tf.window()
@@ -398,7 +422,9 @@ def check_symbol(ib: IB, account: str, symbol: str) -> dict:
         return early("already entered today" if profile.max_entries_per_symbol_per_day == 1
                      else f"already entered {done} times today "
                           f"(max {profile.max_entries_per_symbol_per_day})")
-    if not (now.weekday() < 5 and tf.in_entry_window(now)):
+    if not day.is_open(now):
+        return early(f"market closed: {day.describe()} (now {now:%a %H:%M} ET)")
+    if not tf.in_entry_window(now):
         return early(f"outside entry window {window} (now {now:%a %H:%M} ET)")
 
     result = evaluate(ib, symbol, profile, now)

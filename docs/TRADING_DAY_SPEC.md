@@ -17,8 +17,8 @@ Paperbot has two ways to run. Both use the same decision code: `strategy.decide(
 | | **Scheduled mode** (legacy, Windows) | **Continuous mode** (`paper-bot start`, default) |
 |---|---|---|
 | Entry point | `paperbot.runtime.cycle --submit`, started by Windows Task Scheduler task `HT_Cycle` | `paper-bot start` (also `paperbot-bot --submit`), one long-running process |
-| Loop trigger | `schtasks /SC MINUTE /MO 5`: a **new process every 5 minutes** on the :00/:05/:10… grid, around the clock | `ib.sleep(loop_seconds)`: **30 s after the previous pass finishes** |
-| Activity gate | Exits in < 1 s on weekends and outside 09:30–16:10 ET | Loops at any hour. Outside the session it only protects positions |
+| Loop trigger | `schtasks /SC WEEKLY /D MON-FRI /RI 5 /DU 06:40`: a **new process every 5 minutes from 09:30 to 16:10 ET** on New York weekdays (converted to local time and weekday) | `ib.sleep(loop_seconds)`: **30 s after the previous pass finishes** |
+| Activity gate | Exits in < 1 s on weekends, market holidays and outside the day's session (09:30 until 10 min after the close: 16:10, or 13:10 on an early close) | Loops at any hour. Outside the session (and on holidays) it only protects positions |
 | Entry-scan budget | 150 s per run (one run usually scans the whole list) | 10 s per loop, then resumes where it stopped on the next loop |
 | Force close | The 15:50 run stays connected, starts at **15:51:00** and **repeats the pass every 30 s** until flat or 16:00 | Every 30-s loop from 15:51 |
 
@@ -43,7 +43,7 @@ This document was written for scheduled mode (the deployment until 2026-10-20) a
 
 Every scheduled run, including the first one of the day, runs these steps in order. A failure at any step ends the run, and **no order is sent**.
 
-1. **Time gate (stdlib only, < 1 s).** It reads the ET clock. On a weekend, before 09:30 or at/after 16:10 it exits with code 0. It reads `force_close_et` (15:51) from `rules.json` and labels the run `run` (09:30 ≤ t < 15:51), `force_close` (15:51 ≤ t < 16:00) or `post_close` (16:00 ≤ t < 16:10).
+1. **Time gate (stdlib only, < 1 s).** It reads the ET clock and the US market calendar (`config/market_calendar.json`). On a weekend, a market holiday, before 09:30 or at/after 10 minutes past the close (16:10; 13:10 on an early close) it exits with code 0. It reads `force_close_et` (15:51) from `rules.json` — 12:51 on a 13:00 early close — and labels the run `run` (09:30 ≤ t < 15:51), `force_close` (15:51 ≤ t < close) or `post_close` (close ≤ t < close + 10 min). A weekday the calendar does not cover is labelled `unknown`: the run is protect-only and ALERTs. After connecting, today's hours are compared with IBKR's trading hours for SPY; a closure or earlier close reported by IBKR wins and the run is gated again.
 2. **STOP file check.** If `STOP` exists in the project root, the run logs "cycle skipped" and exits.
 3. **Single-instance check.** If `logs/bot.pid` points to a live process (continuous bot or an earlier cycle), the run skips.
 4. **Load config.** It reads `config/config.json` (connection, plus the safety rails `allowed_symbols` and `limit_orders_only`) and every quantitative threshold from the `risk` section of `rules.json`. Each key has exactly one home; every value is type-checked. A missing, invalid or misplaced key (for example a cap still in `config.json`) **stops the run** with an ALERT.
@@ -96,14 +96,15 @@ From the **09:35** run onward, positions carried in from earlier (§5.3) get ful
 ### 1.6 Watchlist build (09:55, re-run every 30 min until 12:55)
 
 `HT_Prefilter_01…07` run `paperbot.market.morning_prefilter`:
-1. Fetches today's S&P 500 members from Wikipedia.
-2. Keeps the **100 largest by market cap** (Yahoo Finance, 5 threads).
+0. On a weekend, a market holiday or a day the market calendar does not cover it does nothing (exit 0, no push). Every run gets a run ID and writes one line per ticker it looked at, with the reason it was excluded, to `data/prefilter_runs/<date>/<run ID>.jsonl`.
+1. Fetches today's members of every configured index from Wikipedia (Trend Join Long: S&P 500, Nasdaq-100, S&P MidCap 400, S&P SmallCap 600 — about 1,500 symbols after de-duplication), cached in `data/constituents/` and used up to 7 days old if Wikipedia is down. An index that cannot be had is left out with an ALERT.
+2. One index: keeps the **100 largest by market cap** (Yahoo Finance, 5 threads). Several indexes: downloads Yahoo daily bars for all members in batches of 200, drops those below the price minimum and keeps the **100 largest gaps**.
 3. Requests about 5 days of regular-hours daily bars for those 100 from IB Gateway, over a **read-only** connection with its own clientId (`config.json` client_id + 4), 8 requests at a time. It can run next to the bot and can never place an order.
 4. Computes gap = today's open ÷ the previous session's close − 1 (the same IBKR data as the bot's gap check). A symbol survives if gap ≥ 3 % and its latest price ≥ $3.
-5. Sorts by gap, keeps the **top 20**, and writes them atomically to `data/watchlist.txt` with a header dated today.
+5. Sorts by gap, keeps the **top 20**, and writes them atomically to `data/watchlist.txt` with a header dated today that records the index set and the run ID.
 6. Sends an ALERT push if ≥ 30 % of the symbols have no IBKR data. A failed run exits 1 and does **not** write the watchlist, so the bot keeps an earlier list from today or falls back to `universe.txt`. It fails when Wikipedia or Yahoo is unavailable, IB Gateway can't be reached, IBKR has no bar for today yet, or ≥ 95 % of the symbols have no data. The `Prefilter FAILED` push names the step that failed.
 
-The strategy scans `watchlist.txt` only if its header date is today (ET). Otherwise it falls back to the static `config/universe.txt` (99 symbols) and logs a warning once per day. When a prefilter re-run changes the list, the scan position resets.
+The strategy scans `watchlist.txt` only if its header date is today (ET) and its index set is the strategy's. Otherwise it falls back to the static `config/universe.txt` (99 symbols) and logs a warning once per day. When a prefilter re-run changes the list, the scan position resets.
 
 ---
 

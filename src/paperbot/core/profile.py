@@ -17,9 +17,10 @@ A section's keys:
   holding                 "intraday" (flat every day; needs a force_close exit) or
                           "multi_day" (held overnight on the GTC stop until an exit
                           signal; no force close, force_close_et null)
-  universe                {"source": "watchlist", "index": "S&P 500" | "Nasdaq-100",
+  universe                {"source": "watchlist", "index": "S&P 500" (or "indexes": [...]),
                           "top_n": 100, "fallback_file": "universe.txt"} (market/universe.py)
-                          or {"symbols": [...]} or {"file": "my_list.txt"} (config/)
+                          or {"symbols": [...]} (optionally "indexes": [...], which adds
+                          the ETF tracking each index) or {"file": "my_list.txt"} (config/)
   time_filter             earliest_entry_et, latest_entry_et, force_close_et ("HH:MM")
   entry, stop, manage, exit   block objects (see blocks/)
   risk                    limits (core/risk.py)
@@ -28,7 +29,13 @@ A section's keys:
   entry_reason            order note, formatted with the signal: {label} {stop} {gap} {rvol} {price}
   state_dir               under logs/; default "strategies/<key>" ("." = logs/ itself)
   max_entries_per_symbol_per_day   default 1 (re-entries after an exit, same day)
+
+On an early-close day (market/market_calendar.py) for_session() returns a copy whose
+times at or after the early close keep their distance to it: force_close_et 15:51
+-> 12:51, latest_entry_et 15:15 -> 12:15, an exit's at_et 15:50 -> 12:50 on a 13:00
+close. Regular days use the profile unchanged.
 """
+import copy
 import dataclasses
 import datetime as dt
 import json
@@ -157,7 +164,37 @@ def _universe_text(universe: dict) -> str:
         return ", ".join(universe["symbols"])
     if "file" in universe:
         return f"config/{universe['file']}"
-    return f"today's watchlist (fallback config/{universe.get('fallback_file', 'universe.txt')})"
+    from paperbot.market import universe as watchlist_universe
+    indexes = watchlist_universe.label(watchlist_universe.indexes_of(universe))
+    return (f"today's {indexes} watchlist "
+            f"(fallback config/{universe.get('fallback_file', 'universe.txt')})")
+
+
+def _shifted(text: str | None, day) -> str | None:
+    from paperbot.market import market_calendar
+    if text is None:
+        return None
+    return market_calendar.shift(hhmm(text), day).strftime("%H:%M")
+
+
+def for_session(profile: StrategyProfile, day) -> StrategyProfile:
+    """The profile for one market session (market_calendar.Session): unchanged on a
+    regular day; on an early close every time at or after the close moves earlier by
+    the hours the session lost. Entry, exit and risk rules are otherwise untouched."""
+    if getattr(day, "kind", None) != "early_close":
+        return profile
+    tf = profile.time_filter
+    time_filter = dataclasses.replace(
+        tf, earliest_entry_et=_shifted(tf.earliest_entry_et, day),
+        latest_entry_et=_shifted(tf.latest_entry_et, day),
+        force_close_et=_shifted(tf.force_close_et, day))
+    exits = []
+    for block in profile.exit:
+        if getattr(block, "at_et", None):
+            block = copy.copy(block)
+            block.at_et = _shifted(block.at_et, day)
+        exits.append(block)
+    return dataclasses.replace(profile, time_filter=time_filter, exit=tuple(exits))
 
 
 def read_rules(rules_path: Path | None = None) -> dict:
@@ -201,7 +238,11 @@ def _universe(where: str, value) -> dict:
         if not (isinstance(symbols, list) and symbols
                 and all(isinstance(s, str) and s.strip() for s in symbols)):
             raise ConfigError(f"{where}.symbols must be a non-empty list of tickers")
-        return {**value, "symbols": [s.strip().upper() for s in symbols]}
+        symbols = [s.strip().upper() for s in symbols]
+        if "indexes" in value:  # the ETF tracking each index, never its members
+            from paperbot.market import universe as watchlist_universe
+            symbols = watchlist_universe.etf_symbols(where, symbols, value["indexes"])
+        return {**value, "symbols": symbols}
     if "file" in value:
         if not (isinstance(value["file"], str) and (paths.CONFIG_DIR / value["file"]).exists()):
             raise ConfigError(f"{where}.file: config/{value.get('file')} not found")

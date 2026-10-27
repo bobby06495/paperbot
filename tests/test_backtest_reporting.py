@@ -136,9 +136,10 @@ class ExperimentTest(unittest.TestCase):
         rules = F.rules()
         section = rules["strategies"][F.TJL]
         rvol = next(i for i, b in enumerate(section["entry"]) if b["type"] == "min_rvol")
-        variant = experiments.apply(section, {f"entry.{rvol}.min": 1.5})
-        self.assertEqual(variant["entry"][rvol]["min"], 1.5)
-        self.assertNotEqual(section["entry"][rvol]["min"], 1.5)
+        changed = section["entry"][rvol]["min"] + 0.5  # any value other than the live one
+        variant = experiments.apply(section, {f"entry.{rvol}.min": changed})
+        self.assertEqual(variant["entry"][rvol]["min"], changed)
+        self.assertNotEqual(section["entry"][rvol]["min"], changed)
         with self.assertRaises(experiments.ExperimentError):
             experiments.apply(section, {"entry.99.min": 1})
         with self.assertRaises(experiments.ExperimentError):

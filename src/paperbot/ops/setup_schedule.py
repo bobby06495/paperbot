@@ -9,8 +9,10 @@ Tasks run `<venv python> -m <module>`, so they need the editable install
 (pip install -e .). Times are US Eastern, converted to local time AND weekday:
   HT_LogRotate          09:25 ET Mon-Fri        paperbot.ops.rotate_logs
   HT_Prefilter_01..07   09:55, 10:25 ... 12:55 ET Mon-Fri   paperbot.market.morning_prefilter
-  HT_Cycle              every 5 min from 10:00 ET, all days  paperbot.runtime.cycle --submit
-                        (cycle's own ET gate decides; off-hours runs exit in < 1 s)
+  HT_Cycle              every 5 min 09:30-16:10 ET Mon-Fri   paperbot.runtime.cycle --submit
+                        (a weekly trigger repeating every 5 min for 6 h 40 min; the
+                        cycle's own gate checks the US market calendar, so holiday
+                        runs and the runs after an early close exit in < 1 s)
   HT_Dashboard          16:05 ET Mon-Fri        paperbot.reporting.compute_perf
   HT_Reschedule         07:00 ET daily          paperbot.ops.setup_schedule --if-dst-changed
 
@@ -57,7 +59,9 @@ WEEKLY_TASKS = [  # (name, ET time, module + args), Mon-Fri in ET
       for i, t in enumerate(PREFILTER_TIMES, 1)],
     ("HT_Dashboard", "16:05", ["paperbot.reporting.compute_perf"]),
 ]
-CYCLE_TASK = ("HT_Cycle", "10:00", ["paperbot.runtime.cycle", "--submit"])
+CYCLE_TASK = ("HT_Cycle", "09:30", ["paperbot.runtime.cycle", "--submit"])
+CYCLE_EVERY_MINUTES = 5
+CYCLE_DURATION = "06:40"  # 09:30 -> 16:10 ET: the session plus the post-close runs
 RESCHEDULE_TASK = ("HT_Reschedule", "07:00", ["paperbot.ops.setup_schedule", "--if-dst-changed"])
 TASK_NAMES = [t[0] for t in WEEKLY_TASKS] + [CYCLE_TASK[0], RESCHEDULE_TASK[0]]
 
@@ -102,10 +106,13 @@ def build_commands(today: dt.date, convert=to_local) -> list[tuple[str, list[str
                                 "/SC", "WEEKLY", "/D", ",".join(days), "/ST", start, "/F"],
                          f"{et_time} ET Mon-Fri = {start} {','.join(days)} local"))
     name, et_time, args = CYCLE_TASK
-    start, _ = local_slot(et_time, today, convert, et_weekdays=[today.weekday()])
+    start, days = local_slot(et_time, today, convert)
     commands.append((name, ["schtasks", "/Create", "/TN", name, "/TR", task_run(args),
-                            "/SC", "MINUTE", "/MO", "5", "/ST", start, "/F"],
-                     f"every 5 min from {start} local (cycle.py gates on ET)"))
+                            "/SC", "WEEKLY", "/D", ",".join(days), "/ST", start,
+                            "/RI", str(CYCLE_EVERY_MINUTES), "/DU", CYCLE_DURATION, "/F"],
+                     f"every {CYCLE_EVERY_MINUTES} min {et_time}-16:10 ET Mon-Fri = from "
+                     f"{start} {','.join(days)} local for {CYCLE_DURATION} "
+                     "(cycle.py gates on the market calendar)"))
     name, et_time, args = RESCHEDULE_TASK
     start, _ = local_slot(et_time, today, convert, et_weekdays=[today.weekday()])
     commands.append((name, ["schtasks", "/Create", "/TN", name, "/TR", task_run(args),

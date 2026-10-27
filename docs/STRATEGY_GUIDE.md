@@ -149,8 +149,12 @@ If any check fails (including absent premarket bars, fewer than two completed
 regular-hours bars, or unavailable required RVOL history), that symbol is
 skipped for that evaluation. Failed reasons go to the strategy safety log.
 Signals are evaluated once per 5-minute bar. The profile uses today's
-watchlist if its date and index match; otherwise it scans the configured
-fallback list. It does not guarantee that a symbol stays above the breakout
+watchlist if its date and index set match; otherwise it scans the configured
+fallback list. The watchlist is screened from the S&P 500, Nasdaq-100, S&P
+MidCap 400 and S&P SmallCap 600 combined (`universe.indexes`, about 1,500
+symbols; see README "Several indexes"); the entry checks, stop, management,
+exits and risk limits are the same for every symbol, and the watchlist is still
+capped at 20 symbols. It does not guarantee that a symbol stays above the breakout
 level until the order can be sent or filled.
 
 **Stop, management, and exit.** The initial long stop is the regular-hours
@@ -304,7 +308,7 @@ GTC stop remains.
 | Parameter | Current value | Meaning | If increased / decreased |
 |---|---:|---|---|
 | `timeframe` / entry window | 1d / 15:45–15:55 ET | Daily indicators, rechecked on the five-minute pass grid during the closing window. | A later/narrower window uses a more current midpoint but gives less time for entry fills; an earlier/wider one may use less representative closing information. |
-| Universe | 11 named sector ETFs | The only symbols scanned. | Adding symbols diversifies candidates but can add correlated positions; removing one excludes it. |
+| Universe | 11 named sector ETFs + the ETFs of `universe.indexes`: SPY, QQQ, MDY, IJR, IWM | The only symbols scanned (always ETFs; an index adds its tracking ETF, never its members). | Adding symbols diversifies candidates but can add correlated positions (SPY, QQQ, MDY, IJR and IWM move together, and with the sector ETFs); removing one excludes it. |
 | Trend filter | Price > SMA(200) | Long-term trend eligibility. | Longer SMA changes more slowly; shorter reacts faster. |
 | Pullback filter | RSI(2) < 10 | Extreme short-term weakness, calculated with today's live midpoint. | Raising 10 admits milder pullbacks/more candidates; lowering it requires more extreme weakness/fewer. Increasing period smooths the measure; decreasing makes it more reactive. |
 | Initial stop | 2 × ATR(14) below signal midpoint | Volatility-scaled protective stop. | Raising the multiple/period generally widens or changes the stop and reduces size under the risk cap; lowering the multiple tightens it and may increase stop-outs. ATR period changes responsiveness, not monotonically the current ATR. |
@@ -626,3 +630,16 @@ Useful source and test files:
 Run `paper-bot strategies` to see validated profiles on the installed system.
 Run `paperbot-backtest strategies` to list profiles the simulator can discover.
 Neither command submits orders.
+
+## Market calendar and early closes
+
+Every strategy follows the US market calendar (`config/market_calendar.json`,
+`src/paperbot/market/market_calendar.py`). Weekends, NYSE holidays and days the
+calendar does not cover are protect-only: no entries, signal exits or force
+closes; protective stops are still reconciled. On a 1:00 p.m. early close, every
+strategy time at or after 13:00 ET moves earlier by three hours so it keeps its
+distance to the close (for example `force_close_et` 15:51 → 12:51,
+`latest_entry_et` 15:15 → 12:15, an exit's `at_et` 15:50 → 12:50); times before
+13:00 are unchanged. No strategy is liquidated just because the session is short:
+an overnight strategy keeps its positions on their GTC stops as on any other day.
+Backtests keep the earlier behaviour (every weekday a regular session).

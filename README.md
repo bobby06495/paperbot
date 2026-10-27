@@ -193,15 +193,47 @@ morning watchlist names its index in `rules.json`:
 ```
 | Key | Values |
 |---|---|
-| `index` | `"S&P 500"` (default) or `"Nasdaq-100"`; anything else stops the bot and the prefilter with an error naming the key |
-| `top_n` | how many of the largest members (by market cap) the prefilter screens (default 100; the Nasdaq-100 has 101 lines, so 101 screens all) |
-| `fallback_file` | the `config/` list scanned when there is no watchlist for today's index (default `universe.txt`; `universe_nasdaq100.txt` ships with the Nasdaq-100 members) |
+| `index` | `"S&P 500"` (default), `"Nasdaq-100"`, `"S&P MidCap 400"` or `"S&P SmallCap 600"`; anything else stops the bot and the prefilter with an error naming the key |
+| `indexes` | instead of `index`: a list of several of those (not both keys). Members are combined and de-duplicated (AAPL is in both the S&P 500 and the Nasdaq-100, it is screened once). Russell 2000 has no free member list and is not supported here |
+| `top_n` | one index: how many of the largest members (by market cap) the prefilter checks at IBKR (default 100; the Nasdaq-100 has 101 lines, so 101 screens all). Several indexes: how many of the biggest gappers in a first, broad Yahoo screen are checked at IBKR (default 100) |
+| `fallback_file` | the `config/` list scanned when there is no watchlist for today's index set (default `universe.txt`; `universe_nasdaq100.txt` ships with the Nasdaq-100 members) |
+
+**Several indexes (Trend Join Long's default).**
+```json
+"universe": {"source": "watchlist", "fallback_file": "universe.txt",
+             "indexes": ["S&P 500", "Nasdaq-100", "S&P MidCap 400", "S&P SmallCap 600"]}
+```
+About 1,500 symbols. The prefilter downloads Yahoo daily bars for all of them in batches,
+drops those below the price minimum, and sends only the `top_n` largest gaps to IBKR, so
+the IBKR load is the same as for one index. The watchlist is still capped at 20 symbols and
+every risk limit is unchanged: a bigger universe means more candidates, not more or bigger
+orders. Member lists come from Wikipedia and are cached in `data/constituents/`; when
+Wikipedia is down a list up to 7 days old is used (ALERT). An index that cannot be had is
+left out with an ALERT and the others still count; if none can be had the run fails and the
+bot keeps an earlier list or its fallback file.
+
+**Every prefilter run is logged per ticker.** Each run has a run ID (`PF-20261027-0955-a1b2`,
+also in the watchlist header and the JSON summary) and writes
+`data/prefilter_runs/<date>/<run ID>.jsonl`: one line per ticker with the indexes it came
+from, the stage it stopped at and why (invalid ticker, no Yahoo data, below the price, not in
+the top N, contract not found at IBKR, no bar today, gap below the minimum, passed but beyond
+the 20-symbol cap, or survivor). 30 days are kept.
+
+**ETF strategies and indexes.** A strategy with a fixed symbol list may also name indexes;
+each one adds the ETF that tracks it, never the index members (Macro Swing ETF stays
+ETF-only):
+```json
+"universe": {"symbols": ["XLK", "XLF", "..."],
+             "indexes": ["S&P 500", "Nasdaq-100", "S&P MidCap 400", "S&P SmallCap 600", "Russell 2000"]}
+```
+S&P 500 → SPY, Nasdaq-100 → QQQ, S&P MidCap 400 → MDY, S&P SmallCap 600 → IJR,
+Russell 2000 → IWM.
 
 The prefilter's gap and price thresholds are the strategy's own `min_gap_pct` and `min_price`
 blocks, so the screen and the entry checks always agree; change them in that one place
 (`paperbot-prefilter --min-gap / --min-price` override them for one run). The watchlist header
-records its index (`# Index: Nasdaq-100`): after a switch, the bot ignores a list built for the
-other index and scans the fallback file until the next prefilter run. `paper-bot check` shows
+records its index set (`# Index: Nasdaq-100`, or `S&P 500 + Nasdaq-100 + ...`): after a switch,
+the bot ignores a list built for another index set and scans the fallback file until the next prefilter run. `paper-bot check` shows
 what the prefilter will screen. Refresh `universe_nasdaq100.txt` when the index is rebalanced.
 
 Mean Reversion's own risk block allows fees up to **5 %** of R (`max_commission_pct_of_risk`):
@@ -352,12 +384,28 @@ running (`logs/bot.pid`). A `STOP` file left by `paper-bot stop` is cleared when
    priced from live quotes. Each entry is a bracket (BUY + protective STP), expiring at the end
    of the window.
 
+**US market calendar.** `config/market_calendar.json` holds NYSE's holidays and 1:00 p.m.
+early closes (Nasdaq keeps the same schedule) for the years in `covered_years`. On a
+weekend or holiday every pass is protect-only (step 1): no exits, force closes, entries or
+prefilter runs. On an early close the session ends at 13:00 ET and every strategy time at or
+after 13:00 keeps its distance to the close: Trend Join Long's force close 15:51 → 12:51 and
+last entry 15:15 → 12:15, Macro Swing ETF's window 15:45–15:55 → 12:45–12:55 and its exits
+15:50 → 12:50; earlier times are unchanged. A weekday outside `covered_years`, or a broken
+file, counts as closed (fail-safe) with an ALERT, and an ALERT starts 30 days before the
+coverage ends: add next year's dates from <https://www.nyse.com/markets/hours-calendars>.
+Unexpected closures go in `unscheduled_closures` / `unscheduled_early_closes`. On connecting
+(and once a day) the bot also compares today with IBKR's trading hours for SPY: if IBKR
+reports the market closed, opening later or closing earlier, that wins (no trading before
+IBKR's open); if IBKR reports a session the file does not have, the bot stays closed and
+ALERTs. A malformed IBKR answer is logged and ignored (the calendar's session stays). Backtests
+are not affected.
+
 **Built-in scheduler** (weekdays, US Eastern; daylight saving handled automatically):
 
 | Job | ET | Runs |
 |---|---|---|
 | `rotate_logs` | 09:25 | archive earlier days' logs, cap the safety log, trim `trades.csv` to 90 days |
-| `prefilter` | 09:55, 10:25 … 12:55 | the morning gapper watchlist (only for strategies whose universe is the watchlist) |
+| `prefilter` | 09:55, 10:25 … 12:55 | the morning gapper watchlist (only for strategies whose universe is the watchlist); trading days only, and not after the day's last entry time |
 | `daily_summary` | 16:05 | performance summary + push, dashboard |
 
 A slot that was missed because the bot started late still runs if it is within its grace
@@ -425,7 +473,8 @@ docker compose -f deploy/docker-compose.yml exec paper-bot paper-bot status
 Live logins still need IBKR's two-factor approval on your phone; no software can skip that.
 
 **Legacy Windows scheduling.** `paperbot-schedule` / `paperbot-cycle` (the `HT_*` Task Scheduler
-tasks running one pass every 5 minutes) still work but are no longer needed: `paper-bot start`
+tasks; `HT_Cycle` runs one pass every 5 minutes from 09:30 to 16:10 ET on weekdays and exits
+at once on market holidays) still work but are no longer needed: `paper-bot start`
 does the same in one process on every OS. Use one or the other, not both
 (`paper-bot service install` on Windows removes the old tasks; `paperbot-unschedule` does too).
 
@@ -618,8 +667,9 @@ and don't use the bot's risk guard.
   modifications, reconnects and the service/Docker set-ups have **not yet been exercised
   against a real Gateway on every OS**. Watch the first sessions closely.
 - Long-only only; no short selling (the risk guard can never open a short).
-- Market holidays and half-days are not modelled: on a 13:00 close, a 15:45 entry window
-  never opens and a 15:50 exit waits for the next session (the GTC stop protects meanwhile).
+- The market calendar covers the years in `config/market_calendar.json` (2026–2027); later
+  weekdays count as closed until the file is extended (an ALERT starts 30 days before).
+- The dashboard's countdowns still assume every weekday is a regular session.
 - Overnight positions can gap through their stop at the open; the stop then fills at the
   next price, not at the stop price.
 - On low-priced ETFs (≈ $40) a stop under ~2.4 % makes per-share commissions exceed 1 % of

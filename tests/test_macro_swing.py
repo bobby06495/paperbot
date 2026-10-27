@@ -263,10 +263,19 @@ class SwingExitTest(SwingBase):
         self.assertEqual(self.decide(self.ib((209.9, 210.1)), at(15, 50)), [])
 
     def test_time_stop_counts_trading_days(self):
-        self.own(TUESDAY - dt.timedelta(days=14))  # 10 trading days ago
+        days = profiles.load("macro_swing_etf").block("exit", "time_stop").days  # rules.json
+
+        def weekdays_ago(n: int) -> dt.date:
+            day = TUESDAY
+            while n:
+                day -= dt.timedelta(days=1)
+                n -= day.weekday() < 5
+            return day
+
+        self.own(weekdays_ago(days))  # held exactly the time stop: exit
         reqs = self.decide(self.ib((199.9, 200.1)), at(15, 50))
-        self.assertTrue(reqs[-1].reason.startswith("exit (attempt 1): held 10 trading days"))
-        self.own(TUESDAY - dt.timedelta(days=13))  # 9 trading days
+        self.assertTrue(reqs[-1].reason.startswith(f"exit (attempt 1): held {days} trading days"))
+        self.own(weekdays_ago(days - 1))  # one trading day short: hold
         self.assertEqual(self.decide(self.ib((199.9, 200.1)), at(15, 50)), [])
 
     def test_decided_exit_is_kept_and_repriced(self):
