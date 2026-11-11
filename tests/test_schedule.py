@@ -60,6 +60,37 @@ class FakeRunner:
         return [c for c in self.calls if c[:2] == ["schtasks", "/Create"]]
 
 
+XML_DAY_NAMES = {"MON": "Monday", "TUE": "Tuesday", "WED": "Wednesday", "THU": "Thursday",
+                 "FRI": "Friday", "SAT": "Saturday", "SUN": "Sunday"}
+
+
+def task_xml(cmd):
+    """The trigger part of `schtasks /Query /XML` for a task made by this /Create command."""
+    start = f"<StartBoundary>2026-11-01T{cmd[cmd.index('/ST') + 1]}:00</StartBoundary>"
+    if "/D" not in cmd:
+        return f"<Triggers><CalendarTrigger>{start}<ScheduleByDay /></CalendarTrigger></Triggers>"
+    days = "".join(f"<{XML_DAY_NAMES[d]} />\n" for d in cmd[cmd.index("/D") + 1].split(","))
+    return (f"<Triggers><CalendarTrigger>{start}<ScheduleByWeek>"
+            f"<DaysOfWeek>\n{days}</DaysOfWeek></ScheduleByWeek></CalendarTrigger></Triggers>")
+
+
+class XmlRunner(FakeRunner):
+    """FakeRunner whose Task Scheduler holds the given /Create commands (by task name)."""
+
+    def __init__(self, registered):
+        super().__init__()
+        self.registered = registered
+
+    def __call__(self, cmd):
+        if cmd[:2] == ["schtasks", "/Query"] and cmd[-1] == "/XML":
+            self.calls.append(cmd)
+            name = cmd[cmd.index("/TN") + 1]
+            if name not in self.registered:
+                return NS(returncode=1, stdout="", stderr="ERROR: not found")
+            return NS(returncode=0, stdout=task_xml(self.registered[name]), stderr="")
+        return super().__call__(cmd)
+
+
 class LocalTimeTest(unittest.TestCase):
     def test_singapore_shifts_weekdays_after_midnight(self):
         self.assertEqual(setup.local_slot("09:25", OCT_19, in_zone(SGT)),
@@ -70,6 +101,20 @@ class LocalTimeTest(unittest.TestCase):
     def test_new_york_standard_time_moves_local_times(self):
         self.assertEqual(setup.local_slot("16:05", NOV_02, in_zone(SGT))[0], "05:05")
         self.assertEqual(setup.local_slot("09:55", NOV_02, in_zone(SGT))[0], "22:55")
+
+    def test_registering_around_the_november_switch_uses_standard_time(self):
+        # New York leaves daylight time on Sunday 2026-11-01: from the Saturday
+        # before or the Sunday itself, the coming weekdays are on standard time.
+        for today in (dt.date(2026, 10, 31), dt.date(2026, 11, 1)):
+            self.assertEqual(setup.local_slot("09:30", today, in_zone(SGT))[0], "22:30", today)
+
+    def test_registering_around_the_march_switch_uses_daylight_time(self):
+        for today in (dt.date(2027, 3, 13), dt.date(2027, 3, 14)):
+            self.assertEqual(setup.local_slot("09:30", today, in_zone(SGT))[0], "21:30", today)
+
+    def test_registering_midweek_keeps_monday_to_friday(self):
+        self.assertEqual(setup.local_slot("09:30", dt.date(2026, 11, 11), in_zone(SGT)),
+                         ("22:30", ["MON", "TUE", "WED", "THU", "FRI"]))
 
     def test_pacific_time(self):
         self.assertEqual(setup.local_slot("09:25", OCT_19, in_zone(LA)),
@@ -162,6 +207,30 @@ class SetupMainTest(unittest.TestCase):
             setup.main(["--if-dst-changed"], changed, in_zone(SGT))
         self.assertEqual(len(changed.creates()), 11)
         self.assertNotIn(["powercfg", "/change", "standby-timeout-ac", "0"], changed.calls)
+
+    def test_daily_check_repairs_wrong_start_times_even_with_matching_offsets(self):
+        # What happened on 2026-11-01: offsets saved, but HT_Cycle left an hour early.
+        today = dt.date(2026, 11, 11)
+        good = {n: c for n, c, _ in setup.build_commands(today, in_zone(SGT))}
+        bad = dict(good)
+        bad["HT_Cycle"] = [("21:30" if x == "22:30" else x) for x in good["HT_Cycle"]]
+        setup.STATE_FILE.write_text(json.dumps({"et": -300, "local": 480}))
+        with mock.patch.object(setup, "utc_offsets", return_value={"et": -300, "local": 480}), \
+             mock.patch.object(setup.dt, "datetime", wraps=dt.datetime) as clock:
+            clock.now.return_value = dt.datetime(2026, 11, 11, 13, tzinfo=dt.timezone.utc)
+            broken = XmlRunner(bad)
+            setup.main(["--if-dst-changed"], broken, in_zone(SGT))
+            self.assertEqual(len(broken.creates()), 11)
+            fine = XmlRunner(good)
+            self.assertEqual(setup.main(["--if-dst-changed"], fine, in_zone(SGT)), 0)
+            self.assertEqual(fine.creates(), [])
+
+    def test_daily_check_registers_missing_task(self):
+        today = dt.date(2026, 11, 11)
+        cmds = {n: c for n, c, _ in setup.build_commands(today, in_zone(SGT))}
+        del cmds["HT_Dashboard"]
+        self.assertEqual(setup.schedule_mismatches(today, XmlRunner(cmds), in_zone(SGT)),
+                         ["HT_Dashboard"])
 
     def test_read_standby(self):
         self.assertEqual(setup.read_standby(FakeRunner()), {"ac_seconds": 1800, "dc_seconds": 900})

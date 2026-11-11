@@ -1,8 +1,10 @@
 """Register paperbot's Windows Task Scheduler tasks (your user account, no admin).
 
     paperbot-schedule                   register / update all HT_* tasks, keep PC awake on AC
-    paperbot-schedule --if-dst-changed  (run daily by HT_Reschedule) re-register only if
-                                        New York's or this PC's UTC offset changed
+    paperbot-schedule --if-dst-changed  (run daily by HT_Reschedule) re-register only if a
+                                        task's registered start time or weekdays differ
+                                        from today's US Eastern conversion (falls back to
+                                        comparing saved UTC offsets if schtasks can't be read)
     (same as python -m paperbot.ops.setup_schedule)
 
 Tasks run `<venv python> -m <module>`, so they need the editable install
@@ -78,12 +80,13 @@ def to_local(moment: dt.datetime) -> dt.datetime:
 def local_slot(et_hhmm: str, today: dt.date, convert=to_local,
                et_weekdays=range(5)) -> tuple[str, list[str]]:
     """Local 'HH:MM' and local weekday codes for an ET time on the given ET weekdays
-    (0 = Monday) of the current week."""
+    (0 = Monday), using each weekday's next date from today on. New York changes its
+    clocks on a Sunday, so the coming Mon-Fri always share the new offset (the
+    current week's Monday would still be on the old one)."""
     hour, minute = map(int, et_hhmm.split(":"))
-    monday = today - dt.timedelta(days=today.weekday())
     times, days = [], set()
     for weekday in et_weekdays:
-        day = monday + dt.timedelta(days=weekday)
+        day = today + dt.timedelta(days=(weekday - today.weekday()) % 7)
         local = convert(dt.datetime(day.year, day.month, day.day, hour, minute, tzinfo=ET))
         times.append(local.strftime("%H:%M"))
         days.add(local.weekday())
@@ -125,6 +128,40 @@ def utc_offsets(now: dt.datetime, convert=to_local) -> dict:
     """Minutes east of UTC for New York and for this PC, at `now`."""
     return {"et": int(now.astimezone(ET).utcoffset().total_seconds() // 60),
             "local": int(convert(now).utcoffset().total_seconds() // 60)}
+
+
+XML_DAYS = {"Monday": "MON", "Tuesday": "TUE", "Wednesday": "WED", "Thursday": "THU",
+            "Friday": "FRI", "Saturday": "SAT", "Sunday": "SUN"}
+
+
+def registered_slot(name: str, runner=run) -> tuple[str, frozenset | None] | None:
+    """('HH:MM', weekday codes or None for a daily task) as Task Scheduler holds it;
+    ('', None) if the task is not registered; None if the output cannot be read."""
+    result = runner(["schtasks", "/Query", "/TN", name, "/XML"])
+    if result.returncode != 0:
+        return "", None
+    start = re.search(r"<StartBoundary>[^<]*T(\d\d:\d\d)", result.stdout or "")
+    if not start:
+        return None
+    week = re.search(r"<DaysOfWeek>(.*?)</DaysOfWeek>", result.stdout, re.DOTALL)
+    days = frozenset(XML_DAYS[d] for d in re.findall(r"<(\w+)\s*/>", week.group(1))
+                     if d in XML_DAYS) if week else None
+    return start.group(1), days
+
+
+def schedule_mismatches(today: dt.date, runner=run, convert=to_local) -> list[str] | None:
+    """Tasks whose registered start time or weekdays differ from what they should be
+    today; None if Task Scheduler's answer cannot be read."""
+    wrong = []
+    for name, cmd, _ in build_commands(today, convert):
+        expected_days = frozenset(cmd[cmd.index("/D") + 1].split(",")) if "/D" in cmd else None
+        expected = (cmd[cmd.index("/ST") + 1], expected_days)
+        actual = registered_slot(name, runner)
+        if actual is None:
+            return None
+        if actual != expected:
+            wrong.append(name)
+    return wrong
 
 
 def register_all(today: dt.date, runner=run, convert=to_local) -> tuple[int, list[str]]:
@@ -178,17 +215,29 @@ def main(argv: list[str] | None = None, runner=run, convert=to_local) -> int:
 
     now = dt.datetime.now(dt.timezone.utc)
     offsets = utc_offsets(now, convert)
+    today = now.astimezone(ET).date()
     if args.if_dst_changed:
-        try:
-            saved = json.loads(STATE_FILE.read_text())
-        except (OSError, ValueError):
-            saved = None
-        if saved == offsets:
-            print("UTC offsets unchanged; schedule kept.")
+        # Compare with what Task Scheduler actually holds, so a wrong or skipped
+        # re-registration is repaired on the next daily run.
+        wrong = schedule_mismatches(today, runner, convert)
+        if wrong == []:
+            LOGS.mkdir(exist_ok=True)
+            STATE_FILE.write_text(json.dumps(offsets))
+            print("Task start times match US Eastern; schedule kept.")
             return 0
-        print(f"UTC offsets changed ({saved} -> {offsets}); re-registering tasks.")
+        if wrong:
+            print(f"Start times off for {', '.join(wrong)}; re-registering tasks.")
+        else:  # Task Scheduler unreadable: fall back to the saved UTC offsets
+            try:
+                saved = json.loads(STATE_FILE.read_text())
+            except (OSError, ValueError):
+                saved = None
+            if saved == offsets:
+                print("UTC offsets unchanged; schedule kept.")
+                return 0
+            print(f"UTC offsets changed ({saved} -> {offsets}); re-registering tasks.")
 
-    created, failures = register_all(now.astimezone(ET).date(), runner, convert)
+    created, failures = register_all(today, runner, convert)
     LOGS.mkdir(exist_ok=True)
     STATE_FILE.write_text(json.dumps(offsets))
     if not args.if_dst_changed:
