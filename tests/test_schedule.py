@@ -9,6 +9,7 @@ os.environ["PAPERBOT_NOTIFY"] = "off"  # tests must never send real notification
 
 import datetime as dt
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -35,21 +36,43 @@ POWERCFG = """Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Balanced
 """
 
 
+def setting(ac: int, dc: int) -> str:
+    """powercfg /query output for one setting with these AC / DC values."""
+    return (POWERCFG.replace("0x00000708", f"0x{ac:08x}")
+            .replace("0x00000384", f"0x{dc:08x}"))
+
+
+# This laptop on 2026-11-16: wake timers "Important only" on AC, hibernate after 3 h on AC.
+POWER = {"STANDBYIDLE": POWERCFG, "RTCWAKE": setting(2, 0), "HIBERNATEIDLE": setting(10800, 0)}
+
+
 def in_zone(zone):
     return lambda moment: moment.astimezone(zone)
 
 
 class FakeRunner:
-    """Records commands; returns success unless the command matches a failing task name."""
+    """Records commands; returns success unless the command matches a failing task name.
+    powercfg: one query output for every setting, or {alias: output}."""
 
-    def __init__(self, fail_names=(), query_csv="", powercfg=POWERCFG):
+    def __init__(self, fail_names=(), query_csv="", powercfg=None, fail_settings=()):
         self.calls, self.fail_names = [], set(fail_names)
-        self.query_csv, self.powercfg = query_csv, powercfg
+        self.query_csv, self.powercfg = query_csv, dict(POWER) if powercfg is None else powercfg
+        self.fail_settings = set(fail_settings)
 
     def __call__(self, cmd):
         self.calls.append(cmd)
         if cmd[:2] == ["powercfg", "/query"]:
-            return NS(returncode=0, stdout=self.powercfg, stderr="")
+            text = self.powercfg if isinstance(self.powercfg, str) else self.powercfg[cmd[-1]]
+            return NS(returncode=0, stdout=text, stderr="")
+        if cmd[:2] == ["powercfg", "/change"] and cmd[2] == "standby-timeout-ac" \
+                and isinstance(self.powercfg, dict):
+            seconds = int(cmd[3]) * 60
+            self.powercfg["STANDBYIDLE"] = setting(seconds, 900)
+        if cmd[0] == "powershell":
+            name = re.search(r"-TaskName '([^']+)'", cmd[-1]).group(1)
+            if name in self.fail_settings:
+                return NS(returncode=1, stdout="", stderr="Access is denied.")
+            return NS(returncode=0, stdout="", stderr="")
         if cmd[:3] == ["schtasks", "/Query", "/FO"]:
             return NS(returncode=0, stdout=self.query_csv, stderr="")
         if "/TN" in cmd and cmd[cmd.index("/TN") + 1] in self.fail_names:
@@ -59,27 +82,46 @@ class FakeRunner:
     def creates(self):
         return [c for c in self.calls if c[:2] == ["schtasks", "/Create"]]
 
+    def settings(self):
+        """{task name: PowerShell script} of every power-conditions call."""
+        return {re.search(r"-TaskName '([^']+)'", c[-1]).group(1): c[-1]
+                for c in self.calls if c[0] == "powershell"}
+
 
 XML_DAY_NAMES = {"MON": "Monday", "TUE": "Tuesday", "WED": "Wednesday", "THU": "Thursday",
                  "FRI": "Friday", "SAT": "Saturday", "SUN": "Sunday"}
 
 
-def task_xml(cmd):
-    """The trigger part of `schtasks /Query /XML` for a task made by this /Create command."""
+def settings_xml(name, defaults=False):
+    """The <Settings> part as Task Scheduler writes it: elements at their default value
+    are left out (battery limits on, WakeToRun off)."""
+    if defaults:
+        return "<Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy></Settings>"
+    wake = "<WakeToRun>true</WakeToRun>" if name in setup.WAKE_TASKS else ""
+    return ("<Settings><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>"
+            f"<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>{wake}</Settings>")
+
+
+def task_xml(cmd, defaults=False):
+    """`schtasks /Query /XML` for a task made by this /Create command (+ power settings)."""
+    name = cmd[cmd.index("/TN") + 1]
     start = f"<StartBoundary>2026-11-01T{cmd[cmd.index('/ST') + 1]}:00</StartBoundary>"
     if "/D" not in cmd:
-        return f"<Triggers><CalendarTrigger>{start}<ScheduleByDay /></CalendarTrigger></Triggers>"
-    days = "".join(f"<{XML_DAY_NAMES[d]} />\n" for d in cmd[cmd.index("/D") + 1].split(","))
-    return (f"<Triggers><CalendarTrigger>{start}<ScheduleByWeek>"
-            f"<DaysOfWeek>\n{days}</DaysOfWeek></ScheduleByWeek></CalendarTrigger></Triggers>")
+        triggers = f"<Triggers><CalendarTrigger>{start}<ScheduleByDay /></CalendarTrigger></Triggers>"
+    else:
+        days = "".join(f"<{XML_DAY_NAMES[d]} />\n" for d in cmd[cmd.index("/D") + 1].split(","))
+        triggers = (f"<Triggers><CalendarTrigger>{start}<ScheduleByWeek>"
+                    f"<DaysOfWeek>\n{days}</DaysOfWeek></ScheduleByWeek></CalendarTrigger></Triggers>")
+    return settings_xml(name, defaults) + triggers
 
 
 class XmlRunner(FakeRunner):
-    """FakeRunner whose Task Scheduler holds the given /Create commands (by task name)."""
+    """FakeRunner whose Task Scheduler holds the given /Create commands (by task name);
+    tasks in `defaults` still have Windows' default power conditions."""
 
-    def __init__(self, registered):
+    def __init__(self, registered, defaults=()):
         super().__init__()
-        self.registered = registered
+        self.registered, self.defaults = registered, set(defaults)
 
     def __call__(self, cmd):
         if cmd[:2] == ["schtasks", "/Query"] and cmd[-1] == "/XML":
@@ -87,7 +129,8 @@ class XmlRunner(FakeRunner):
             name = cmd[cmd.index("/TN") + 1]
             if name not in self.registered:
                 return NS(returncode=1, stdout="", stderr="ERROR: not found")
-            return NS(returncode=0, stdout=task_xml(self.registered[name]), stderr="")
+            return NS(returncode=0, stdout=task_xml(self.registered[name], name in self.defaults),
+                      stderr="")
         return super().__call__(cmd)
 
 
@@ -180,10 +223,40 @@ class SetupMainTest(unittest.TestCase):
         self.assertEqual(setup.main([], runner, in_zone(SGT)), 0)
         self.assertEqual(len(runner.creates()), 11)
         self.assertIn(["schtasks", "/Delete", "/TN", "paperbot cycle", "/F"], runner.calls)
-        self.assertIn(["powercfg", "/change", "standby-timeout-ac", "0"], runner.calls)
+        # normal sleep kept: no "never sleep on AC" any more
+        self.assertFalse(any(c[:3] == ["powercfg", "/change", "standby-timeout-ac"]
+                             for c in runner.calls))
+        self.assertIn(["powercfg", "/setacvalueindex", "SCHEME_CURRENT", "SUB_SLEEP", "RTCWAKE",
+                       "1"], runner.calls)
+        self.assertIn(["powercfg", "/setactive", "SCHEME_CURRENT"], runner.calls)
+        self.assertFalse(any("/setdcvalueindex" in c for c in runner.calls))  # battery untouched
         self.assertEqual(json.loads(setup.POWER_BACKUP.read_text()),
-                         {"ac_seconds": 1800, "dc_seconds": 900})
+                         {"ac_seconds": 1800, "dc_seconds": 900, "wake_timers_ac": 2,
+                          "hibernate_ac_seconds": 10800})
         self.assertTrue(setup.STATE_FILE.exists())
+
+    def test_every_task_runs_on_battery_and_only_the_cycle_wakes_the_pc(self):
+        runner = FakeRunner()
+        setup.main([], runner, in_zone(SGT))
+        scripts = runner.settings()
+        self.assertEqual(sorted(scripts), sorted(setup.TASK_NAMES))
+        for name, script in scripts.items():
+            with self.subTest(task=name):
+                self.assertIn("DisallowStartIfOnBatteries = $false", script)
+                self.assertIn("StopIfGoingOnBatteries = $false", script)
+                wake = "$true" if name == "HT_Cycle" else "$false"
+                self.assertIn(f"WakeToRun = {wake}", script)
+                self.assertNotIn("Principal", script)  # logon type / user never changed
+        # each task's conditions are set right after its own /Create
+        names = [c[c.index("/TN") + 1] if c[0] == "schtasks" else
+                 re.search(r"'([^']+)'", c[-1]).group(1)
+                 for c in runner.calls if c[:2] == ["schtasks", "/Create"] or c[0] == "powershell"]
+        self.assertEqual(names[::2], names[1::2])
+
+    def test_failed_power_conditions_fail_the_setup(self):
+        runner = FakeRunner(fail_settings={"HT_Cycle"})
+        self.assertEqual(setup.main([], runner, in_zone(SGT)), 1)
+        self.assertEqual(len(runner.creates()), 11)  # the rest are still registered
 
     def test_failure_does_not_stop_other_tasks(self):
         runner = FakeRunner(fail_names={"HT_Prefilter_03"})
@@ -192,9 +265,26 @@ class SetupMainTest(unittest.TestCase):
 
     def test_rerun_keeps_the_original_power_backup(self):
         setup.main([], FakeRunner(), in_zone(SGT))
-        never_sleep = POWERCFG.replace("0x00000708", "0x00000000")  # after keep-awake
-        setup.main([], FakeRunner(powercfg=never_sleep), in_zone(SGT))
-        self.assertEqual(json.loads(setup.POWER_BACKUP.read_text())["ac_seconds"], 1800)
+        never_sleep = {**POWER, "STANDBYIDLE": setting(0, 900), "RTCWAKE": setting(1, 0)}
+        runner = FakeRunner(powercfg=never_sleep)  # after an older version's keep-awake
+        setup.main([], runner, in_zone(SGT))
+        backup = json.loads(setup.POWER_BACKUP.read_text())
+        self.assertEqual((backup["ac_seconds"], backup["wake_timers_ac"]), (1800, 2))
+
+    def test_old_never_sleep_on_ac_is_put_back_to_the_saved_timeout(self):
+        setup.POWER_BACKUP.write_text(json.dumps({"ac_seconds": 1800, "dc_seconds": 900}))
+        runner = FakeRunner(powercfg={**POWER, "STANDBYIDLE": setting(0, 900)})
+        setup.main([], runner, in_zone(SGT))
+        self.assertIn(["powercfg", "/change", "standby-timeout-ac", "30"], runner.calls)
+        backup = json.loads(setup.POWER_BACKUP.read_text())  # old backup completed, not replaced
+        self.assertEqual(backup, {"ac_seconds": 1800, "dc_seconds": 900, "wake_timers_ac": 2,
+                                  "hibernate_ac_seconds": 10800})
+
+    def test_short_idle_timeouts_are_warned_about(self):
+        runner = FakeRunner(powercfg={**POWER, "STANDBYIDLE": setting(120, 900)})
+        lines = setup.power_setup(runner)
+        self.assertTrue(any(line.startswith("WARNING: sleep after 2 min") for line in lines))
+        self.assertFalse(any("hibernate" in line for line in lines if "WARNING" in line))
 
     def test_dst_check_only_reregisters_on_change(self):
         setup.main([], FakeRunner(), in_zone(SGT))
@@ -224,6 +314,21 @@ class SetupMainTest(unittest.TestCase):
             fine = XmlRunner(good)
             self.assertEqual(setup.main(["--if-dst-changed"], fine, in_zone(SGT)), 0)
             self.assertEqual(fine.creates(), [])
+
+    def test_daily_check_repairs_default_power_conditions(self):
+        # HT_Cycle as registered before 2026-11-16: right times, Windows' battery defaults
+        today = dt.date(2026, 11, 11)
+        cmds = {n: c for n, c, _ in setup.build_commands(today, in_zone(SGT))}
+        self.assertEqual(setup.schedule_mismatches(today, XmlRunner(cmds, {"HT_Cycle"}),
+                                                   in_zone(SGT)), ["HT_Cycle"])
+        self.assertEqual(setup.schedule_mismatches(today, XmlRunner(cmds), in_zone(SGT)), [])
+
+    def test_settings_ok_reads_task_scheduler_xml(self):
+        good = settings_xml("HT_Cycle")
+        self.assertTrue(setup.settings_ok("HT_Cycle", good))
+        self.assertFalse(setup.settings_ok("HT_Dashboard", good))  # must not wake the PC
+        self.assertFalse(setup.settings_ok("HT_Cycle", settings_xml("HT_Cycle", defaults=True)))
+        self.assertTrue(setup.settings_ok("HT_Dashboard", settings_xml("HT_Dashboard")))
 
     def test_daily_check_registers_missing_task(self):
         today = dt.date(2026, 11, 11)
@@ -262,18 +367,23 @@ class CleanupTest(unittest.TestCase):
                          ["HT_Cycle", "HT_Dashboard"])
 
     def test_deletes_and_restores_saved_power(self):
-        cleanup.POWER_BACKUP.write_text(json.dumps({"ac_seconds": 3600, "dc_seconds": 900}))
+        cleanup.POWER_BACKUP.write_text(json.dumps({"ac_seconds": 3600, "dc_seconds": 900,
+                                                    "wake_timers_ac": 0}))
         runner = FakeRunner(query_csv=self.QUERY)
         self.assertEqual(cleanup.main(runner), 0)
         self.assertIn(["schtasks", "/Delete", "/TN", "HT_Cycle", "/F"], runner.calls)
         self.assertIn(["schtasks", "/Delete", "/TN", "HT_Dashboard", "/F"], runner.calls)
         self.assertIn(["powercfg", "/change", "standby-timeout-ac", "60"], runner.calls)
+        self.assertIn(["powercfg", "/setacvalueindex", "SCHEME_CURRENT", "SUB_SLEEP", "RTCWAKE",
+                       "0"], runner.calls)
         self.assertFalse(cleanup.POWER_BACKUP.exists())
 
     def test_default_power_without_backup(self):
         runner = FakeRunner(query_csv=self.QUERY)
         cleanup.main(runner)
         self.assertIn(["powercfg", "/change", "standby-timeout-ac", "30"], runner.calls)
+        self.assertIn(["powercfg", "/setacvalueindex", "SCHEME_CURRENT", "SUB_SLEEP", "RTCWAKE",
+                       "2"], runner.calls)  # Windows default: important wake timers only
 
     def test_nothing_to_clean(self):
         runner = FakeRunner(query_csv='"\\paperbot cycle","N/A","Disabled"\r\n')

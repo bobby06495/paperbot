@@ -109,6 +109,12 @@ class MeanReversionBase(unittest.TestCase):
                         mock.patch.object(strategy, "_universe", lambda p, today: ["SPY"])]
         for p in self.patches:
             p.start()
+        # The scalp mechanics are tested on a large account: at the live $5,000 capital
+        # one SPY share already exceeds the commission rule (see test_risk_policy).
+        with self.assertLogs("paperbot", "INFO"):
+            strategy.configure(strategy.with_limits(
+                profiles.load("equity_mean_reversion"), capital_usd=None,
+                max_order_value=30000.0, max_position_size_pct_of_portfolio=10.0))
         orders._orphans.clear()
         md.clear_caches()
         strategy._scan_bar, strategy._scan_pos, strategy._scan_list = None, 0, []

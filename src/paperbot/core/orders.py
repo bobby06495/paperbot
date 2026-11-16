@@ -279,8 +279,9 @@ def _close_position(ib, profile, symbol, pos, st, w, now, label: str, attempts_k
     return requests
 
 
-def force_close(ib, profile, state, held, working, now) -> list:
-    """Close every position we own from force_close_et (see _close_position).
+def force_close(ib, profile, state, held, working, now, why: str = "force close") -> list:
+    """Close every position we own from force_close_et, or earlier once the daily
+    profit target is reached (why="daily target"); see _close_position.
     Re-priced each pass until flat; ALERT from 15:58 while anything is open."""
     requests, first_attempts = [], 0
     for symbol, pos in held.items():
@@ -294,12 +295,13 @@ def force_close(ib, profile, state, held, working, now) -> list:
         if any(age_seconds(t) < EXIT_STALE_SECONDS for t in w.exits):
             continue  # the current close attempt is still fresh
         closing = _close_position(ib, profile, symbol, pos, st, w, now, "force close",
-                                  "force_attempts", "force close (attempt {attempt})")
+                                  "force_attempts", why + " (attempt {attempt})")
         requests += closing
         if closing and st["force_attempts"] == 1:
             first_attempts += 1
     if first_attempts:
-        push("EOD Force Close", lambda: f"flattening {first_attempts} positions", "high")
+        title = "Daily Target: Closing" if why == "daily target" else "EOD Force Close"
+        push(title, lambda: f"flattening {first_attempts} positions", "high")
     return requests
 
 

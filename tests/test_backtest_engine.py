@@ -302,11 +302,11 @@ class OtherStrategiesTest(unittest.TestCase):
     """The other rules.json strategies run through the same engine (SYNTHETIC prices:
     structural checks only, never evidence about the strategies)."""
 
-    def run_strategy(self, key, symbols, start, end, bar):
+    def run_strategy(self, key, symbols, start, end, bar, **risk):
         prov = SyntheticProvider()
         data = MarketData(prov, None, bar=bar)
         data.load_daily(symbols, start - dt.timedelta(days=420), end)
-        return Simulator(F.profile(key), data, F.cfg(), symbols, start, end).run()
+        return Simulator(F.profile(key, **risk), data, F.cfg(), symbols, start, end).run()
 
     def test_macro_swing_holds_overnight_and_never_force_closes(self):
         r = self.run_strategy("macro_swing_etf", ["XLK", "XLF", "XLE"], dt.date(2025, 3, 3),
@@ -319,8 +319,10 @@ class OtherStrategiesTest(unittest.TestCase):
         self.assertAlmostEqual(capital + sum(t["net_pnl"] for t in trades), r.final_equity, delta=0.1)
 
     def test_mean_reversion_is_flat_every_day_on_1m_bars(self):
+        # large-account limits: at the live $5,000 capital a SPY scalp cannot size
         r = self.run_strategy("equity_mean_reversion", ["SPY"], dt.date(2025, 3, 3),
-                              dt.date(2025, 3, 7), "1m")
+                              dt.date(2025, 3, 7), "1m", capital_usd=None,
+                              max_order_value=30000.0, max_position_size_pct_of_portfolio=10)
         self.assertTrue(r.trades, "expected at least one synthetic trade")
         self.assertEqual(r.open_trades, [])
         for t in r.trades:

@@ -41,6 +41,23 @@ def pid_alive(pid: int) -> bool:
     return True
 
 
+ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+
+
+def reset_idle_timer():
+    """Windows: restart the system idle timer once (SetThreadExecutionState without
+    ES_CONTINUOUS), so idle sleep AND idle hibernate count from now. Called by every
+    scheduled run, which only happen in market hours: the PC never idles out during
+    the session but sleeps normally the rest of the day. Never fails the caller."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_SYSTEM_REQUIRED)
+    except Exception as e:  # noqa: BLE001 - staying awake is a convenience
+        log.warning("idle-timer reset not available: %r", e)
+
+
 @contextlib.contextmanager
 def keep_awake():
     """Keep the computer awake while the block runs; never fails the caller."""
@@ -48,7 +65,6 @@ def keep_awake():
     try:
         if sys.platform == "win32":
             import ctypes
-            ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
             ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)
         elif sys.platform == "darwin":
             caffeinate = subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
@@ -60,7 +76,8 @@ def keep_awake():
         try:
             if sys.platform == "win32":
                 import ctypes
-                ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)  # back to normal
+                ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)  # back to normal
+                ctypes.windll.kernel32.SetThreadExecutionState(ES_SYSTEM_REQUIRED)  # idle from now
             elif caffeinate is not None:
                 caffeinate.terminate()
         except Exception:  # noqa: BLE001

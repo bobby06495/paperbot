@@ -102,6 +102,13 @@ class Limits:
     max_concurrent_positions: int | None = None
     max_commission_pct_of_risk: float | None = None  # round-trip fees vs. R
     max_drawdown_usd: float | None = None  # multi-day breaker (DrawdownBreaker)
+    # Most capital (USD) the bot may treat as the account: sizing and the % limits use
+    # min(net liquidation, capital_usd), buying power is capped at capital_usd minus
+    # what is already deployed. Same on paper (large account) and live.
+    capital_usd: float | None = None
+    # Daily P&L (USD) at which the bot stops for the day: entries halted, intraday
+    # positions flattened, then idle until the next ET day.
+    daily_profit_target_usd: float | None = None
 
     def allows_symbol(self, symbol: str) -> bool:
         allowed = {s.upper() for s in self.allowed_symbols}
@@ -145,9 +152,46 @@ class AccountState:
     long_positions: dict[str, float] = field(default_factory=dict)  # SYMBOL -> shares
     open_buy_symbols: set[str] = field(default_factory=set)  # symbols with a working BUY
     buying_power: float | None = None  # USD; None = unknown, which blocks entries
+    deployed_usd: float = 0.0  # cost of long positions + working BUYs (capital_usd cap)
 
     def concurrent_positions(self) -> int:
         return len(set(self.long_positions) | self.open_buy_symbols)
+
+
+def capital_view(limits: Limits, net_liq: float | None, buying_power: float | None,
+                 deployed: float) -> tuple[float | None, float | None]:
+    """(net liquidation, buying power) as the bot may use them under limits.capital_usd:
+    min(net_liq, capital) and min(buying power, capital - deployed), never below 0.
+    Unchanged without a capital_usd; None stays None (unknown blocks entries)."""
+    cap = limits.capital_usd
+    if cap is None:
+        return net_liq, buying_power
+    capped_liq = None if net_liq is None else min(net_liq, cap)
+    capped_bp = None if buying_power is None else max(0.0, min(buying_power, cap - deployed))
+    return capped_liq, capped_bp
+
+
+def deployed_usd(positions, buy_trades) -> float:
+    """USD tied up in long stock positions (shares x average cost) and working BUY
+    orders (remaining shares x limit). A position without a usable average cost
+    counts as infinite, so the capital cap fails closed."""
+    total = 0.0
+    for p in positions:
+        if getattr(p.contract, "secType", "STK") != "STK" or p.position <= 0:
+            continue
+        cost = getattr(p, "avgCost", None)
+        if not isinstance(cost, (int, float)) or not cost > 0:
+            return float("inf")
+        total += p.position * cost
+    for t in buy_trades:
+        status = getattr(t, "orderStatus", None)
+        remaining = getattr(status, "remaining", None) if status else None
+        quantity = remaining if remaining else t.order.totalQuantity
+        price = getattr(t.order, "lmtPrice", None)
+        if not isinstance(price, (int, float)) or not 0 < price < 1e100:
+            return float("inf")
+        total += quantity * price
+    return total
 
 
 class ConfigError(ValueError):
@@ -161,7 +205,8 @@ RULES_REQUIRED = {"max_quantity_per_order": int, "max_order_value": float,
                   "max_orders_per_day": int, "max_open_orders": int, "max_daily_loss": float}
 RULES_OPTIONAL = {"max_risk_per_trade_pct": float, "max_position_size_pct_of_portfolio": float,
                   "max_concurrent_positions": int, "max_commission_pct_of_risk": float,
-                  "max_drawdown_usd": float}
+                  "max_drawdown_usd": float, "capital_usd": float,
+                  "daily_profit_target_usd": float}
 
 
 def _cast(where: str, key: str, value, kind):
@@ -334,6 +379,7 @@ class RiskGuard:
     drawdown_path is given.
     """
     STATE_KEYS = {"date": str, "orders_today": int, "halted": bool, "halt_reason": str}
+    OPTIONAL_STATE_KEYS = {"target_hit": bool}  # absent in files written before it existed
 
     def __init__(self, limits: Limits, state_path: Path, today=today_et,
                  drawdown_path: Path | None = None):
@@ -351,8 +397,13 @@ class RiskGuard:
             for key, kind in self.STATE_KEYS.items():
                 if not isinstance(state.get(key), kind):
                     raise StateCorrupt(self.state_path, f"missing or invalid {key!r}")
+            for key, kind in self.OPTIONAL_STATE_KEYS.items():
+                if key in state and not isinstance(state[key], kind):
+                    raise StateCorrupt(self.state_path, f"invalid {key!r}")
         if state is None or state["date"] != today:
-            state = {"date": today, "orders_today": 0, "halted": False, "halt_reason": ""}
+            state = {"date": today, "orders_today": 0, "halted": False, "halt_reason": "",
+                     "target_hit": False}
+        state.setdefault("target_hit", False)
         return state
 
     def _save(self):
@@ -380,15 +431,31 @@ class RiskGuard:
         self.state["halt_reason"] = reason
         self._save()
 
+    @property
+    def target_hit(self) -> bool:
+        """True from the moment today's daily profit target was reached until the next
+        ET day (latched: a later dip in the daily P&L does not undo it)."""
+        self._roll_day()
+        return self.state["target_hit"]
+
     def update_daily_pnl(self, daily_pnl: float | None):
-        """Halt for the rest of the day once the daily loss limit is reached, and feed
-        the multi-day drawdown breaker."""
+        """Halt for the rest of the day once the daily loss limit or the daily profit
+        target is reached, and feed the multi-day drawdown breaker."""
         if self.breaker is not None:
             self.breaker.update(daily_pnl)
         if daily_pnl is not None and daily_pnl <= -abs(self.limits.max_daily_loss):
             if not self.state["halted"]:
                 self.halt(f"daily loss {daily_pnl:.2f} reached limit "
                           f"-{abs(self.limits.max_daily_loss):.2f}")
+        target = self.limits.daily_profit_target_usd
+        if (target is not None and daily_pnl is not None and daily_pnl >= target
+                and not self.state["target_hit"]):
+            self.state["target_hit"] = True
+            reason = f"daily profit target {target:.2f} reached (daily P&L {daily_pnl:.2f})"
+            if self.state["halted"]:
+                self._save()
+            else:
+                self.halt(reason)
 
     def check(self, intent: OrderIntent, open_orders: int,
               daily_pnl: float | None, account: AccountState | None = None) -> list[str]:
@@ -474,7 +541,8 @@ class RiskGuard:
         if intent.limit_price is None or intent.limit_price <= 0:
             return ["no valid limit price, cannot check position sizing"]
 
-        net_liq, price = account.net_liquidation, intent.limit_price
+        net_liq, _ = capital_view(lim, account.net_liquidation, None, account.deployed_usd)
+        price = intent.limit_price
         if lim.max_position_size_pct_of_portfolio is not None:
             value = intent.quantity * price
             cap = net_liq * lim.max_position_size_pct_of_portfolio / 100
@@ -505,10 +573,14 @@ class RiskGuard:
                   and isinstance(intent.quantity, int) and intent.quantity > 0)
         if account is not None and priced:
             value = intent.quantity * intent.limit_price
-            if account.buying_power is None:
+            _, buying_power = capital_view(self.limits, None, account.buying_power,
+                                           account.deployed_usd)
+            if buying_power is None:
                 problems.append("buying power unavailable, cannot check margin")
-            elif value > account.buying_power:
-                problems.append(f"order value {value:.2f} > buying power {account.buying_power:.2f}")
+            elif value > buying_power:
+                what = ("capital left" if self.limits.capital_usd is not None
+                        and buying_power < account.buying_power else "buying power")
+                problems.append(f"order value {value:.2f} > {what} {buying_power:.2f}")
         if priced and _valid_stop(intent):
             drag = commission_drag(intent.quantity, intent.limit_price, intent.stop_price,
                                    self.limits.max_commission_pct_of_risk)

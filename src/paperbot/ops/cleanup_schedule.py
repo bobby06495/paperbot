@@ -3,9 +3,9 @@
     paperbot-unschedule      (same as python -m paperbot.ops.cleanup_schedule)
 
 Lists all tasks (schtasks /query /fo CSV /nh), deletes each top-level task
-whose name starts with HT_, then restores sleep-on-AC to the value saved in
-logs/power_backup.json by setup_schedule.py (30 minutes if there is no
-backup). Running bot processes are not touched; a cycle.py pass that is
+whose name starts with HT_, then restores sleep-on-AC and "Allow wake timers"
+on AC to the values saved in logs/power_backup.json by setup_schedule.py (30
+minutes and "Important only" if there is no backup). Running bot processes are not touched; a cycle.py pass that is
 already running finishes normally. Safe to re-run: with nothing left it
 prints "Nothing to clean." and exits 0.
 """
@@ -22,6 +22,7 @@ LOGS = paths.LOGS_DIR
 POWER_BACKUP = LOGS / "power_backup.json"
 STATE_FILE = LOGS / "schedule_state.json"
 DEFAULT_AC_MINUTES = 30
+DEFAULT_WAKE_TIMERS_AC = 2  # Windows default on AC: "Important wake timers only"
 
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess:
@@ -46,16 +47,25 @@ def ht_tasks(runner=run) -> list[str]:
 def restore_power(runner=run) -> str:
     """Put sleep-on-AC back to the saved value (or the Windows default of 30 min)."""
     minutes, source = DEFAULT_AC_MINUTES, "Windows default"
+    wake = DEFAULT_WAKE_TIMERS_AC
     try:
         backup = json.loads(POWER_BACKUP.read_text())
         minutes, source = max(0, round(backup["ac_seconds"] / 60)), "saved setting"
+        if isinstance(backup.get("wake_timers_ac"), int):
+            wake = backup["wake_timers_ac"]
     except (OSError, ValueError, KeyError, TypeError):
         pass
     result = runner(["powercfg", "/change", "standby-timeout-ac", str(minutes)])
     if result.returncode != 0:
         return f"power restore failed: {(result.stderr or result.stdout).strip()}"
+    for cmd in (["powercfg", "/setacvalueindex", "SCHEME_CURRENT", "SUB_SLEEP", "RTCWAKE",
+                 str(wake)], ["powercfg", "/setactive", "SCHEME_CURRENT"]):
+        result = runner(cmd)
+        if result.returncode != 0:
+            return (f"sleep on AC restored to {minutes} min ({source}); wake timers not "
+                    f"restored: {(result.stderr or result.stdout).strip()}")
     POWER_BACKUP.unlink(missing_ok=True)
-    return f"sleep on AC restored to {minutes} min ({source})"
+    return f"sleep on AC restored to {minutes} min, wake timers on AC to {wake} ({source})"
 
 
 def main(runner=run) -> int:

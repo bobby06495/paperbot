@@ -318,13 +318,15 @@ class NoForceCloseRuntimeTest(unittest.TestCase):
 
 class CommissionEdgeTest(unittest.TestCase):
     def test_cheap_etf_with_tight_stop_is_skipped_by_the_fee_rule(self):
+        # $5,000 account: a $1,250 position in a $42 ETF; the $2 round trip exceeds 10% of
+        # R with a 1% stop (R ~$15) but not with a 2% stop (R ~$24)
         p = profiles.load("macro_swing_etf")
-        tight = {"price": 42.0, "stop": round(42.0 * 0.98, 2), "gap": None, "rvol": None}
-        wide = {**tight, "stop": round(42.0 * 0.97, 2)}
+        tight = {"price": 42.0, "stop": round(42.0 * 0.99, 2), "gap": None, "rvol": None}
+        wide = {**tight, "stop": round(42.0 * 0.98, 2)}
         with self.assertLogs("paperbot", "INFO") as logs:
-            self.assertIsNone(strategy._size_entry("XLRE", tight, p, 781_120.0, 4e6, 42.0))
+            self.assertIsNone(strategy._size_entry("XLRE", tight, p, 5_000.0, 5_000.0, 42.0))
         self.assertIn("commission", logs.output[-1])
-        self.assertIsNotNone(strategy._size_entry("XLRE", wide, p, 781_120.0, 4e6, 42.0))
+        self.assertIsNotNone(strategy._size_entry("XLRE", wide, p, 5_000.0, 5_000.0, 42.0))
 
 
 if __name__ == "__main__":

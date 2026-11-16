@@ -1,6 +1,6 @@
 """Register paperbot's Windows Task Scheduler tasks (your user account, no admin).
 
-    paperbot-schedule                   register / update all HT_* tasks, keep PC awake on AC
+    paperbot-schedule                   register / update all HT_* tasks, enable wake timers on AC
     paperbot-schedule --if-dst-changed  (run daily by HT_Reschedule) re-register only if a
                                         task's registered start time or weekdays differ
                                         from today's US Eastern conversion (falls back to
@@ -24,10 +24,19 @@ year (Singapore never), which moves every ET time by an hour locally;
 HT_Reschedule compares the offsets saved in logs/schedule_state.json each
 day and re-registers the tasks when they change.
 
-Keep-awake: the first run saves your current sleep timeouts to
-logs/power_backup.json, then sets sleep-on-AC to never (powercfg /change
-standby-timeout-ac 0; battery settings are untouched). Later runs never
-overwrite that backup; cleanup_schedule.py restores it.
+Staying awake for the session, without stopping normal sleep the rest of the day:
+  * every task may start on battery and is not stopped when the charger is pulled
+    (Windows' defaults would skip a whole session on battery, or kill a force close
+    halfway); HT_Cycle also wakes the PC from sleep/hibernate (WakeToRun). These
+    are set with PowerShell after each schtasks /Create, which cannot set them.
+  * "Allow wake timers" on AC is set to Enable (power_setup); battery settings
+    are never touched.
+  * each cycle run resets Windows' idle timer and holds it while connected
+    (system/procs.py), so idle sleep/hibernate cannot hit during market hours.
+    Sleep on AC therefore stays at your normal timeout; a "never" set by an older
+    version is put back to the saved value.
+The first run saves the original settings to logs/power_backup.json (never
+overwritten); cleanup_schedule.py restores them.
 
 Also deletes the older single "paperbot cycle" task, replaced by HT_Cycle.
 Safe to re-run (/F overwrites). Never uses /RL HIGHEST or /RU SYSTEM: tasks
@@ -66,6 +75,35 @@ CYCLE_EVERY_MINUTES = 5
 CYCLE_DURATION = "06:40"  # 09:30 -> 16:10 ET: the session plus the post-close runs
 RESCHEDULE_TASK = ("HT_Reschedule", "07:00", ["paperbot.ops.setup_schedule", "--if-dst-changed"])
 TASK_NAMES = [t[0] for t in WEEKLY_TASKS] + [CYCLE_TASK[0], RESCHEDULE_TASK[0]]
+# Task power conditions (schtasks /Create cannot set them; Windows' defaults are "do not
+# start on battery", "stop when going on battery", "do not wake the computer"). Every
+# task may run on battery; only HT_Cycle wakes the PC (it then keeps it awake itself).
+WAKE_TASKS = {CYCLE_TASK[0]}
+
+
+def settings_command(name: str) -> list[str]:
+    """PowerShell that sets a registered task's power conditions (no admin needed for
+    your own tasks; the logon type is kept)."""
+    wake = "$true" if name in WAKE_TASKS else "$false"
+    script = (f"$t = Get-ScheduledTask -TaskName '{name}' -ErrorAction Stop; "
+              "$t.Settings.DisallowStartIfOnBatteries = $false; "
+              "$t.Settings.StopIfGoingOnBatteries = $false; "
+              f"$t.Settings.WakeToRun = {wake}; "
+              "Set-ScheduledTask -InputObject $t -ErrorAction Stop | Out-Null")
+    return ["powershell", "-NoProfile", "-NonInteractive", "-Command", script]
+
+
+def _xml_flag(xml: str, tag: str, default: bool) -> bool:
+    match = re.search(rf"<{tag}>(true|false)</{tag}>", xml)
+    return default if match is None else match.group(1) == "true"
+
+
+def settings_ok(name: str, xml: str) -> bool:
+    """True if the task's XML has the power conditions settings_command() sets (Task
+    Scheduler leaves out elements at their default: battery limits on, no wake)."""
+    return (not _xml_flag(xml, "DisallowStartIfOnBatteries", True)
+            and not _xml_flag(xml, "StopIfGoingOnBatteries", True)
+            and _xml_flag(xml, "WakeToRun", False) == (name in WAKE_TASKS))
 
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess:
@@ -136,7 +174,9 @@ XML_DAYS = {"Monday": "MON", "Tuesday": "TUE", "Wednesday": "WED", "Thursday": "
 
 def registered_slot(name: str, runner=run) -> tuple[str, frozenset | None] | None:
     """('HH:MM', weekday codes or None for a daily task) as Task Scheduler holds it;
-    ('', None) if the task is not registered; None if the output cannot be read."""
+    ('', None) if the task is not registered; None if the output cannot be read.
+    A task whose power conditions are not what settings_command() sets reports the
+    start '' too, so the daily check re-registers it."""
     result = runner(["schtasks", "/Query", "/TN", name, "/XML"])
     if result.returncode != 0:
         return "", None
@@ -146,6 +186,8 @@ def registered_slot(name: str, runner=run) -> tuple[str, frozenset | None] | Non
     week = re.search(r"<DaysOfWeek>(.*?)</DaysOfWeek>", result.stdout, re.DOTALL)
     days = frozenset(XML_DAYS[d] for d in re.findall(r"<(\w+)\s*/>", week.group(1))
                      if d in XML_DAYS) if week else None
+    if not settings_ok(name, result.stdout):
+        return "", days
     return start.group(1), days
 
 
@@ -173,35 +215,106 @@ def register_all(today: dt.date, runner=run, convert=to_local) -> tuple[int, lis
     for name, cmd, schedule in build_commands(today, convert):
         result = runner(cmd)
         if result.returncode == 0:
+            settings = runner(settings_command(name))
+            if settings.returncode != 0:
+                failures.append(f"{name}: power conditions not set: "
+                                f"{(settings.stderr or settings.stdout).strip()}")
+                print(f"FAIL  {name:<16} created, but battery/wake conditions not set: "
+                      f"{(settings.stderr or settings.stdout).strip()}")
+                continue
             created += 1
-            print(f"ok    {name:<16} {schedule}")
+            wake = ", wakes the PC" if name in WAKE_TASKS else ""
+            print(f"ok    {name:<16} {schedule} (runs on battery{wake})")
         else:
             failures.append(f"{name}: {(result.stderr or result.stdout).strip()}")
             print(f"FAIL  {name:<16} {(result.stderr or result.stdout).strip()}")
     return created, failures
 
 
-def read_standby(runner=run) -> dict | None:
-    """Current sleep-after timeouts in seconds, from powercfg (last two hex values: AC, DC)."""
-    result = runner(["powercfg", "/query", "SCHEME_CURRENT", "SUB_SLEEP", "STANDBYIDLE"])
+WAKE_TIMERS_ENABLE = 1  # "Allow wake timers": 0 disable, 1 enable, 2 important only
+MIN_IDLE_SECONDS = 10 * 60  # sleep/hibernate sooner than this can fall between 5-min runs
+
+
+def read_setting(alias: str, runner=run) -> tuple[int, int] | None:
+    """(AC, DC) value of a SUB_SLEEP power setting, from powercfg (last two hex values)."""
+    result = runner(["powercfg", "/query", "SCHEME_CURRENT", "SUB_SLEEP", alias])
     values = re.findall(r"0x([0-9a-fA-F]+)\s*$", result.stdout or "", re.MULTILINE)
     if result.returncode != 0 or len(values) < 2:
         return None
-    return {"ac_seconds": int(values[-2], 16), "dc_seconds": int(values[-1], 16)}
+    return int(values[-2], 16), int(values[-1], 16)
 
 
-def keep_awake(runner=run) -> str:
-    """Back up the sleep timeouts once, then never sleep while on AC power."""
-    if not POWER_BACKUP.exists():
+def read_standby(runner=run) -> dict | None:
+    """Current sleep-after timeouts in seconds, from powercfg (last two hex values: AC, DC)."""
+    standby = read_setting("STANDBYIDLE", runner)
+    return None if standby is None else {"ac_seconds": standby[0], "dc_seconds": standby[1]}
+
+
+def _backup_power(runner=run) -> dict | None:
+    """logs/power_backup.json: the settings before paperbot changed any. Written once;
+    keys added by newer versions are filled in from the current values (which
+    paperbot has not touched), existing keys are never overwritten."""
+    try:
+        backup = json.loads(POWER_BACKUP.read_text())
+    except (OSError, ValueError):
+        backup = None
+    if not isinstance(backup, dict):
         backup = read_standby(runner)
         if backup is None:
-            return "keep-awake skipped: could not read the current sleep settings"
-        LOGS.mkdir(exist_ok=True)
-        POWER_BACKUP.write_text(json.dumps(backup, indent=2))
-    result = runner(["powercfg", "/change", "standby-timeout-ac", "0"])
-    if result.returncode != 0:
-        return f"keep-awake failed: {(result.stderr or result.stdout).strip()}"
-    return "keep-awake on: sleep on AC set to never (saved settings in logs/power_backup.json)"
+            return None
+    wake = read_setting("RTCWAKE", runner)
+    hibernate = read_setting("HIBERNATEIDLE", runner)
+    if wake is not None:
+        backup.setdefault("wake_timers_ac", wake[0])
+    if hibernate is not None:
+        backup.setdefault("hibernate_ac_seconds", hibernate[0])
+    LOGS.mkdir(exist_ok=True)
+    POWER_BACKUP.write_text(json.dumps(backup, indent=2))
+    return backup
+
+
+def power_setup(runner=run) -> list[str]:
+    """Power settings for unattended market-hours runs, AC power only (battery
+    settings untouched). Returns report lines.
+
+    * "Allow wake timers" on AC = Enable, so HT_Cycle (WakeToRun) can wake the PC
+      from sleep or hibernate for the 09:30 ET run ("Important only", the Windows
+      default, ignores Task Scheduler).
+    * Normal sleep on AC: every scheduled run resets the idle timer (procs), so the
+      PC stays awake during the session only. A "never sleep on AC" set by an older
+      paperbot version is put back to the saved value.
+    """
+    lines = []
+    backup = _backup_power(runner)
+    if backup is None:
+        return ["power setup skipped: could not read the current sleep settings"]
+    steps = [["powercfg", "/setacvalueindex", "SCHEME_CURRENT", "SUB_SLEEP", "RTCWAKE",
+              str(WAKE_TIMERS_ENABLE)],
+             ["powercfg", "/setactive", "SCHEME_CURRENT"]]
+    for cmd in steps:
+        result = runner(cmd)
+        if result.returncode != 0:
+            return [f"wake timers not enabled: {(result.stderr or result.stdout).strip()}"]
+    lines.append("wake timers on AC enabled (HT_Cycle can wake the PC for the session)")
+
+    standby = read_setting("STANDBYIDLE", runner)
+    saved_ac = backup.get("ac_seconds")
+    if standby is not None and standby[0] == 0 and isinstance(saved_ac, int) and saved_ac > 0:
+        minutes = max(1, round(saved_ac / 60))
+        result = runner(["powercfg", "/change", "standby-timeout-ac", str(minutes)])
+        if result.returncode == 0:
+            standby = (saved_ac, standby[1])
+            lines.append(f"sleep on AC back to {minutes} min (market-hours runs keep the PC "
+                         "awake themselves)")
+        else:
+            lines.append(f"sleep on AC not restored: {(result.stderr or result.stdout).strip()}")
+    hibernate = read_setting("HIBERNATEIDLE", runner)
+    for what, value in (("sleep", standby), ("hibernate", hibernate)):
+        if value is not None and 0 < value[0] < MIN_IDLE_SECONDS:
+            lines.append(f"WARNING: {what} after {value[0] // 60} min on AC is shorter than "
+                         f"{MIN_IDLE_SECONDS // 60} min; the PC may idle out between 5-minute "
+                         "runs (it is woken again, but each wake costs a run)")
+    return lines
 
 
 def main(argv: list[str] | None = None, runner=run, convert=to_local) -> int:
@@ -241,7 +354,8 @@ def main(argv: list[str] | None = None, runner=run, convert=to_local) -> int:
     LOGS.mkdir(exist_ok=True)
     STATE_FILE.write_text(json.dumps(offsets))
     if not args.if_dst_changed:
-        print(keep_awake(runner))
+        for line in power_setup(runner):
+            print(line)
 
     print()
     for name in TASK_NAMES:

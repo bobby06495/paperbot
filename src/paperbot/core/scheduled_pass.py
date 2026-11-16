@@ -230,15 +230,16 @@ def one_pass(ib, guard, cfg: dict, account: str, pnl, submit: bool) -> int:
     from paperbot.strategies import rule_strategy as strategy
     from paperbot.core.account import daily_pnl
     daily = daily_pnl(ib, account, pnl)  # 0.0 when provably flat today; None blocks entries
-    was_halted = guard.halted
-    guard.update_daily_pnl(daily)
-    if guard.halted and not was_halted:
-        bot.cancel_working(ib, guard.halt_reason)
+    bot.update_guard(ib, guard, daily)  # loss halt / daily profit target
 
     bot.notify_fills_safely(ib, account)  # BUY/STOP/PARTIAL/EXIT since the last run
+    if bot.day_done(guard):
+        bot.log_day_done(guard)
+        bot.after_pass(ib, account, "cycle.py", submit)
+        return 0
 
     held_back: set[str] = set()
-    requests = strategy.decide(ib, account)
+    requests = strategy.decide(ib, account, target_hit=bot.target_hit(guard))
     for request in requests:
         symbol = request.symbol.upper()
         if symbol in held_back:
@@ -304,8 +305,25 @@ def run(gate: str, submit: bool) -> int:
     guard = RiskGuard(profile.limits, bot.RISK_STATE,
                       drawdown_path=bot.DRAWDOWN_STATE)  # fails closed
     strategy.load_state()  # fails closed before connecting
+    if bot.day_done(guard):  # target reached and flat: nothing to do until tomorrow (ET)
+        bot.log_day_done(guard)
+        return 0
     bot.preflight(bot.connection_settings(cfg), profile, guard, cfg)
     runstate.claim_pid()
+    from paperbot.system import procs
+    procs.reset_idle_timer()  # market hours: keep idle sleep / hibernate away until next run
+    with procs.keep_awake():
+        return _connected_run(gate, submit, cfg, profile, guard, log)
+
+
+def _connected_run(gate, submit, cfg, profile, guard, log) -> int:
+    """run() after the pid file is claimed: connect, pass(es), disconnect, release."""
+    from paperbot.core import engine as bot
+    from paperbot.core import orders
+    from paperbot.runtime import runstate
+    from paperbot.strategies import rule_strategy as strategy
+    from ib_async import IB
+    from paperbot.core import broker
     ib = IB()
     try:
         connect_with_retry(ib, cfg, log)
@@ -351,6 +369,10 @@ def run(gate: str, submit: bool) -> int:
                 if sleep_until(ib, time.monotonic() + wait):
                     gate = "force_close"
                     handled += one_pass(ib, guard, cfg, account, pnl, submit)
+        if (gate == "run" and bot.target_hit(guard) and profile.holding == "intraday"
+                and holds_bot_positions(ib, account)):
+            gate = "force_close"  # daily profit target: flatten now, like the force close
+            log.info("daily profit target reached: staying connected to close positions")
         # Force close: keep re-pricing every 30 s until flat or the close.
         while (gate == "force_close" and submit and not runstate.stop_requested()
                and dt.datetime.now(ET).time() < session_end(dt.datetime.now(ET))

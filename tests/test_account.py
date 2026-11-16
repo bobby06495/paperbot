@@ -162,7 +162,8 @@ class AccountValueParsingTest(NetLiquidationTest):
         config = {"limits": {"allowed_symbols": ["*"], "limit_orders_only": True}}
         limits = profiles.load("trend_join_long", config=config).limits
         guard = RiskGuard(limits, Path(self.tmp.name) / "risk.json")
-        intent = OrderIntent("AAPL", "BUY", 200, 100.0, stop_price=90.0)
+        # a trade the live limits accept ($5k capital: $1,000 value, $24 risk, fees 8% of R)
+        intent = OrderIntent("AAPL", "BUY", 10, 100.0, stop_price=97.6)
         for net_liq, buying_power in ((0.0, 1e6), (-5000.0, 1e6), (None, 1e6),
                                       (1e6, 0.0), (1e6, -1.0), (1e6, None)):
             with self.subTest(net_liq=net_liq, buying_power=buying_power):

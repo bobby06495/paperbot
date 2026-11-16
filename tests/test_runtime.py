@@ -418,7 +418,9 @@ class PreflightTest(unittest.TestCase):
         self.assertLess(source.index("preflight("), source.index("run_session("))
         from paperbot.core import scheduled_pass
         source = inspect.getsource(scheduled_pass.run)
-        self.assertLess(source.index("preflight("), source.index("connect_with_retry("))
+        self.assertLess(source.index("preflight("), source.index("_connected_run("))
+        self.assertNotIn("connect_with_retry(", source)  # connecting lives in _connected_run
+        self.assertIn("connect_with_retry(", inspect.getsource(scheduled_pass._connected_run))
 
 
 class RotateLogsNowTest(unittest.TestCase):

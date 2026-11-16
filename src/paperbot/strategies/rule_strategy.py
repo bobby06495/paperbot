@@ -51,7 +51,7 @@ from paperbot.core import profile as profiles
 from paperbot.core.account import buying_power_usd, net_liquidation_usd
 from paperbot.core.common import ET, RTH_CLOSE, RTH_OPEN, log, warn_once
 from paperbot.core.orders import Working
-from paperbot.core.risk import OrderIntent
+from paperbot.core.risk import OrderIntent, capital_view, deployed_usd
 from paperbot.core.sizing import size_entry
 from paperbot.market import market_calendar
 from paperbot.market import universe as index_universe
@@ -205,7 +205,10 @@ def _now() -> dt.datetime:
     return dt.datetime.now(ET)
 
 
-def decide(ib: IB, account: str) -> list:
+def decide(ib: IB, account: str, target_hit: bool = False) -> list:
+    """This pass's requests. target_hit (the risk guard reached today's
+    daily_profit_target_usd): an intraday strategy flattens now through the force
+    close; a multi_day strategy keeps its stops and exit rules. Neither enters."""
     profile = load_profile()
     if ACTIVE and profile.key != ACTIVE:
         log.error("ALERT strategy mismatch: running %s but %s is selected; pass skipped",
@@ -224,7 +227,8 @@ def decide(ib: IB, account: str) -> list:
     tf = profile.time_filter
     close_at = tf.force_close_time()
     session = day.is_open(now)
-    force_close = session and close_at is not None and now.time() >= close_at
+    target_close = session and target_hit and profile.holding == "intraday"
+    force_close = target_close or (session and close_at is not None and now.time() >= close_at)
     bars: dict[str, list] = {}
     if session and not force_close and profile.manage:
         bars = {s: md.rth_bars(ib, s, now, profile.timeframe)
@@ -235,7 +239,9 @@ def decide(ib: IB, account: str) -> list:
     if session and now >= tf.entry_cutoff(now):
         requests += orders.sweep_entries(working)
     if force_close:
-        closing = orders.force_close(ib, profile, state, held, working, now)
+        why = "daily target" if target_close and not (close_at and now.time() >= close_at) \
+            else "force close"
+        closing = orders.force_close(ib, profile, state, held, working, now, why)
         # symbols being force-closed get no new stop next to their closing SELL
         closed = {r.symbol for r in closing if isinstance(r, OrderIntent)}
         requests += orders.reconcile_stops(state, {s: p for s, p in held.items()
@@ -250,7 +256,7 @@ def decide(ib: IB, account: str) -> list:
         requests += exits
     if session and not force_close:
         requests += orders.partial_profits(ib, profile, state, held, working, bars)
-        if tf.in_entry_window(now):
+        if tf.in_entry_window(now) and not target_hit:
             requests += _find_entries(ib, account, profile, state, held, working, now)
     elif not session and profile.holding == "intraday":
         for symbol in held:
@@ -305,9 +311,14 @@ def _find_entries(ib, account, profile, state, held, working, now) -> list:
     if len(busy) >= max_positions or not net_liq:
         return []
     buying_power = buying_power_usd(ib, account)
+    net_liq, buying_power = _capital(profile, held.values(), working, net_liq, buying_power)
     if not buying_power or buying_power <= 0:
-        warn_once(f"buying-power:{now.date()}", logging.WARNING,
-                  "buying power unavailable (or zero); entry scan skipped")
+        if buying_power is not None and profile.limits.capital_usd is not None:
+            log.info("capital_usd %.0f fully deployed; entry scan skipped",
+                     profile.limits.capital_usd)
+        else:
+            warn_once(f"buying-power:{now.date()}", logging.WARNING,
+                      "buying power unavailable (or zero); entry scan skipped")
         return []
     good_till = profile.time_filter.entry_cutoff(now)
 
@@ -429,14 +440,28 @@ def check_symbol(ib: IB, account: str, symbol: str) -> dict:
 
     result = evaluate(ib, symbol, profile, now)
     result["reasons"][:0] = ["no existing position", f"time gate ok ({window})"]
-    net_liq = net_liquidation_usd(ib, account)
-    buying_power = buying_power_usd(ib, account)
+    longs = [p for p in ib.positions(account) if p.contract.secType == "STK" and p.position > 0]
+    net_liq, buying_power = _capital(profile, longs, orders.working_orders(ib, profile.refs),
+                                     net_liquidation_usd(ib, account),
+                                     buying_power_usd(ib, account))
     if result["pass"] and net_liq and buying_power:
         quote = md.quote(ib, symbol)
         intent = (_size_entry(symbol, result, profile, net_liq, buying_power, quote[1])
                   if quote else None)
         result["quantity"] = intent.quantity if intent else 0
     return result
+
+
+def _capital(profile: profiles.StrategyProfile, positions, working: dict,
+             net_liq: float | None, buying_power: float | None):
+    """(net liquidation, buying power) for sizing, under the risk section's capital_usd:
+    every long stock position in the account and the strategy's working BUYs count as
+    deployed. Unchanged without capital_usd."""
+    if profile.limits.capital_usd is None:
+        return net_liq, buying_power
+    buys = [t for w in working.values() for t in w.entries]
+    deployed = deployed_usd(positions, buys)
+    return capital_view(profile.limits, net_liq, buying_power, deployed)
 
 
 def _entry_reason(profile: profiles.StrategyProfile, signal: dict) -> str:

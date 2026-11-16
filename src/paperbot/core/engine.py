@@ -81,7 +81,7 @@ from paperbot.core import selector
 from paperbot.core.account import buying_power_usd, daily_pnl, net_liquidation_usd
 from paperbot.market import market_calendar
 from paperbot.core.risk import (ET, AccountState, CancelRequest, DrawdownBreaker, OrderIntent,
-                                RiskGuard, StopUpdate, ref_role, require_limits)
+                                RiskGuard, StopUpdate, deployed_usd, ref_role, require_limits)
 from paperbot.strategies import rule_strategy as strategy
 from paperbot.system import procs
 
@@ -375,6 +375,17 @@ def preflight(conn: broker.Connection, profile, guard: RiskGuard, cfg: dict,
     for line in profile.describe()[1:]:
         log.info("PREFLIGHT %s", line.strip())
     log.info("PREFLIGHT limits %s", ", ".join(f"{k}={v}" for k, v in vars(profile.limits).items()))
+    lim = profile.limits
+    if lim.capital_usd is not None or lim.daily_profit_target_usd is not None:
+        log.info("PREFLIGHT capital cap %s, daily profit target %s",
+                 "none" if lim.capital_usd is None else f"${lim.capital_usd:,.0f}",
+                 "none" if lim.daily_profit_target_usd is None
+                 else f"${lim.daily_profit_target_usd:,.2f}")
+    if (conn.live and profile.holding == "intraday"
+            and (lim.capital_usd is None or lim.capital_usd < 25_000)):
+        log.warning("PREFLIGHT live intraday trading below $25,000: in a margin account the "
+                    "FINRA pattern-day-trader rule may limit you to 3 day trades per 5 "
+                    "business days; check your IBKR account type before trading")
     if problems:
         for problem in problems:
             log.error("ALERT refusing to start: %s", problem)
@@ -492,18 +503,19 @@ def one_pass(ib: IB, guard: RiskGuard, cfg: dict, account: str, pnl, submit: boo
              day_orders_confirmed: dt.date | None = None) -> dt.date | None:
     """One strategy pass: loss checks, fills, post-close check, decide -> guard -> IBKR."""
     daily = daily_pnl(ib, account, pnl)  # 0.0 when provably flat today; None blocks entries
-    was_halted = guard.halted
-    guard.update_daily_pnl(daily)
-    if guard.halted and not was_halted:
-        cancel_working(ib, guard.halt_reason)
+    update_guard(ib, guard, daily)
     notify_fills_safely(ib, account)
+    if day_done(guard):
+        log_day_done(guard)
+        after_pass(ib, account, SOURCE, submit)
+        return day_orders_confirmed
     now = dt.datetime.now(ET)
     if post_close(now) and day_orders_confirmed != now.date():
         if await_day_orders_done(ib, submit):
             day_orders_confirmed = now.date()
 
     held_back: set[str] = set()  # symbols whose cancel was not confirmed
-    for request in strategy.decide(ib, account):
+    for request in strategy.decide(ib, account, target_hit=target_hit(guard)):
         symbol = request.symbol.upper()
         if symbol in held_back:
             log.warning("skipping %s: waiting for a cancel on %s", request, symbol)
@@ -512,6 +524,29 @@ def one_pass(ib: IB, guard: RiskGuard, cfg: dict, account: str, pnl, submit: boo
             held_back.add(symbol)
     after_pass(ib, account, SOURCE, submit)
     return day_orders_confirmed
+
+
+def update_guard(ib: IB, guard: RiskGuard, daily: float | None):
+    """Feed today's P&L to the guard; on a new halt cancel working entries/exits, and
+    announce a newly reached daily profit target once."""
+    was_halted, was_target = guard.halted, target_hit(guard)
+    guard.update_daily_pnl(daily)
+    if guard.halted and not was_halted:
+        cancel_working(ib, guard.halt_reason)
+    if target_hit(guard) and not was_target:
+        target = guard.limits.daily_profit_target_usd
+        log.warning("daily profit target %.2f reached (daily P&L %s): no new entries today; "
+                    "intraday positions are being closed", target,
+                    "n/a" if daily is None else f"{daily:.2f}")
+        notify("Daily Target Reached", f"daily P&L ${daily:+.2f} >= ${target:.2f}; "
+               "closing intraday positions, no new entries today", "high")
+
+
+def log_day_done(guard: RiskGuard):
+    from paperbot.core.common import warn_once
+    warn_once(f"day-done:{dt.datetime.now(ET).date()}", logging.INFO,
+              "daily profit target reached and flat: trading done for today (%s)",
+              guard.halt_reason or "target")
 
 
 def connect(ib: IB, cfg: dict, client_id: int | None = None, **kwargs) -> broker.Connection:
@@ -760,10 +795,25 @@ def fill_message(fills: list, held: dict[str, float]) -> tuple[str, str]:
 
 def account_state(ib: IB, account: str, open_trades: list[Trade]) -> AccountState:
     net_liq = net_liquidation_usd(ib, account)  # converted from the base currency if needed
-    longs = {p.contract.symbol.upper(): p.position for p in ib.positions(account)
-             if p.contract.secType == "STK" and p.position > 0}
+    positions = [p for p in ib.positions(account)
+                 if p.contract.secType == "STK" and p.position > 0]
+    longs = {p.contract.symbol.upper(): p.position for p in positions}
+    buy_trades = [t for t in open_trades if t.order.action == "BUY" and not t.isDone()]
     buys = {t.contract.symbol.upper() for t in open_trades if t.order.action == "BUY"}
-    return AccountState(net_liq, longs, buys, buying_power_usd(ib, account))
+    deployed = deployed_usd(positions, buy_trades) if strategy.load_profile().limits.capital_usd \
+        is not None else 0.0
+    return AccountState(net_liq, longs, buys, buying_power_usd(ib, account), deployed)
+
+
+def day_done(guard: RiskGuard) -> bool:
+    """The daily profit target was reached today and the strategy owns no position any
+    more: nothing left to do until the next ET day."""
+    return target_hit(guard) and not strategy.load_state()["positions"]
+
+
+def target_hit(guard: RiskGuard) -> bool:
+    """guard.target_hit, strictly a latched True (never a truthy stand-in)."""
+    return getattr(guard, "target_hit", False) is True
 
 
 def handle_request(ib: IB, guard: RiskGuard, cfg: dict, account: str, request,

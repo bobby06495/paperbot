@@ -215,12 +215,17 @@ class ForceCloseTimingTest(unittest.TestCase):
 class RunFlowTest(unittest.TestCase):
     """cycle.run() with every IBKR / file dependency mocked: only the control flow is real."""
 
-    def run_at(self, when, holds=True, gate=None, confirmed=True):
+    def run_at(self, when, holds=True, gate=None, confirmed=True, target=False, positions=None):
+        """holds: bool (then flat) or the list of holds_bot_positions answers; target: the
+        guard's latched daily profit target; positions: the strategy state's positions."""
         from paperbot.strategies import rule_strategy as strategy
+        guard = mock.MagicMock(target_hit=target)
+        holding = list(holds) if isinstance(holds, (list, tuple)) else [holds, False]
         fake_dt = mock.Mock(wraps=dt.datetime)
         fake_dt.now = lambda tz=None: when
         ib = mock.MagicMock()
         ib.reqPnL.return_value = NS(dailyPnL=0.0)
+        self.ib_cls = mock.Mock(return_value=ib)
         patches = [
             mock.patch.object(cycle.dt, "datetime", fake_dt),
             mock.patch("paperbot.core.engine.setup_logging"),
@@ -228,18 +233,20 @@ class RunFlowTest(unittest.TestCase):
             mock.patch("paperbot.runtime.runstate.running_pid", return_value=None),
             mock.patch("paperbot.runtime.runstate.claim_pid"),
             mock.patch("paperbot.runtime.runstate.release_pid"),
-            mock.patch("paperbot.core.risk.RiskGuard"),
+            mock.patch("paperbot.core.risk.RiskGuard", return_value=guard),
             mock.patch("paperbot.core.engine.preflight"),  # tested in test_runtime
             mock.patch("paperbot.core.broker.verify_account", return_value="DU1"),
-            mock.patch("paperbot.strategies.rule_strategy.load_state", return_value={"positions": {}}),
+            mock.patch("paperbot.strategies.rule_strategy.load_state",
+                       return_value={"positions": positions or {}}),
             mock.patch("paperbot.core.selector.unattended_key", return_value="trend_join_long"),
             mock.patch.object(strategy, "_profile", None),
             mock.patch.object(strategy, "SCAN_BUDGET_SECONDS", strategy.SCAN_BUDGET_SECONDS),
-            mock.patch("ib_async.IB", return_value=ib),
+            mock.patch("ib_async.IB", self.ib_cls),
             mock.patch.object(cycle, "connect_with_retry"),
             mock.patch.object(cycle, "save_orphans"),
             mock.patch.object(cycle, "load_orphans", return_value={}),
-            mock.patch.object(cycle, "holds_bot_positions", side_effect=[holds, False]),
+            mock.patch.object(cycle, "holds_bot_positions", side_effect=holding),
+            mock.patch.object(cycle, "FORCE_LOOP_SECONDS", 0),
         ]
         self.one_pass = mock.Mock(return_value=1)
         self.sleep_until = mock.Mock(return_value=True)
@@ -293,6 +300,34 @@ class RunFlowTest(unittest.TestCase):
         self.run_at(at(19, 15, 52), holds=False, gate="force_close")
         self.one_pass.assert_called_once()  # no 30 s re-pricing loop, no post-close pass
         self.await_done.assert_not_called()
+
+    # ------------------------------------------------ daily profit target
+
+    def test_target_hit_mid_session_stays_connected_until_flat(self):
+        # 11:00 run: the pass hits the target; still holding twice, then flat
+        self.run_at(at(19, 11, 0), holds=[True, True, False], target=True,
+                    positions={"AAPL": {}})
+        self.assertEqual(self.one_pass.call_count, 2)  # first pass + one re-pricing pass
+        self.sleep_until.assert_not_called()
+
+    def test_target_hit_and_flat_skips_the_run_before_connecting(self):
+        with mock.patch("paperbot.core.engine.log_day_done") as done:
+            self.assertEqual(self.run_at(at(19, 11, 5), target=True), 0)
+        done.assert_called_once()
+        self.one_pass.assert_not_called()
+        self.ib_cls.assert_not_called()  # never connected
+
+    def test_target_not_hit_runs_normally(self):
+        self.run_at(at(19, 11, 0), target=False)
+        self.one_pass.assert_called_once()
+
+    def test_runs_keep_windows_awake_only_while_they_run(self):
+        from paperbot.system import procs
+        with mock.patch.object(procs, "reset_idle_timer") as reset, \
+                mock.patch.object(procs, "keep_awake", wraps=procs.keep_awake) as awake:
+            self.run_at(at(19, 11, 0))
+        reset.assert_called_once()
+        awake.assert_called_once()
 
 
 class OrphanStateTest(unittest.TestCase):

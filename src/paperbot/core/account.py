@@ -187,10 +187,35 @@ def buying_power_usd(ib, account: str) -> float | None:
     return round(base[1] / rate, 2) if rate else None
 
 
-def daily_pnl(ib, account: str, pnl) -> float | None:
-    """Today's P&L for the risk guard.
+def _usd_rate(ib, account: str) -> tuple[float | None, str]:
+    """(base-currency units per USD, source) for converting IBKR's reqPnL figures,
+    which are in the account's base currency. 1.0 for a USD account, and also when
+    the account values cannot be read at all (the behaviour before conversion
+    existed); None when the base currency is known but has no usable rate."""
+    try:
+        values = list(ib.accountValues(account))
+    except Exception:  # noqa: BLE001 - nothing readable: keep IBKR's figure as is
+        return 1.0, "account values unavailable"
+    rows = [v for v in values if getattr(v, "tag", None) == "NetLiquidation"
+            and _float(getattr(v, "value", None)) is not None]
+    if not rows or any(v.currency == "USD" for v in rows):
+        return 1.0, "USD"
+    base = next((v.currency for v in rows if v.currency not in ("USD", "BASE", "")), None)
+    if base is None:
+        return 1.0, "USD"
+    if fallback_mode() == "off":
+        return None, f"{base} account with fx_fallback off"
+    rate, source = _rate(base, values, dt.datetime.now(ET).date())
+    if rate is None:
+        return None, source
+    return rate, f"{base} / {rate:.4f} per USD ({source})"
 
-    IBKR's reqPnL figure when it sends one. IBKR sends no update at all while
+
+def daily_pnl(ib, account: str, pnl) -> float | None:
+    """Today's P&L in USD for the risk guard (loss limit, profit target, drawdown).
+
+    IBKR's reqPnL figure when it sends one, converted from the account's base
+    currency like net_liquidation_usd() (None if no rate). IBKR sends no update at all while
     the account is flat, which left dailyPnL NaN and blocked every first entry
     of the day. So: 0.0 when the account provably has nothing to report (no
     position and no execution today), otherwise None, which keeps entries
@@ -199,8 +224,16 @@ def daily_pnl(ib, account: str, pnl) -> float | None:
     global _last_daily
     value = _float(getattr(pnl, "dailyPnL", None))
     if value is not None:
-        _last_daily = {"value": value, "source": "IBKR"}
-        return value
+        rate, source = _usd_rate(ib, account)
+        if rate is None:
+            _last_daily = {"value": None, "source": f"IBKR, not convertible to USD: {source}"}
+            return None  # unknown in USD: entries stay blocked, the target cannot trigger
+        if rate == 1.0:
+            _last_daily = {"value": value, "source": "IBKR"}
+            return value
+        usd = round(value / rate, 2)
+        _last_daily = {"value": usd, "source": f"IBKR {value:.2f} {source}"}
+        return usd
     _last_daily = {"value": None, "source": "IBKR sent none; account holds a position"}
     try:
         if any(p.position for p in ib.positions(account)):

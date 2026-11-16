@@ -96,8 +96,21 @@ def scenario(symbols=("AAA",), after=None, breakout=None, day: dt.date = TRADE_D
     return InMemoryProvider(daily, intraday)
 
 
+# The hand-computed simulator scenarios (283 shares, P&L by hand) were worked out on this
+# risk section; the live one is now sized for a $5,000 account (capital_usd), which the
+# simulator honours. Pinned here so the accounting tests stay about the simulator.
+SCENARIO_RISK = {
+    "max_risk_per_trade_pct": 0.5, "max_position_size_pct_of_portfolio": 10,
+    "max_concurrent_positions": 4, "max_commission_pct_of_risk": 2.0,
+    "max_drawdown_usd": 6000, "max_quantity_per_order": 500, "max_order_value": 30000.0,
+    "max_orders_per_day": 8, "max_open_orders": 3, "max_daily_loss": 2000.0,
+}
+
+
 def rules(key: str = TJL, **risk) -> dict:
     r = json.loads(paths.RULES_FILE.read_text(encoding="utf-8"))
+    if key == TJL:
+        r["strategies"][key]["risk"] = dict(SCENARIO_RISK)
     r["strategies"][key]["risk"].update(risk)
     return r
 
